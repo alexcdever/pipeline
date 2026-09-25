@@ -33,8 +33,40 @@ class CLITests(unittest.TestCase):
     def test_help(self):
         p = run_cli(['--help'])
         self.assertEqual(p.returncode, 0)
-        for word in ('task', 'scope', 'command', 'evidence', 'gate', 'metrics', 'lifecycle'):
+        for word in ('task', 'scope', 'command', 'evidence', 'gate', 'metrics', 'lifecycle', 'planning'):
             self.assertIn(word, p.stdout)
+
+    def test_planning_cli_commands_return_meaningful_exit_codes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            valid = root / 'facts.json'
+            valid.write_text(json.dumps({
+                'schema': 1,
+                'sources': [{'id': 'source', 'path': 'implement-plan.md'}],
+                'resources': [{'id': 'resource', 'path': 'src/app.py'}],
+                'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}],
+                'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 1, 'test_ref': 'tests/test_x.py', 'command_ref': 'python -m unittest'}],
+                'chain': {'entry': ['cli.py'], 'interaction': ['cli.py'], 'application': ['app.py'], 'domain': ['domain.py'], 'persistence': ['db.py'], 'readback': ['app.py'], 'recovery': ['app.py']},
+            }), encoding='utf-8')
+            p = run_cli(['planning', 'facts-validate', str(valid), '--root', str(root)])
+            self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
+            self.assertEqual(json.loads(p.stdout)['status'], 'pass')
+            p = run_cli(['planning', 'facts-validate', str(root / 'missing.json'), '--root', str(root)])
+            self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
+            p = run_cli(['planning', 'progress-append', str(root), '--task-id', 'demo', '--role', 'bad', '{}'])
+            self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
+            p = run_cli(['planning', 'preflight', str(root)])
+            self.assertEqual(p.returncode, 3, (p.stdout, p.stderr))
+
+    def test_planning_cli_task_plan_validate_accepts_root_and_rejects_bad_plan(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            plan = root / 'plan.json'
+            plan.write_text(json.dumps({'schema': 1, 'requirements': [], 'resources': [], 'operations': [], 'tasks': []}), encoding='utf-8')
+            p = run_cli(['planning', 'task-plan-validate', str(plan), '--root', str(root)])
+            self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
+            self.assertEqual(json.loads(p.stdout)['status'], 'fail')
+
 
     def test_json_output_has_common_envelope_and_can_be_saved(self):
         with tempfile.TemporaryDirectory() as d:

@@ -51,6 +51,18 @@ class EvidenceTests(unittest.TestCase):
             directory = self._make_evidence_dir(root)
             self.assertEqual(evidence_verify(directory, 'demo', 'feature/demo'), [])
 
+    def test_task_relative_evidence_references_resolve_from_canonical_task_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            for name in ('executor-report.md', 'review-report.md', 'final-check.md'):
+                report_path = directory / name
+                report_path.write_text(
+                    report_path.read_text(encoding='utf-8').replace('.pipeline/demo/test.log', 'test.log'),
+                    encoding='utf-8',
+                )
+            self.assertEqual(evidence_verify(directory, 'demo', 'feature/demo'), [])
+
     def test_nonpassing_report_is_structurally_valid_but_gate_rejects_it(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

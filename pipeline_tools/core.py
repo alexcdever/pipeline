@@ -260,8 +260,15 @@ def _canonical_evidence_dir(directory: Path) -> Path:
 def _evidence_file_exists(directory: Path, reference: Any) -> bool:
     if not _validate_evidence_ref(reference):
         return False
-    root = _evidence_root(directory)
-    candidate = root / str(reference).replace(chr(92), "/")
+    normalized = str(reference).replace(chr(92), "/")
+    evidence_directory = directory.resolve()
+    project_root = _evidence_root(directory).resolve()
+    base = project_root if normalized == ".pipeline" or normalized.startswith(".pipeline/") else evidence_directory
+    candidate = (base / normalized).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError:
+        return False
     return candidate.is_file()
 
 
