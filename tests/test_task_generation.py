@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pipeline_tools.contract import validate_task
 from pipeline_tools.planning import generate_task_sheets
@@ -93,6 +94,29 @@ class TaskGenerationTests(unittest.TestCase):
             result = self.run_generation(root, project, requirements, plan, run_id="unsafe-run")
             self.assertEqual(result["status"], "blocked")
             self.assertFalse((root.parent / "escape.md").exists())
+
+    def test_generation_rolls_back_all_task_sheets_when_publication_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("rollback-a", "rollback-b"))
+            make_repo(root)
+            original_replace = os.replace
+            calls = {"count": 0}
+
+            def fail_on_second_replace(source, destination):
+                calls["count"] += 1
+                if calls["count"] == 2:
+                    raise OSError("injected publication failure")
+                return original_replace(source, destination)
+
+            with patch("pipeline_tools.planning.os.replace", side_effect=fail_on_second_replace):
+                result = self.run_generation(root, project, requirements, plan, run_id="rollback-run")
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("OSError" in error for error in result["errors"]))
+            self.assertFalse((root / "docs" / "tasks" / "rollback-a.md").exists())
+            self.assertFalse((root / "docs" / "tasks" / "rollback-b.md").exists())
+            self.assertFalse(list((root / "docs" / "tasks").glob("*.planning-tmp")))
+            self.assertTrue((root / ".pipeline" / "planning" / "rollback-run" / "generation-result.json").is_file())
 
     def test_generation_rejects_implement_plan_hash_drift_and_checks_plan_sheet_consistency(self):
         with tempfile.TemporaryDirectory() as directory:

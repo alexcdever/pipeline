@@ -910,8 +910,23 @@ def generate_task_sheets(
             audit.mkdir(parents=True, exist_ok=True)
             (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
             return result
-        for temporary_path, destination in zip(temporary, destinations):
-            os.replace(temporary_path, destination)
+        published: list[Path] = []
+        try:
+            for temporary_path, destination in zip(temporary, destinations):
+                os.replace(temporary_path, destination)
+                published.append(destination)
+        except OSError:
+            for destination in reversed(published):
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            for temporary_path in temporary:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
         result.update({"status": "pass", "requirements_sha256": requirements_sha256, "task_ids": task_ids, "artifacts": [path.relative_to(root).as_posix() for path in destinations], "next_actions": ["review and commit generated task sheets"]})
         return result
     except (OSError, ValueError, TypeError, KeyError) as error:
