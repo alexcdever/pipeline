@@ -106,7 +106,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
                 self.assertEqual(ready["status"], "dispatch-ready", ready)
                 self.assertEqual(len(list((approved_root / ".worktrees").iterdir())), 1)
 
-    def test_existing_task_sheet_conflict_fails_closed_and_preserves_audit(self):
+    def test_dispatch_conflict_fails_closed_and_preserves_identity_artifacts(self):
         for variant in ("same", "different", "hash-drift"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as directory:
                 root, head = self.make_repo(directory)
@@ -128,6 +128,24 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
                 self.assertTrue(all(Path(path).is_file() for path in replay["artifacts"]))
                 self.assertEqual(sheet.read_bytes(), original if variant != "hash-drift" else original + b"\nretained artifact\n")
                 self.assertEqual(len(list((root / ".worktrees").iterdir())), 1)
+
+    def test_dispatch_failure_does_not_create_or_replace_worktree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, head = self.make_repo(directory)
+            project, requirements, plan = self.inputs()
+            first = planning_to_dispatch(root, "dispatch-failure-initial", project, requirements, plan, task_id="integration-task", branch="integration-task-branch", baseline=head)
+            self.assertEqual(first["status"], "dispatch-ready", first)
+            worktree = root / ".worktrees" / "integration-task"
+            retained = worktree / "retained.txt"
+            retained.write_text("must remain\n", encoding="utf-8")
+            before = retained.read_bytes()
+            replay = planning_to_dispatch(root, "dispatch-failure-replay", project, requirements, plan, task_id="integration-task", branch="integration-task-branch", baseline=head)
+            self.assertEqual(replay["status"], "blocked", replay)
+            self.assertTrue(replay["errors"])
+            self.assertTrue(any(stage["name"] == "task-generation" for stage in replay["stages"]))
+            self.assertEqual(retained.read_bytes(), before)
+            self.assertEqual(len(list((root / ".worktrees").iterdir())), 1)
+            self.assertTrue(all(Path(path).is_file() for path in replay["artifacts"]))
 
 
 if __name__ == "__main__":
