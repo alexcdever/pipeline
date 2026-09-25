@@ -17,6 +17,8 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
+from .contract import validate_task
+
 CHAIN = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 ROLES = {"executor", "reviewer", "main"}
 TASK_TYPES = {"vertical-feature", "prerequisite", "repair", "derived"}
@@ -806,6 +808,117 @@ def validate_task_plan(
     if operation_known - covered_operations:
         errors.append("uncovered operations: " + ", ".join(sorted(operation_known - covered_operations)))
     return errors
+
+
+def _planning_run_directory(root: Path, run_id: str) -> Path:
+    if not _safe_identifier(run_id):
+        raise ValueError("invalid planning run id")
+    directory = (root / ".pipeline" / "planning" / run_id).resolve()
+    if not directory.is_relative_to(root.resolve()):
+        raise ValueError("planning audit directory escapes project root")
+    return directory
+
+
+def _task_sheet_text(task: dict[str, Any], plan: dict[str, Any], requirements_sha256: str, run_id: str) -> str:
+    task_id = task["id"]
+    task_type = task["type"]
+    operations = [item for item in plan.get("operations", []) if isinstance(item, dict) and item.get("id") in task.get("operations", [])]
+    operation_ids = {item.get("id") for item in operations}
+    tests = [item for item in plan.get("acceptance_tests", []) if isinstance(item, dict) and any(item.get("id") in op.get("acceptance_tests", []) for op in operations)]
+    if not tests:
+        tests = [item for item in plan.get("acceptance_tests", []) if isinstance(item, dict)]
+    contract = {
+        "schema": 2,
+        "task_id": task_id,
+        "task_type": task_type,
+        "implement_plan": {"path": "implement-plan.md", "sha256": requirements_sha256, "planning_run_id": run_id},
+        "allowed_paths": [str(item).replace("\\\\", "/") for item in task.get("resources", [])] or ["pipeline_tools/**"],
+        "forbidden_paths": ["implement-plan.md", "IDEA.md", ".pipeline/** existing history"],
+        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
+        "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
+        "acceptance_tests": tests,
+        "dependencies": task.get("depends_on", []),
+        "required_evidence_levels": sorted({item.get("evidence_level") for item in tests if isinstance(item.get("evidence_level"), int)}) or [1],
+    }
+    lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- implement-plan SHA-256：`{requirements_sha256}`", "- 状态：未开始", "", "## 依赖与范围", "", "### 允许修改", ""]
+    lines.extend(f"- `{item}`" for item in contract["allowed_paths"])
+    lines.extend(["", "### 明确不改", "", "- `implement-plan.md`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
+    for index, test in enumerate(tests, 1):
+        lines.extend([f"### 验收测试{index}：{test.get('id')}", "", f"- 测试：`{test.get('test_ref')}`", f"- 命令：`{test.get('command_ref')}`", f"- 证据等级：{test.get('evidence_level')}", ""])
+    return "\n".join(lines) + "\n"
+
+
+def generate_task_sheets(
+    root: Path,
+    planning_run_id: str,
+    project_facts: dict[str, Any],
+    requirement_facts: dict[str, Any],
+    task_plan: dict[str, Any],
+    *,
+    expected_requirements_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Generate all task sheets atomically after mechanical planning checks."""
+    root = Path(root).resolve()
+    audit = _planning_run_directory(root, planning_run_id)
+    result: dict[str, Any] = {"schema": 1, "command": "planning.generate-task-sheets", "status": "blocked", "run_id": planning_run_id, "planning_run_id": planning_run_id, "task_id": None, "task_ids": [], "artifacts": [], "errors": [], "next_actions": []}
+    try:
+        preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256)
+        errors = list(preflight.get("errors", []))
+        plan_path = root / "implement-plan.md"
+        requirements_sha256 = preflight.get("requirements_sha256")
+        errors.extend(f"project-facts: {error}" for error in validate_project_facts(project_facts, root))
+        errors.extend(f"requirement-facts: {error}" for error in validate_requirement_facts(requirement_facts, root))
+        errors.extend(validate_task_plan(task_plan, project_facts, requirement_facts))
+        tasks = task_plan.get("tasks", []) if isinstance(task_plan, dict) else []
+        task_ids = [task.get("id") for task in tasks if isinstance(task, dict)]
+        if len(task_ids) != len(set(task_ids)):
+            errors.append("task ids must be unique")
+        if requirements_sha256 is None or not plan_path.is_file():
+            errors.append("implement-plan.md hash unavailable")
+        if errors:
+            result["errors"] = errors
+            result["next_actions"] = ["fix planning inputs and rerun"]
+            audit.mkdir(parents=True, exist_ok=True)
+            (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
+            return result
+        destinations = [root / "docs" / "tasks" / f"{task_id}.md" for task_id in task_ids]
+        for destination in destinations:
+            if destination.exists() or destination.is_symlink():
+                errors.append(f"task sheet already exists: {destination.relative_to(root).as_posix()}")
+            if not _safe_rel(root, destination.relative_to(root).as_posix()):
+                errors.append("task sheet output path is unsafe")
+        if errors:
+            result["errors"] = errors
+            result["next_actions"] = ["remove conflicts without overwriting existing task sheets"]
+            audit.mkdir(parents=True, exist_ok=True)
+            (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
+            return result
+        contents = [_task_sheet_text(task, task_plan, str(requirements_sha256), planning_run_id) for task in tasks]
+        validation_errors: list[str] = []
+        temporary: list[Path] = []
+        for destination, content in zip(destinations, contents):
+            temporary_path = destination.with_name(destination.name + ".planning-tmp")
+            temporary_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary_path.write_text(content, encoding="utf-8")
+            temporary.append(temporary_path)
+            validation_errors.extend(f"{destination.name}: {error}" for error in validate_task(temporary_path))
+        if validation_errors:
+            for path in temporary:
+                path.unlink(missing_ok=True)
+            result["errors"] = validation_errors
+            result["next_actions"] = ["fix generated contract before rerunning"]
+            audit.mkdir(parents=True, exist_ok=True)
+            (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
+            return result
+        for temporary_path, destination in zip(temporary, destinations):
+            os.replace(temporary_path, destination)
+        result.update({"status": "pass", "requirements_sha256": requirements_sha256, "task_ids": task_ids, "artifacts": [path.relative_to(root).as_posix() for path in destinations], "next_actions": ["review and commit generated task sheets"]})
+        return result
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        result["errors"] = [f"{type(error).__name__}: {error}"]
+        audit.mkdir(parents=True, exist_ok=True)
+        (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
+        return result
 
 
 def _contains_sensitive(value: Any, key: str | None = None) -> bool:

@@ -19,6 +19,7 @@ from .planning import (
     validate_project_facts,
     validate_requirement_facts,
     validate_task_plan,
+    generate_task_sheets,
 )
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
 from .core import (
@@ -117,6 +118,13 @@ def _build_parser() -> argparse.ArgumentParser:
     plan = planning_sub.add_parser("task-plan-validate"); plan.add_argument("path", type=Path); plan.add_argument("--project-facts", type=Path); plan.add_argument("--requirement-facts", type=Path); plan.add_argument("--root", type=Path)
     progress = planning_sub.add_parser("progress-append"); progress.add_argument("root", type=Path); progress.add_argument("--task-id", required=True); progress.add_argument("--role", required=True); progress.add_argument("event")
     final = planning_sub.add_parser("evidence-finalize"); final.add_argument("directory", type=Path); final.add_argument("--task-id", required=True); final.add_argument("--success", action="store_true")
+    generate = planning_sub.add_parser("generate-task-sheets")
+    generate.add_argument("root", type=Path)
+    generate.add_argument("--run-id", required=True)
+    generate.add_argument("--project-facts", type=Path, required=True)
+    generate.add_argument("--requirement-facts", type=Path, required=True)
+    generate.add_argument("--task-plan", type=Path, required=True)
+    generate.add_argument("--expected-requirements-sha256")
 
     task = groups.add_parser("task", help="task-sheet and lifecycle checks")
     task_sub = task.add_subparsers(dest="action", required=True)
@@ -823,6 +831,20 @@ def _main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"status": "pass" if not errors else "fail", "errors": errors}, ensure_ascii=True)); return PASS if not errors else CONFIG
             if args.action == "progress-append":
                 path = append_progress(args.root, args.task_id, args.role, json.loads(args.event)); print(json.dumps({"path": str(path)})); return PASS
+            if args.action == "generate-task-sheets":
+                value = generate_task_sheets(
+                    args.root,
+                    args.run_id,
+                    _json_file_for_cli(args.project_facts),
+                    _json_file_for_cli(args.requirement_facts),
+                    _json_file_for_cli(args.task_plan),
+                    expected_requirements_sha256=args.expected_requirements_sha256,
+                )
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(json.dumps(value, ensure_ascii=True))
+                return PASS if value["status"] == "pass" else (BLOCKED if value["status"] == "blocked" else CONFIG)
             value = finalize_evidence(args.directory, args.task_id, args.success); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "finalized" else BLOCKED
         if args.group == "task" and args.action == "validate":
             errors = validate_task(args.path)
