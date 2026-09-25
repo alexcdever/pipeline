@@ -2,10 +2,10 @@
   "schema": 1,
   "task_id": "planning-run-lifecycle",
   "role": "reviewer",
-  "status": "blocked",
+  "status": "pass",
   "identity": {
     "product_head": "5fc2722",
-    "head": "5fc2722",
+    "head": "99e761ecf146285cc7756f9c17a0ab0260e36f3d",
     "branch": "planning-run-lifecycle",
     "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle",
     "contract_commit": "a818e08"
@@ -23,17 +23,15 @@
     {"command": "task validate", "exit_code": 0, "evidence_refs": ["task-validate.log"]},
     {"command": "task preflight --contract a818e08 --task-sheet docs/tasks/planning-run-lifecycle.md", "exit_code": 0, "evidence_refs": ["task-preflight-correct.log"]},
     {"command": "freeze-check --contract a818e08 --task-sheet docs/tasks/planning-run-lifecycle.md", "exit_code": 0, "evidence_refs": ["freeze-check-correct.log"]},
-    {"command": "evidence readiness", "exit_code": 3, "evidence_refs": ["evidence-readiness-current.log"]},
-    {"command": "evidence verify", "exit_code": 3, "evidence_refs": ["evidence-verify-current.log"]},
+    {"command": "evidence readiness", "exit_code": 0, "evidence_refs": ["evidence-readiness.log"]},
+    {"command": "evidence verify", "exit_code": 0, "evidence_refs": ["evidence-verify.log"]},
     {"command": "result verify executor", "exit_code": 0, "evidence_refs": ["result-verify.log"]},
     {"command": "freshness", "exit_code": 0, "evidence_refs": ["freshness.log"]},
     {"command": "scope check (current evidence directory; redirected log excluded)", "exit_code": 0, "evidence_refs": ["scope-final-correct.log"]},
     {"command": "git diff --check", "exit_code": 0, "evidence_refs": ["diff-check.log"]}
   ],
-  "evidence_refs": ["review-report.md", "reviewer-result.json", "executor-result.json"],
-  "blockers": [
-    {"class": "evidence", "reason": "final-check.md is intentionally absent; evidence readiness is NOT_READY and evidence verify reports only missing final-check.md"}
-  ],
-  "unverified": ["final-check", "merge readiness"],
-  "recommendation": "blocked"
+  "evidence_refs": ["review-report.md", "reviewer-result.json", "executor-result.json", "final-check.md", "final-result.json"],
+  "blockers": [],
+  "unverified": [],
+  "recommendation": "ready_for_merge"
 }

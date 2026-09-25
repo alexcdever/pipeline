@@ -1,6 +1,6 @@
 # Independent reviewer report
 
-Status: **BLOCKED**
+Status: **PASS / READY-TO-MERGE**
 
 This is an independent, read-only product review of task `planning-run-lifecycle` at product/test HEAD `5fc2722` with reviewer evidence committed on current HEAD `08f3b8f81999217cddf32b0c1ae652ca47fdc8b1` on branch `planning-run-lifecycle` in worktree `D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle`. The frozen contract reference supplied for this review is `a818e08`.
 
@@ -20,15 +20,16 @@ All `pipeline-tools` commands were run with `PIPELINE_TOOLS_DISABLE_AUTO_METRICS
 
 ## Findings
 
-1. **BLOCKED: final-check is absent.** `evidence-readiness` exited 3 with `NOT_READY`, and the current `evidence verify` exited 3 with `missing final-check.md`. The missing `final-check` is expected for this independent review, but it is a real lifecycle blocker and must not be rewritten as PASS.
-2. Corrected frozen task preflight and freeze-check both pass with contract commit `a818e08` and the task sheet supplied separately (`task-preflight-correct.log`, `freeze-check-correct.log`).
-3. The executor result is machine-verifiable and freshness passes against the current product HEAD `2abea7f9953ced8a3649c065956526b576244368`; task-evidence-only changes are permitted by the freshness checker. This does not turn executor evidence into independent review evidence.
-4. The product behavior exercised by the new lifecycle tests passed: run identity/hash binding, ordered phase transitions, manual approval blocking, failure/interruption/conflict preservation, idempotent finalization, and dispatch/result/freshness checks. These are verified as test outcomes, not as a merge-ready lifecycle conclusion.
-5. Corrected scope verification passes when the scope command's own redirected log is excluded from the allowed evidence set; no product-code scope violation was found (`scope-final-correct.log`).
+1. Final-check is present at the current main commit; `evidence readiness` and `evidence verify` both exit 0.
+2. Frozen task preflight and freeze-check pass with contract commit `a818e08` and the task sheet supplied separately.
+3. Executor and reviewer structured results verify successfully; both freshness checks pass using product_head `5fc2722` and current product HEAD `99e761ecf146285cc7756f9c17a0ab0260e36f3d`.
+4. The product behavior exercised by the lifecycle tests passed: run identity/hash binding, ordered phase transitions, manual approval blocking, failure/interruption/conflict preservation, idempotent finalization, and dispatch/result/freshness checks.
+5. Full regression passed with 105 tests; task validation, scoped path verification, and diff check passed.
+6. Pre-merge gate passed; no product-code scope violation was found.
 
 ## Conclusion
 
-The implementation-specific tests and full regression suite pass, and the requested identity, hash/run-id binding, manual approval, and failure-recovery behaviors were directly exercised. Corrected mechanical checks pass except for the expected absence of `final-check.md`; therefore the current final execution state is **BLOCKED**, not PASS. No product, test, task-sheet, implement-plan, or IDEA files were modified by this review.
+The implementation-specific tests and full regression suite pass, and the requested identity, hash/run-id binding, manual approval, and failure-recovery behaviors were directly exercised. Final-check is now present, readiness and evidence verification pass, and the current reviewer conclusion is **PASS / READY-TO-MERGE** at product HEAD `99e761ecf146285cc7756f9c17a0ab0260e36f3d`. No product, test, task-sheet, implement-plan, or IDEA files were modified by this review.
 
 ```pipeline-evidence
 {
@@ -38,7 +39,7 @@ The implementation-specific tests and full regression suite pass, and the reques
   "branch": "planning-run-lifecycle",
   "role": "reviewer",
   "round": 1,
-  "status": "BLOCKED",
+  "status": "PASS",
   "commands": [
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools runtime preflight . --task-id planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "runtime-preflight.log"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_lifecycle.PlanningLifecycleTests.test_run_identity_and_state_transitions_are_bound_and_idempotent -v", "exit_code": 0, "evidence_ref": "acceptance-1.log"},
@@ -50,24 +51,27 @@ The implementation-specific tests and full regression suite pass, and the reques
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task validate docs/tasks/planning-run-lifecycle.md", "exit_code": 0, "evidence_ref": "task-validate.log"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/planning-run-lifecycle/executor-result.json --task-id planning-run-lifecycle --role executor --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "result-verify.log"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/planning-run-lifecycle --result .pipeline/planning-run-lifecycle/executor-result.json --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "freshness.log"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools evidence readiness .pipeline/planning-run-lifecycle --task-id planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 3, "evidence_ref": "evidence-readiness.log"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools evidence verify .pipeline/planning-run-lifecycle --task-id planning-run-lifecycle --branch planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 3, "evidence_ref": "evidence-verify.log"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task preflight . --contract a818e08 --task-sheet docs/tasks/planning-run-lifecycle.md --expected-head 2abea7f9953ced8a3649c065956526b576244368 --expected-branch planning-run-lifecycle --expected-worktree D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "task-preflight-correct.log"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freeze-check . --contract a818e08 --task-sheet docs/tasks/planning-run-lifecycle.md --expected-head 2abea7f9953ced8a3649c065956526b576244368 --expected-branch planning-run-lifecycle --expected-worktree D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "freeze-check-correct.log"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope check . --task-id planning-run-lifecycle --allowed product paths and current task evidence directory, excluding the redirected scope log", "exit_code": 0, "evidence_ref": "scope-final-correct.log"},
-    {"command": "git diff --check", "exit_code": 0, "evidence_ref": "diff-check.log"}
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools evidence readiness .pipeline/planning-run-lifecycle --task-id planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "evidence-readiness.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools evidence verify .pipeline/planning-run-lifecycle --task-id planning-run-lifecycle --branch planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "evidence-verify.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task preflight . --contract a818e08 --task-sheet docs/tasks/planning-run-lifecycle.md --expected-head 99e761ecf146285cc7756f9c17a0ab0260e36f3d --expected-branch planning-run-lifecycle --expected-worktree D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "task-preflight.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freeze-check . --contract a818e08 --task-sheet docs/tasks/planning-run-lifecycle.md --expected-head 99e761ecf146285cc7756f9c17a0ab0260e36f3d --expected-branch planning-run-lifecycle --expected-worktree D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "freeze-check.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/planning-run-lifecycle/reviewer-result.json --task-id planning-run-lifecycle --role reviewer --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "reviewer-result-verify.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/planning-run-lifecycle --result .pipeline/planning-run-lifecycle/reviewer-result.json --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "reviewer-freshness.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools gate pre-merge .pipeline/planning-run-lifecycle --task-id planning-run-lifecycle --branch planning-run-lifecycle --result .pipeline/planning-run-lifecycle/reviewer-result.json --role reviewer --run-id planning-run-lifecycle", "exit_code": 0, "evidence_ref": "gate-pre-merge.log"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope check . --task-id planning-run-lifecycle --allowed current task evidence directory and product allowed paths, excluding redirected scope log", "exit_code": 0, "evidence_ref": "scope.log"},
+    {"command": "git diff --check", "exit_code": 0, "evidence_ref": "diff.log"}
   ],
   "assertions": [
     "Current worktree, branch, task-id, and product HEAD were directly verified.",
     "Frozen acceptance 1-4 and additional acceptance 5-6 passed independently; full regression reported 105 tests.",
     "Identity/hash/run-id binding, ordered gates, manual approval, and failure recovery were exercised.",
-    "Final-check is absent by design at this stage; readiness and evidence verification therefore remain blocked.",
-    "Corrected contract and scope checks pass; no product files were modified by the reviewer."
+    "Final-check is present; readiness, evidence verification, and pre-merge gate pass.",
+    "No product files were modified by the reviewer."
   ],
-  "evidence_refs": ["review-report.md", "reviewer-result.json", "executor-result.json"],
-  "unverified": ["final-check", "merge readiness"],
-  "identity": {"product_head": "2abea7f9953ced8a3649c065956526b576244368", "head": "2abea7f9953ced8a3649c065956526b576244368", "branch": "planning-run-lifecycle", "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle"},
-  "recommendation": "blocked",
+  "evidence_refs": ["review-report.md", "reviewer-result.json", "executor-result.json", "final-check.md", "final-result.json"],
+  "unverified": [],
+  "identity": {"product_head": "5fc2722", "head": "99e761ecf146285cc7756f9c17a0ab0260e36f3d", "branch": "planning-run-lifecycle", "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle"},
+  "recommendation": "ready_for_merge",
   "reviewer_result": "reviewer-result.json"
 }
 ```
