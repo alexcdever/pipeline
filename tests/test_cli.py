@@ -520,6 +520,25 @@ class CLITests(unittest.TestCase):
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
             self.assertEqual(json.loads(p.stdout)['status'], 'pass')
 
+    def test_task_plan_contract_consistency_cli_accepts_matching_schema2_sheet(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            plan = root / 'plan.json'
+            sheet = root / 'task.md'
+            implement_plan = root / 'implement-plan.md'
+            implement_plan.write_text('stable plan\\n', encoding='utf-8')
+            digest = __import__('hashlib').sha256(implement_plan.read_bytes()).hexdigest()
+            chain = {name: ['not-applicable'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
+            acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest'}]
+            operation = {'id': 'op', 'kind': 'validate', 'scope': 'task', 'acceptance_tests': ['acceptance-test-1']}
+            value = {'schema': 1, 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': [operation], 'acceptance_tests': acceptance, 'tasks': [{'id': 'demo', 'type': 'prerequisite', 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': ['op'], 'chain': chain, 'depends_on': []}]}
+            plan.write_text(json.dumps(value), encoding='utf-8')
+            contract = {'schema': 2, 'task_id': 'demo', 'task_type': 'prerequisite', 'implement_plan': {'path': 'implement-plan.md', 'sha256': digest, 'planning_run_id': 'run-1'}, 'allowed_paths': ['pipeline_tools/planning.py'], 'forbidden_paths': ['implement-plan.md'], 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': [operation], 'chain': chain, 'acceptance_tests': acceptance, 'dependencies': [], 'required_evidence_levels': [2]}
+            sheet.write_text('<!-- Task ID: demo -->\n```pipeline-contract\n' + json.dumps(contract) + '\n```\n', encoding='utf-8')
+            result = run_cli(['--format', 'json', 'planning', 'task-plan-contract-consistency', str(plan), str(sheet), '--root', str(root), '--expected-requirements-sha256', digest, '--expected-run-id', 'run-1'])
+            self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+            self.assertEqual(json.loads(result.stdout)['status'], 'pass')
+
 
 if __name__ == '__main__':
     unittest.main()
