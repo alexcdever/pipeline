@@ -873,9 +873,11 @@ def compare_task_plan_contract(
         plan_root = Path(root) if root is not None else Path(task_sheet).resolve().parent.parent.parent
         plan_path = plan_root / str(implement_plan.get("path", "implement-plan.md"))
         try:
+            plan_path.read_text(encoding="utf-8")
             live_hash = _sha256(plan_path)
-        except OSError:
+        except (OSError, UnicodeError):
             live_hash = None
+            errors.append({"field": "implement_plan.path", "reason": "implement-plan is missing or unreadable", "source": "implement-plan/task-sheet"})
         if expected_requirements_sha256 is not None and implement_plan.get("sha256") != expected_requirements_sha256:
             errors.append({"field": "implement_plan.sha256", "reason": "implement-plan hash differs from expected hash", "source": "task-sheet"})
         if live_hash is not None and implement_plan.get("sha256") != live_hash:

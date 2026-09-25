@@ -33,6 +33,23 @@ class TaskPlanContractConsistencyTests(unittest.TestCase):
             result = compare_task_plan_contract(plan, sheet, root=root, expected_requirements_sha256=digest, expected_run_id="run-1")
             self.assertEqual(result["status"], "fail"); self.assertTrue(any(item["field"] == "task_type" for item in result["conflicts"]))
 
+    def test_missing_implement_plan_is_rejected_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); plan, sheet, digest = self._fixture(root)
+            (root / "implement-plan.md").unlink()
+            result = compare_task_plan_contract(plan, sheet, root=root, expected_requirements_sha256=digest, expected_run_id="run-1")
+            self.assertEqual(result["status"], "fail")
+            self.assertTrue(any(item["field"] == "implement_plan.path" for item in result["conflicts"]))
+
+    def test_unreadable_implement_plan_is_rejected_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); plan, sheet, digest = self._fixture(root)
+            plan_path = root / "implement-plan.md"
+            plan_path.write_bytes(bytes([0xFF, 0xFE]))
+            result = compare_task_plan_contract(plan, sheet, root=root, expected_requirements_sha256=digest, expected_run_id="run-1")
+            self.assertEqual(result["status"], "fail")
+            self.assertTrue(any(item["field"] == "implement_plan.path" for item in result["conflicts"]))
+
     def test_duplicate_missing_and_unsafe_plan_inputs_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); plan, sheet, _digest = self._fixture(root)
