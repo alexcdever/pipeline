@@ -1,0 +1,35 @@
+# Reviewer report
+
+Task `derived-task-dispatch-recovery` was independently reviewed in the frozen implementation worktree.
+
+- Worktree: `D:/Projects/Skills/pipeline/.worktrees/derived-task-dispatch-recovery`
+- Branch: `derived-task-dispatch-recovery`
+- HEAD: `492db8cf166de27b227c6b4edf5915c885856069`
+- Frozen contract: `a818e08b4b33f0d81d5846564e47534b8f7ab6cd` (task sheet commit; verified ancestor of HEAD)
+- Product parent: `244f453db77ec9990f763208d29feecd9e5db2cf`
+- Frozen task sheet: `docs/tasks/derived-task-dispatch-recovery.md`
+- Role: reviewer, round 1
+
+## Independent checks
+
+- The three frozen derived-task tests passed independently.
+- The full regression suite passed: `Ran 120 tests ... OK`.
+- `task validate` passed.
+- `task preflight` and `task freeze-check` passed when bound to the actual worktree HEAD `492db8c...`, branch, and absolute path, with contract ancestor `a818e08`.
+- `result verify` for the executor result passed.
+- `freshness` for the executor result passed at the current HEAD.
+- Temporary Git parent/child worktree identity, explicit parent baseline binding, independent child evidence identity, replay blocking, continuation uniqueness, parent preservation, and identity drift blocking passed through the frozen focused tests.
+- Scope check passed for the current worktree status after excluding generated metrics; no forbidden `implement-plan.md` or `IDEA.md` change was observed.
+
+## Blocking findings
+
+1. The required reviewer evidence set is not complete: `final-check.md` is absent. Evidence readiness returns `NOT_READY` and formal evidence verification returns `BLOCKED` with `missing final-check.md`; the final-check absence remains real and intentional.
+2. No executor identity blocker remains after the round-2 evidence refresh: the executor report/result now bind product/test HEAD `492db8c...`, product parent `244f453...`, branch/worktree, frozen task sheet path, and the actual task-sheet contract commit `a818e08b...`.
+3. The scoped product/test diff check `git diff --check 244f453...492db8c... -- pipeline_tools/** tests/**` passes. The earlier unscoped check is unsuitable because unrelated historical evidence has trailing whitespace; it is not a current product/test finding.
+4. The working tree contains only reviewer/task evidence changes and no generated metrics after cleanup.
+
+Conclusion: `BLOCKED`. No product, test, task-sheet, `implement-plan.md`, or `IDEA.md` file was modified by this review. No final-check was generated.
+
+```pipeline-evidence
+{"schema":1,"task_id":"derived-task-dispatch-recovery","worktree":"D:/Projects/Skills/pipeline/.worktrees/derived-task-dispatch-recovery","branch":"derived-task-dispatch-recovery","role":"reviewer","round":2,"status":"BLOCKED","commands":[{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_derived_task_binds_explicit_parent_commit_and_is_independent -v","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_missing_evidence_and_identity_drift_preserve_parent_and_block_resume -v","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history -v","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task validate docs/tasks/derived-task-dispatch-recovery.md","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task preflight . --contract a818e08b4b33f0d81d5846564e47534b8f7ab6cd --task-sheet docs/tasks/derived-task-dispatch-recovery.md --expected-head 492db8cf166de27b227c6b4edf5915c885856069 --expected-branch derived-task-dispatch-recovery --expected-worktree D:/Projects/Skills/pipeline/.worktrees/derived-task-dispatch-recovery","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task freeze-check . --contract a818e08b4b33f0d81d5846564e47534b8f7ab6cd --task-sheet docs/tasks/derived-task-dispatch-recovery.md --expected-head 492db8cf166de27b227c6b4edf5915c885856069 --expected-branch derived-task-dispatch-recovery --expected-worktree D:/Projects/Skills/pipeline/.worktrees/derived-task-dispatch-recovery","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/derived-task-dispatch-recovery/executor-result.json --task-id derived-task-dispatch-recovery --role executor","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/derived-task-dispatch-recovery --result .pipeline/derived-task-dispatch-recovery/executor-result.json","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 DISABLE_AUTO_METRICS=1 git diff --check 244f453db77ec9990f763208d29feecd9e5db2cf..492db8cf166de27b227c6b4edf5915c885856069 -- pipeline_tools/** tests/**","exit_code":0,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools evidence readiness .pipeline/derived-task-dispatch-recovery --task-id derived-task-dispatch-recovery","exit_code":3,"evidence_ref":"review-report.md"},{"command":"DISABLE_AUTO_METRICS=1 PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools evidence verify .pipeline/derived-task-dispatch-recovery --task-id derived-task-dispatch-recovery --branch derived-task-dispatch-recovery","exit_code":3,"evidence_ref":"review-report.md"}],"assertions":["frozen focused tests passed","full regression passed with 120 tests","temporary parent/child worktree identity and recovery boundaries passed","current worktree identity is 492db8c on derived-task-dispatch-recovery","executor evidence refreshed with current product/test HEAD, parent, branch, worktree, task sheet, and contract commit","scoped product/test diff check passed","reviewer result and freshness checks passed","only final-check remains missing"],"evidence_refs":["review-report.md"],"unverified":["main final-check and merge gate"],"blockers":[{"class":"evidence","reason":"final-check.md is absent; evidence set is not ready"}],"recommendation":"BLOCKED"}
+``` 
