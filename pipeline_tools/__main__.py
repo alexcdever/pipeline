@@ -12,6 +12,14 @@ import time
 from pathlib import Path
 
 from .contract import validate_task
+from .planning import (
+    append_progress,
+    finalize_evidence,
+    planning_preflight,
+    validate_project_facts,
+    validate_requirement_facts,
+    validate_task_plan,
+)
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
 from .core import (
     BLOCKED,
@@ -100,6 +108,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument("--output", type=Path)
     groups = parser.add_subparsers(dest="group", required=True)
+
+    planning = groups.add_parser("planning")
+    planning_sub = planning.add_subparsers(dest="action", required=True)
+    pf = planning_sub.add_parser("preflight"); pf.add_argument("root", type=Path)
+    facts = planning_sub.add_parser("facts-validate"); facts.add_argument("path", type=Path); facts.add_argument("--root", type=Path)
+    requirement = planning_sub.add_parser("requirement-facts-validate"); requirement.add_argument("path", type=Path); requirement.add_argument("--root", type=Path)
+    plan = planning_sub.add_parser("task-plan-validate"); plan.add_argument("path", type=Path); plan.add_argument("--project-facts", type=Path); plan.add_argument("--requirement-facts", type=Path); plan.add_argument("--root", type=Path)
+    progress = planning_sub.add_parser("progress-append"); progress.add_argument("root", type=Path); progress.add_argument("--task-id", required=True); progress.add_argument("--role", required=True); progress.add_argument("event")
+    final = planning_sub.add_parser("evidence-finalize"); final.add_argument("directory", type=Path); final.add_argument("--task-id", required=True); final.add_argument("--success", action="store_true")
 
     task = groups.add_parser("task", help="task-sheet and lifecycle checks")
     task_sub = task.add_subparsers(dest="action", required=True)
@@ -471,8 +488,10 @@ def _auto_stage_name(args: argparse.Namespace) -> str | None:
         return None
     if group == "help":
         return "cli_help"
+    if group == "planning":
+        return f"planning_{str(action).replace('-', '_')}"
     if group in {"preflight", "freeze-check"}:
-        return f"task_{group.replace('-', '_')}"
+        return "contract"
     if group == "command":
         return "command_run"
     if group == "scope":
@@ -507,7 +526,7 @@ def _raw_stage_args(argv: list[str]) -> argparse.Namespace | None:
     normal parser can produce a namespace.
     """
     groups = {
-        "task", "preflight", "freeze-check", "scope", "command", "evidence",
+        "planning", "task", "preflight", "freeze-check", "scope", "command", "evidence",
         "gate", "runtime", "lifecycle", "dispatch", "result", "freshness", "metrics",
     }
     index = 0
@@ -524,7 +543,7 @@ def _raw_stage_args(argv: list[str]) -> argparse.Namespace | None:
             continue
         group = token
         action = None
-        if group in {"task", "scope", "command", "evidence", "gate", "runtime", "lifecycle", "dispatch", "result"}:
+        if group in {"planning", "task", "scope", "command", "evidence", "gate", "runtime", "lifecycle", "dispatch", "result"}:
             next_index = index + 1
             while next_index < len(argv) and argv[next_index].startswith("--"):
                 next_index += 2 if "=" not in argv[next_index] else 1
@@ -571,6 +590,11 @@ def _auto_root_and_reference(args: argparse.Namespace) -> tuple[Path, str | None
         if group in {"scope", "runtime"}:
             return root, None
         return root, None
+    if group == "planning":
+        candidate = _path_arg(args, "root") or _path_arg(args, "path") or Path.cwd()
+        root = _git_root(candidate)
+        reference = _path_arg(args, "path")
+        return root, _safe_project_reference(root, reference)
     if group == "task" and args.action == "validate":
         path = Path(args.path)
         root = _git_root(path)
@@ -783,6 +807,23 @@ def _main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     try:
         args = parser.parse_args(argv)
+        if args.group == "planning":
+            if args.action == "preflight":
+                value = planning_preflight(args.root); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
+            if args.action in {"facts-validate", "requirement-facts-validate", "task-plan-validate"}:
+                value = json.loads(args.path.read_text(encoding="utf-8"))
+                if args.action == "facts-validate":
+                    errors = validate_project_facts(value, args.root)
+                elif args.action == "requirement-facts-validate":
+                    errors = validate_requirement_facts(value, args.root)
+                else:
+                    project_facts = _json_file_for_cli(args.project_facts) if args.project_facts else None
+                    requirement_facts = _json_file_for_cli(args.requirement_facts) if args.requirement_facts else None
+                    errors = validate_task_plan(value, project_facts, requirement_facts)
+                print(json.dumps({"status": "pass" if not errors else "fail", "errors": errors}, ensure_ascii=True)); return PASS if not errors else CONFIG
+            if args.action == "progress-append":
+                path = append_progress(args.root, args.task_id, args.role, json.loads(args.event)); print(json.dumps({"path": str(path)})); return PASS
+            value = finalize_evidence(args.directory, args.task_id, args.success); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "finalized" else BLOCKED
         if args.group == "task" and args.action == "validate":
             errors = validate_task(args.path)
             if args.format == "json":
