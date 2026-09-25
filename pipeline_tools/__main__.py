@@ -29,6 +29,7 @@ from .planning import (
     planning_run_finalize,
     planning_run_recover,
     compare_task_plan_contract,
+    planning_to_dispatch,
 )
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
 from .core import (
@@ -146,6 +147,18 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--requirement-facts", type=Path, required=True)
     generate.add_argument("--task-plan", type=Path, required=True)
     generate.add_argument("--expected-requirements-sha256")
+    orchestrate = planning_sub.add_parser("to-dispatch")
+    orchestrate.add_argument("root", type=Path)
+    orchestrate.add_argument("--run-id", required=True)
+    orchestrate.add_argument("--project-facts", type=Path, required=True)
+    orchestrate.add_argument("--requirement-facts", type=Path, required=True)
+    orchestrate.add_argument("--task-plan", type=Path, required=True)
+    orchestrate.add_argument("--task-id")
+    orchestrate.add_argument("--branch")
+    orchestrate.add_argument("--baseline")
+    orchestrate.add_argument("--approval-mode", choices=("automatic", "manual"), default="automatic")
+    orchestrate.add_argument("--approve", action="store_true")
+    orchestrate.add_argument("--no-auto-freeze", action="store_true")
     run = planning_sub.add_parser("run")
     run_sub = run.add_subparsers(dest="run_action", required=True)
     start = run_sub.add_parser("start"); start.add_argument("root", type=Path); start.add_argument("--run-id"); start.add_argument("--approval-mode", choices=("automatic", "manual"), default="automatic")
@@ -866,6 +879,19 @@ def _main(argv: list[str] | None = None) -> int:
         if args.group == "planning":
             if args.action == "preflight":
                 value = planning_preflight(args.root); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
+            if args.action == "to-dispatch":
+                value = planning_to_dispatch(
+                    args.root, args.run_id, _json_file_for_cli(args.project_facts),
+                    _json_file_for_cli(args.requirement_facts), _json_file_for_cli(args.task_plan),
+                    task_id=args.task_id, branch=args.branch, baseline=args.baseline,
+                    approval_mode=args.approval_mode, approved=args.approve,
+                    auto_freeze=not args.no_auto_freeze,
+                )
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(json.dumps(value, ensure_ascii=True, sort_keys=True))
+                return PASS if value.get("status") == "dispatch-ready" else (CONFIG if value.get("status") == "fail" else BLOCKED)
             if args.action == "run":
                 if args.run_action == "start":
                     value = planning_run_start(args.root, args.run_id, approval_mode=args.approval_mode)
