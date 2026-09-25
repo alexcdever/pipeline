@@ -2,7 +2,7 @@
 
 Status: **BLOCKED**
 
-This is an independent, read-only product review of task `planning-run-lifecycle` at product/test HEAD `5fc2722` with reviewer evidence committed on current HEAD `REVIEWER_COMMIT_PENDING` on branch `planning-run-lifecycle` in worktree `D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle`. The frozen contract reference supplied for this review is `a818e08`.
+This is an independent, read-only product review of task `planning-run-lifecycle` at product/test HEAD `5fc2722` with reviewer evidence committed on current HEAD `6e57a6aadb909a3f5315c7a2a483870e9e1a6bf7` on branch `planning-run-lifecycle` in worktree `D:/Projects/Skills/pipeline/.worktrees/planning-run-lifecycle`. The frozen contract reference supplied for this review is `a818e08`.
 
 ## Verification performed
 
