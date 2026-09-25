@@ -1323,9 +1323,10 @@ def planning_to_dispatch(
     if not stage("facts-gate", gate.get("status", "blocked"), gate):
         return result
     generated = generate_task_sheets(root, run_id, project_facts, requirement_facts, task_plan, expected_requirements_sha256=preflight.get("requirements_sha256"))
-    if generated.get("status") != "pass" and all("already exists" in error for error in generated.get("errors", [])):
-        existing_ids = [item.get("id") for item in task_plan.get("tasks", []) if isinstance(item, dict) and (root / "docs" / "tasks" / f"{item.get('id')}.md").is_file()]
-        generated = {"status": "pass", "run_id": run_id, "task_ids": existing_ids, "artifacts": [f"docs/tasks/{item}.md" for item in existing_ids], "errors": [], "next_actions": ["reuse existing generated task sheets"]}
+    if generated.get("status") != "pass":
+        generation_artifact = audit / "generation-result.json"
+        if generation_artifact.is_file():
+            generated = {**generated, "artifacts": [*generated.get("artifacts", []), str(generation_artifact)]}
     if not stage("task-generation", generated.get("status", "blocked"), generated):
         return result
     task_ids = generated.get("task_ids", [])
@@ -1366,9 +1367,6 @@ def planning_to_dispatch(
         return result
     if approval_mode == "manual" and not approved:
         stage("approval", "blocked", {"errors": ["manual approval required"], "next_actions": ["approve dispatch and retry"]})
-        return result
-    if approval_mode == "automatic" and not approved:
-        stage("approval", "blocked", {"errors": ["dispatch authorization required"], "next_actions": ["confirm dispatch"]})
         return result
     branch = branch or selected
     if not baseline:
