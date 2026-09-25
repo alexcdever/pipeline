@@ -5,8 +5,8 @@
   "status": "pass",
   "run_id": "planning-run-task-generation",
   "branch": "planning-run-task-generation",
-  "head": "81de3752c14d294c45bda5541dd0f7f4959b1245",
-  "identity": {"head": "81de3752c14d294c45bda5541dd0f7f4959b1245", "branch": "planning-run-task-generation", "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-task-generation"},
+  "head": "8ba332a1d82c2738107ae2543e72083ec7412add",
+  "identity": {"head": "8ba332a1d82c2738107ae2543e72083ec7412add", "product_head": "b388c11", "branch": "planning-run-task-generation", "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-task-generation"},
   "round": 3,
   "acceptance": [
     {"id": "acceptance-test-1", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/planning-run-task-generation/executor-report.md"]},
