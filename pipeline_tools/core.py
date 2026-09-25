@@ -885,6 +885,123 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
     return errors
 
 
+def create_derived_dispatch(
+    root: Path,
+    parent_task_sheet: Path,
+    parent_task_id: str,
+    parent_branch: str,
+    parent_commit: str,
+    child_task_id: str,
+    child_branch: str,
+    *,
+    continuation: bool = False,
+) -> dict[str, Any]:
+    """Create an independent derived task from an explicit frozen parent commit.
+
+    The child is created in a fresh worktree at the parent commit.  Parent files,
+    evidence, and history are never copied or rewritten; the child sheet and
+    evidence directory are created only in the child worktree.
+    """
+    root = Path(root).resolve()
+    parent_task_sheet = Path(parent_task_sheet).resolve()
+    target = root / ".worktrees" / child_task_id
+    result: dict[str, Any] = {
+        "schema": 1, "command": "dispatch.derived-create", "status": "blocked",
+        "parent_task_id": parent_task_id, "parent_branch": parent_branch,
+        "parent_commit": parent_commit, "task_id": child_task_id,
+        "branch": child_branch, "root": str(root), "worktree": str(target),
+        "errors": [], "blockers": [], "artifacts": [],
+        "next_actions": ["reconcile parent identity"],
+    }
+
+    def blocked(reason: str, category: str = "identity") -> dict[str, Any]:
+        result["errors"].append(reason)
+        result["blockers"].append({"class": "workflow", "category": category, "reason": reason})
+        return result
+
+    if not parent_task_id or not child_task_id or parent_task_id == child_task_id:
+        return blocked("parent and child task ids must be distinct", "contract")
+    if not parent_branch or not child_branch or parent_branch == child_branch:
+        return blocked("parent and child branches must be distinct", "branch")
+    if continuation and "continuation" not in child_task_id:
+        return blocked("continuation task id must contain continuation", "contract")
+    if target.exists():
+        return blocked("child worktree target is occupied", "path")
+    rc, actual_root = git(root, "rev-parse", "--show-toplevel", redact_output=False)
+    if rc or Path(actual_root.strip()).resolve() != root:
+        return blocked("root is not the Git worktree root", "root")
+    rc, current_branch = git(root, "branch", "--show-current", redact_output=False)
+    if rc or current_branch.strip() != parent_branch:
+        return blocked("parent branch does not match current worktree", "identity")
+    rc, current_head = git(root, "rev-parse", "HEAD", redact_output=False)
+    if rc or current_head.strip() != parent_commit:
+        return blocked("parent commit does not match current HEAD", "baseline")
+    contract, errors = load_contract(parent_task_sheet)
+    if contract is None or errors:
+        return blocked("parent task sheet is not a valid contract: " + "; ".join(errors), "freeze")
+    if contract.get("task_id") != parent_task_id:
+        return blocked("parent task sheet task_id mismatch", "identity")
+    try:
+        relative_sheet = parent_task_sheet.relative_to(root).as_posix()
+    except ValueError:
+        return blocked("parent task sheet is outside repository root", "path")
+    rc, _ = git(root, "ls-files", "--error-unmatch", relative_sheet)
+    if rc:
+        return blocked("parent task sheet is not committed", "freeze")
+    rc, blob = git(root, "show", f"{parent_commit}:{relative_sheet}", redact_output=False)
+    if rc or not blob.strip():
+        return blocked("parent task sheet is absent from explicit parent commit", "freeze")
+    rc, status = git(root, "status", "--porcelain=v1", "--untracked-files=all", redact_output=False)
+    if rc or any(line[3:].strip().strip('\\\"') == relative_sheet for line in status.splitlines() if len(line) >= 4):
+        return blocked("parent task sheet is uncommitted", "freeze")
+    rc, listing = git(root, "worktree", "list", "--porcelain", redact_output=False)
+    if rc:
+        return blocked("unable to inspect worktree list", "git")
+    if f"branch refs/heads/{child_branch}" in listing or str(target) in listing:
+        return blocked("duplicate child worktree or branch conflict", "conflict")
+    rc, branches = git(root, "branch", "--list", child_branch, redact_output=False)
+    if rc or branches.strip():
+        return blocked("child branch already exists", "branch")
+
+    child_sheet = target / "docs" / "tasks" / f"{child_task_id}.md"
+    evidence = target / ".pipeline" / child_task_id
+    try:
+        rc, output = git(root, "worktree", "add", "-b", child_branch, str(target), parent_commit, redact_output=False, timeout=60)
+        if rc:
+            return blocked("child worktree creation failed", "git")
+        child_contract = dict(contract)
+        child_contract["task_id"] = child_task_id
+        child_contract["task_type"] = "derived"
+        child_contract["dependencies"] = list(child_contract.get("dependencies", [])) + [parent_task_id]
+        child_contract["derived_from"] = {"task_id": parent_task_id, "commit": parent_commit, "branch": parent_branch}
+        child_sheet.parent.mkdir(parents=True, exist_ok=True)
+        child_sheet.write_text(
+            f"# {child_task_id}：派生任务单\\n\\n<!-- Task ID: {child_task_id} -->\\n\\n"
+            "```pipeline-contract\\n" + json.dumps(child_contract, ensure_ascii=True, indent=2) + "\\n```\\n",
+            encoding="utf-8",
+        )
+        evidence.mkdir(parents=True, exist_ok=False)
+    except (OSError, ValueError) as error:
+        return blocked(f"child dispatch creation failed: {type(error).__name__}", "git")
+
+    rc1, actual_root = git(target, "rev-parse", "--show-toplevel", redact_output=False)
+    rc2, actual_branch = git(target, "branch", "--show-current", redact_output=False)
+    rc3, actual_head = git(target, "rev-parse", "HEAD", redact_output=False)
+    if rc1 or rc2 or rc3 or Path(actual_root.strip()).resolve() != target or actual_branch.strip() != child_branch or actual_head.strip() != parent_commit:
+        return blocked("child post-create identity verification failed", "identity")
+    result.update({
+        "status": "pass",
+        "identity": {"parent_task_id": parent_task_id, "parent_branch": parent_branch,
+                     "parent_commit": parent_commit, "task_id": child_task_id,
+                     "branch": child_branch, "worktree": str(target),
+                     "baseline": parent_commit, "parent_evidence_reused": False},
+        "child_task_sheet": str(child_sheet), "evidence_dir": str(evidence),
+        "artifacts": [str(child_sheet), str(evidence)],
+        "next_actions": ["commit child task sheet, then dispatch executor"],
+    })
+    return result
+
+
 def create_worktree_dispatch(root: Path, task_sheet: Path, task_id: str, branch: str, baseline: str, *, role: str = "executor") -> dict[str, Any]:
     """Create and verify the unique frozen task worktree."""
     root, task_sheet = Path(root).resolve(), Path(task_sheet).resolve()
