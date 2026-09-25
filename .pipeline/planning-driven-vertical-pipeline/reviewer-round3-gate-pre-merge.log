@@ -1,0 +1,2 @@
+FAIL: executor-report.md contains a non-zero command exit_code; executor-report.md contains a non-zero command exit_code; review-report.md status is not mergeable; review-report.md contains a non-zero command exit_code; review-report.md contains a non-zero command exit_code; final-check.md contains a non-zero command exit_code
+EXIT_CODE=3
