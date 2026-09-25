@@ -5,22 +5,43 @@
 
 ```pipeline-contract
 {
-  "schema": 1,
+  "schema": 2,
   "task_id": "<task-id>",
+  "task_type": "repair",
+  "implement_plan": {"path": "implement-plan.md"},
   "allowed_paths": ["<repo-relative-or-explicit-sibling-path-pattern>"],
   "forbidden_paths": ["<path-pattern>"],
+  "operations": [
+    {
+      "id": "<operation-id>",
+      "kind": "<operation-kind>",
+      "scope": "<operation-scope>",
+      "acceptance_tests": ["acceptance-test-1"]
+    }
+  ],
+  "chain": {
+    "entry": ["<path-or-reference>"],
+    "interaction": ["<path-or-reference>"],
+    "application": ["<path-or-reference>"],
+    "domain": ["<path-or-reference>"],
+    "persistence": ["<path-or-reference>"],
+    "readback": ["<path-or-reference>"],
+    "recovery": ["<path-or-reference>"]
+  },
   "acceptance_tests": [
     {
-      "id": "AT1",
+      "id": "acceptance-test-1",
       "evidence_level": 1,
       "test_ref": "<file>: <exact test name>",
       "command_ref": "<complete command>"
     }
-  ]
+  ],
+  "dependencies": [],
+  "required_evidence_levels": [1]
 }
 ```
 
-`pipeline-contract` is the machine-checkable projection of this task sheet. Keep it synchronized with the human-readable contract; after the contract commit it is frozen.
+`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 2 and complete `acceptance-test-*` IDs; schema 1 is retained only for deprecated historical reads. Keep it synchronized with the human-readable contract; after the contract commit it is frozen.
 
 ## 任务身份
 

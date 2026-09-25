@@ -1,6 +1,7 @@
 {
   "schema": 1,
   "task_id": "<task-id>",
+  "acceptance_id_format": "acceptance-test-*",
   "worktree": ".worktrees/<task-id>",
   "branch": "<branch>",
   "role": "executor",
