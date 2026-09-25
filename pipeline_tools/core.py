@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .layout import active_pipeline_dir, canonical_evidence_dir, evidence_root, is_metrics_path, metrics_dirs
+from .contract import load_contract
 
 PASS, FAIL, CONFIG, BLOCKED, DRIFT = 0, 1, 2, 3, 4
 REPORT_NAMES = ("executor-report.md", "review-report.md", "final-check.md")
@@ -882,6 +883,41 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
         if not isinstance(item.get("evidence_refs"), list):
             errors.append(f"acceptance {index} evidence_refs must be an array")
     return errors
+
+
+def create_worktree_dispatch(root: Path, task_sheet: Path, task_id: str, branch: str, baseline: str, *, role: str = "executor") -> dict[str, Any]:
+    """Create and verify the unique frozen task worktree."""
+    root, task_sheet = Path(root).resolve(), Path(task_sheet).resolve()
+    target = root / ".worktrees" / task_id
+    result = {"schema": 1, "command": "dispatch.worktree-create", "status": "blocked", "task_id": task_id, "role": role, "root": str(root), "worktree": str(target), "branch": branch, "baseline": baseline, "errors": [], "blockers": [], "artifacts": [], "next_actions": ["reconcile identity"]}
+    def blocked(reason: str, category: str = "identity") -> dict[str, Any]:
+        result["errors"].append(reason); result["blockers"].append({"class": "workflow", "category": category, "reason": reason}); return result
+    if role not in {"executor", "reviewer"}: return blocked("invalid dispatch role")
+    contract, errors = load_contract(task_sheet)
+    if contract is None or errors or contract.get("schema") != 2: return blocked("task sheet is not a valid frozen schema2 contract: " + "; ".join(errors or ["schema must be 2"]), "freeze")
+    if contract.get("task_id") != task_id: return blocked("task sheet task_id does not match dispatch task_id")
+    rc, actual = git(root, "rev-parse", "--show-toplevel", redact_output=False)
+    if rc or Path(actual.strip()).resolve() != root: return blocked("root is not the Git worktree root", "root")
+    rc, actual = git(root, "rev-parse", "HEAD", redact_output=False)
+    if rc or actual.strip() != baseline: return blocked("baseline HEAD does not match requested baseline", "baseline")
+    relative = task_sheet.relative_to(root).as_posix() if task_sheet.is_relative_to(root) else None
+    if not relative: return blocked("task sheet is outside repository root", "path")
+    rc, _ = git(root, "ls-files", "--error-unmatch", relative)
+    if rc: return blocked("task sheet is not committed", "freeze")
+    rc, status = git(root, "status", "--porcelain=v1", "--untracked-files=all", redact_output=False)
+    if rc or any(line[3:].strip().strip('\\\"') == relative for line in status.splitlines() if len(line) >= 4): return blocked("task sheet is uncommitted", "freeze")
+    rc, listing = git(root, "worktree", "list", "--porcelain", redact_output=False)
+    if rc: return blocked("unable to inspect worktree list", "git")
+    if str(target) in listing or f"branch refs/heads/{branch}" in listing: return blocked("duplicate worktree or branch conflict", "conflict")
+    rc, branches = git(root, "branch", "--list", branch, redact_output=False)
+    if rc or branches.strip(): return blocked("branch already exists", "branch")
+    if target.exists(): return blocked("worktree target is occupied", "path")
+    rc, _ = git(root, "worktree", "add", "-b", branch, str(target), baseline, redact_output=False, timeout=60)
+    if rc: return blocked("worktree creation failed", "git")
+    rc1, actual_root = git(target, "rev-parse", "--show-toplevel", redact_output=False); rc2, actual_branch = git(target, "branch", "--show-current", redact_output=False); rc3, actual_head = git(target, "rev-parse", "HEAD", redact_output=False)
+    if rc1 or rc2 or rc3 or Path(actual_root.strip()).resolve() != target.resolve() or actual_branch.strip() != branch or actual_head.strip() != baseline: return blocked("post-create identity verification failed", "identity")
+    result.update({"status": "pass", "identity": {"task_id": task_id, "role": role, "root": str(root), "worktree": str(target.resolve()), "branch": branch, "head": baseline, "task_sheet": str(task_sheet), "contract_schema": 2}, "observed": ["worktree list before and after", "root", "branch", "HEAD", "path"], "artifacts": [str(target)], "next_actions": ["dispatch using this exact worktree"]})
+    return result
 
 
 def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path | None = None) -> dict[str, Any]:
