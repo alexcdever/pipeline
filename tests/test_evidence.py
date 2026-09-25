@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline_tools.core import evidence_verify, gate_check
+from pipeline_tools.core import evidence_freshness, evidence_verify, gate_check
 
 
 def report(role, task_id='demo', branch='feature/demo', status='PASS'):
@@ -30,6 +30,87 @@ def report(role, task_id='demo', branch='feature/demo', status='PASS'):
 
 
 class EvidenceTests(unittest.TestCase):
+    def _make_git_repo(self, root):
+        import subprocess
+
+        def run(*args):
+            return subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True, text=True)
+
+        run('init', '-q')
+        run('config', 'user.email', 'test@example.invalid')
+        run('config', 'user.name', 'Test')
+        (root / 'src').mkdir()
+        (root / 'src' / 'app.py').write_text('stable\n', encoding='utf-8')
+        run('add', '.')
+        run('commit', '-qm', 'product baseline')
+        return run('rev-parse', 'HEAD').stdout.strip()
+
+    def _write_result(self, root, directory, product_head):
+        result = {
+            'schema': 1,
+            'task_id': 'demo',
+            'role': 'executor',
+            'status': 'pass',
+            'identity': {'product_head': product_head},
+            'acceptance': [{'id': 'acceptance-test-1', 'evidence_refs': ['.pipeline/demo/test.log']}],
+            'unverified': [],
+        }
+        path = directory / 'executor-result.json'
+        path.write_text(json.dumps(result), encoding='utf-8')
+        return path
+
+    def test_freshness_allows_only_task_evidence_commit_after_product_head(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            product_head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            result_path = self._write_result(root, directory, product_head)
+            subprocess.run(['git', '-C', str(root), 'add', '.pipeline'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'evidence'], check=True)
+            value = evidence_freshness(root, directory, result_path)
+            self.assertEqual(value['status'], 'pass')
+            self.assertTrue(any(item.get('fact') == 'evidence_only' and item.get('value') for item in value['observed']))
+
+    def test_freshness_blocks_product_drift_from_product_head(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            product_head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            result_path = self._write_result(root, directory, product_head)
+            (root / 'src' / 'app.py').write_text('changed\n', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', 'src/app.py', '.pipeline'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'product drift'], check=True)
+            value = evidence_freshness(root, directory, result_path)
+            self.assertEqual(value['status'], 'blocked')
+            self.assertIn('product/test HEAD drifted', value['errors'])
+
+    def test_freshness_without_product_head_keeps_strict_legacy_check(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            product_head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            result_path = self._write_result(root, directory, product_head)
+            result = json.loads(result_path.read_text(encoding='utf-8'))
+            result['identity'] = {'head': product_head}
+            result_path.write_text(json.dumps(result), encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', '.pipeline'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'evidence'], check=True)
+            value = evidence_freshness(root, directory, result_path)
+            self.assertEqual(value['status'], 'blocked')
+            self.assertIn('result HEAD is stale', value['errors'])
+
     def _make_evidence_dir(self, root, statuses=None):
         directory = root / '.pipeline' / 'demo'
         directory.mkdir(parents=True)
