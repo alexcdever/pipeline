@@ -152,18 +152,18 @@
 ### 已确认事实
 
 - schema 2 contract 已要求操作 acceptance 引用使用完整 ID，并要求引用存在于顶层验收集合。
-- schema 1 当前仍被历史测试读取，且旧 `AT1` 形式必须继续作为 deprecated read-only compatibility 保留。
+- schema 1 当前仍被历史测试读取，且旧式缩写形式必须继续作为 deprecated read-only compatibility 保留。
 - `dispatch.worktree-create` 已拒绝非 schema 2 task sheet；本任务验证其依赖契约，不扩大 dispatch API。
 
 ### 未验证事实
 
-- 所有 `docs/tasks/pipeline*.md` 旧任务单中的 `AT1`、`AT2B` 等缩写位置及是否属于可迁移的人类文档文本，须由执行代理逐文件读取后记录。
+- 所有 `docs/tasks/pipeline*.md` 旧任务单中的旧式缩写位置及是否属于可迁移的人类文档文本，须由执行代理逐文件读取后记录。
 - dispatch repair 依赖项在当前基线的完整独立证据，须由验收命令重新生成。
 
 ### 禁止猜测
 
 - 不得把 schema 1 的历史读取兼容误写成 schema 2 放宽；schema 2 的顶层 ID、operation 引用和结果引用都必须完整。
-- 不得把 `AT1`、`AT2B` 等缩写留在新 schema 2 契约、模板或 pipeline-evidence 示例中；迁移时对应为 `acceptance-test-1`、`acceptance-test-2b`。
+- 不得把旧式缩写留在新 schema 2 契约、模板或 pipeline-evidence 示例中；迁移时必须使用完整的 `acceptance-test-*` ID。
 - 不得通过改写 `implement-plan.md`、IDEA、metrics 或另建任务单解决冲突。
 
 ## 设计与行为契约
@@ -198,7 +198,7 @@
 
 ### 验收测试2：schema 2 拒绝缩写、未知和不完整绑定
 
-- 触发：将 `acceptance-test-1` 替换为 `AT1`，或让 operation 指向未声明的完整 ID。
+- 触发：将完整 acceptance ID 替换为旧式缩写，或让 operation 指向未声明的完整 ID。
 - 断言：validator 非空报错；错误指向 acceptance ID/unknown reference；不得返回可 dispatch 的契约。
 - 测试：`tests/test_contract.py: ContractTests.test_schema2_operation_must_bind_complete_acceptance_test`
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_contract.ContractTests.test_schema2_operation_must_bind_complete_acceptance_test -v`
@@ -208,7 +208,7 @@
 
 ### 验收测试3：schema 1 仅历史 deprecated 读取
 
-- 触发：读取仍含 `AT1` 的历史 schema 1 任务单。
+- 触发：读取仍含旧式缩写的历史 schema 1 任务单。
 - 断言：历史 validator 读取通过且不改文件；同一缩写放入 schema 2 时被拒绝。
 - 测试：`tests/test_contract.py: ContractTests.test_valid_pipeline_contract` 与 `ContractTests.test_schema2_operation_must_bind_complete_acceptance_test`
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_contract -v`
@@ -307,8 +307,8 @@
 
 ## 缩写迁移约定
 
-- 旧任务单中 `AT1` → `acceptance-test-1`，`AT2B` → `acceptance-test-2b`；只迁移明确属于验收 ID 的字段，不改变历史语义或测试命令。
-- 新 schema 2、模板和 `pipeline-evidence` 示例禁止 `AT*`/`AT2B` 缩写。
+- 旧任务单中的旧式缩写只迁移明确属于验收 ID 的字段，不改变历史语义或测试命令。
+- 新 schema 2、模板和 `pipeline-evidence` 示例禁止旧式缩写，统一使用完整 `acceptance-test-*` ID。
 - schema 1 旧文件只读兼容，除非本任务允许的 `docs/tasks/pipeline*.md` 迁移明确列出，不批量重写。
 
 ## 生命周期记录
