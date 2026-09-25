@@ -6,6 +6,7 @@
   "identity": {
     "worktree": "D:/Projects/Skills/pipeline/.worktrees/derived-task-dispatch-recovery",
     "branch": "derived-task-dispatch-recovery",
+    "head": "77522937b3ab4f8508e224240998610ce2144211",
     "product_head": "492db8cf166de27b227c6b4edf5915c885856069",
     "product_parent": "244f453db77ec9990f763208d29feecd9e5db2cf",
     "contract_commit": "a818e08b4b33f0d81d5846564e47534b8f7ab6cd",
@@ -22,7 +23,7 @@
   "commands": [
     {"command":"focused frozen tests","exit_code":0,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
     {"command":"full regression: python -m unittest discover -s tests -v (120 tests)","exit_code":0,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
-    {"command":"task validate/preflight/freeze-check bound to a818e08 and current 492db8c identity","exit_code":0,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
+    {"command":"task validate/preflight/freeze-check bound to a818e08 and current 7752293 worktree identity with product/test head 492db8c","exit_code":0,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
     {"command":"result verify executor result","exit_code":0,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
     {"command":"freshness executor result","exit_code":0,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
     {"command":"evidence readiness after reviewer evidence refresh","exit_code":3,"evidence_refs":[".pipeline/derived-task-dispatch-recovery/review-report.md"]},
