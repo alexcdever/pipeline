@@ -1,0 +1,6 @@
+test_planning_run_lifecycle_success_and_idempotent_finalize (tests.test_cli.CLITests.test_planning_run_lifecycle_success_and_idempotent_finalize) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 3.346s
+
+OK

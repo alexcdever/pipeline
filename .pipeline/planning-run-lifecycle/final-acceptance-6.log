@@ -1,0 +1,6 @@
+test_dispatch_result_and_freshness_form_machine_closed_loop (tests.test_cli.CLITests.test_dispatch_result_and_freshness_form_machine_closed_loop) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 1.012s
+
+OK

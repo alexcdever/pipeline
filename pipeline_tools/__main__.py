@@ -20,6 +20,10 @@ from .planning import (
     validate_requirement_facts,
     validate_task_plan,
     generate_task_sheets,
+    planning_run_start,
+    planning_run_transition,
+    planning_run_finalize,
+    planning_run_recover,
 )
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
 from .core import (
@@ -125,6 +129,12 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--requirement-facts", type=Path, required=True)
     generate.add_argument("--task-plan", type=Path, required=True)
     generate.add_argument("--expected-requirements-sha256")
+    run = planning_sub.add_parser("run")
+    run_sub = run.add_subparsers(dest="run_action", required=True)
+    start = run_sub.add_parser("start"); start.add_argument("root", type=Path); start.add_argument("--run-id"); start.add_argument("--approval-mode", choices=("automatic", "manual"), default="automatic")
+    transition = run_sub.add_parser("transition"); transition.add_argument("root", type=Path); transition.add_argument("--run-id", required=True); transition.add_argument("--phase", required=True); transition.add_argument("--status", default="active"); transition.add_argument("--error")
+    finish = run_sub.add_parser("finalize"); finish.add_argument("root", type=Path); finish.add_argument("--run-id", required=True); finish.add_argument("--success", action="store_true"); finish.add_argument("--approve", action="store_true")
+    recover = run_sub.add_parser("recover"); recover.add_argument("root", type=Path); recover.add_argument("--run-id", required=True)
 
     task = groups.add_parser("task", help="task-sheet and lifecycle checks")
     task_sub = task.add_subparsers(dest="action", required=True)
@@ -818,6 +828,20 @@ def _main(argv: list[str] | None = None) -> int:
         if args.group == "planning":
             if args.action == "preflight":
                 value = planning_preflight(args.root); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
+            if args.action == "run":
+                if args.run_action == "start":
+                    value = planning_run_start(args.root, args.run_id, approval_mode=args.approval_mode)
+                elif args.run_action == "transition":
+                    value = planning_run_transition(args.root, args.run_id, args.phase, status=args.status, error=args.error)
+                elif args.run_action == "finalize":
+                    value = planning_run_finalize(args.root, args.run_id, success=args.success, approval=args.approve)
+                else:
+                    value = planning_run_recover(args.root, args.run_id)
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(json.dumps(value, ensure_ascii=True))
+                return PASS if value.get("status") in {"pass", "finalized"} else BLOCKED
             if args.action in {"facts-validate", "requirement-facts-validate", "task-plan-validate"}:
                 value = json.loads(args.path.read_text(encoding="utf-8"))
                 if args.action == "facts-validate":

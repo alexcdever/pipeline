@@ -1,0 +1,6 @@
+test_run_identity_and_state_transitions_are_bound_and_idempotent (tests.test_planning_lifecycle.PlanningLifecycleTests.test_run_identity_and_state_transitions_are_bound_and_idempotent) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 2.559s
+
+OK

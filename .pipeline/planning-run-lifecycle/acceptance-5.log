@@ -1,0 +1,11 @@
+
+=== acceptance-5 ===
+$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_requires_main_approval_and_keeps_raw_on_failure -v
+test_finalization_requires_main_approval_and_keeps_raw_on_failure (tests.test_planning.PlanningTests.test_finalization_requires_main_approval_and_keeps_raw_on_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.047s
+
+OK
+
+EXIT_CODE=0

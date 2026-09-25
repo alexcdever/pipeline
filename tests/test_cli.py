@@ -457,6 +457,30 @@ class CLITests(unittest.TestCase):
         p = run_cli(['task', 'validate', str(ROOT / 'nope.md')])
         self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
 
+    def test_planning_run_lifecycle_success_and_idempotent_finalize(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, _ = make_repo(d)
+            (root / 'implement-plan.md').write_text('stable requirements\\n', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', 'implement-plan.md'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'plan'], check=True)
+            start = run_cli(['--format', 'json', 'planning', 'run', 'start', str(root), '--run-id', 'cli-lifecycle'])
+            self.assertEqual(start.returncode, 0, (start.stdout, start.stderr))
+            self.assertEqual(json.loads(start.stdout)['status'], 'pass')
+            for phase in ('preflight', 'planned', 'generated'):
+                transition = run_cli(['--format', 'json', 'planning', 'run', 'transition', str(root), '--run-id', 'cli-lifecycle', '--phase', phase])
+                self.assertEqual(transition.returncode, 0, (transition.stdout, transition.stderr))
+            finish = run_cli(['--format', 'json', 'planning', 'run', 'finalize', str(root), '--run-id', 'cli-lifecycle', '--success'])
+            self.assertEqual(finish.returncode, 0, (finish.stdout, finish.stderr))
+            value = json.loads(finish.stdout)
+            self.assertEqual(value['status'], 'finalized')
+            self.assertIn('run_id', value)
+            self.assertIn('requirements_sha256', value)
+            self.assertIn('artifacts', value)
+            repeat = run_cli(['--format', 'json', 'planning', 'run', 'finalize', str(root), '--run-id', 'cli-lifecycle', '--success'])
+            self.assertEqual(repeat.returncode, 0, (repeat.stdout, repeat.stderr))
+            self.assertEqual(json.loads(repeat.stdout), value)
+            self.assertFalse((root / '.pipeline' / 'metrics').exists())
+
     def test_lifecycle_status_is_structured_and_starts_with_executor(self):
         with tempfile.TemporaryDirectory() as d:
             root, _ = make_repo(d)
