@@ -1,6 +1,6 @@
 # Executor report
 
-Executor evidence was refreshed after product commit `8fe9beb`; the machine result is `executor-result.json`. Current evidence commit is recorded by Git separately from the product identity.
+Executor evidence was refreshed after product commit `5fc2722`; the machine result is `executor-result.json`. Approval actor/timestamp are not implemented because they are outside the frozen contract and remain unverified.
 
 ```pipeline-evidence
 {
@@ -22,12 +22,13 @@ Executor evidence was refreshed after product commit `8fe9beb`; the machine resu
   "assertions": [
     "Lifecycle identity binds run-id, root, HEAD, branch, and implement-plan SHA-256.",
     "Ordered transitions, manual approval blocking, failure preservation, conflict detection, and idempotent finalization pass.",
-    "Full regression suite passed: 104 tests.",
+    "Full regression suite passed: 105 tests.",
+    "Successful finalization is blocked until the lifecycle phase is generated.",
     "Task contract validation, scope check, and diff check passed."
   ],
   "evidence_refs": ["executor-result.json"],
   "unverified": ["independent reviewer verification", "main final check"],
-  "identity": {"product_head": "8fe9beb", "head": "8fe9beb", "branch": "planning-run-lifecycle"},
+  "identity": {"product_head": "5fc2722", "head": "5fc2722", "branch": "planning-run-lifecycle"},
   "recommendation": "ready_for_review",
   "executor_result": "executor-result.json"
 }
