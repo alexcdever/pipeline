@@ -578,6 +578,7 @@ def _validate_refs(
 FACT_CATEGORIES = {"requirement", "project", "assumption", "unknown"}
 FACT_SOURCE_FIELDS = ("source_id", "source_ref", "source")
 FACT_STATUS = {"open", "resolved", "accepted", "rejected", "blocking", "non_blocking"}
+UNAUTHORIZED_DECISION_FIELDS = {"resolution", "decision", "resolved_by", "resolution_source", "auto_resolve"}
 
 
 def _fact_source(record: dict[str, Any]) -> str | None:
@@ -643,6 +644,9 @@ def validate_facts_model(value: Any, root: Path | None = None) -> list[str]:
                 errors.append(f"unknowns[{index}] has invalid status")
             if field in {"facts", "assumptions", "unknowns"} and _fact_source(record) is None:
                 errors.append(f"{field}[{index}] must contain a source")
+            unauthorized = sorted(UNAUTHORIZED_DECISION_FIELDS.intersection(record))
+            if unauthorized:
+                errors.append(f"{field}[{index}] contains unauthorized decision fields: {', '.join(unauthorized)}")
             path = record.get("path")
             if path is not None and (not isinstance(path, str) or (root is not None and not _safe_rel(root, path)) or (root is None and (not _safe_reference(path) or ".." in PurePosixPath(path.replace("\\\\", "/")).parts))):
                 errors.append(f"{field}[{index}] path is unsafe")

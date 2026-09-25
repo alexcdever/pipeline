@@ -51,6 +51,7 @@ class PlanningFactsConflictTests(unittest.TestCase):
         self.assertTrue(any("source" in error for error in errors))
         self.assertTrue(any("unsafe" in error for error in errors))
         self.assertTrue(any("duplicate" in error for error in errors))
+        self.assertTrue(any("unauthorized decision fields" in error for error in errors))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "facts.json"
             path.write_text(json.dumps(model), encoding="utf-8")
