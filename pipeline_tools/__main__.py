@@ -18,6 +18,10 @@ from .planning import (
     planning_preflight,
     validate_project_facts,
     validate_requirement_facts,
+    normalize_facts,
+    validate_facts_model,
+    detect_fact_conflicts,
+    gate_facts_for_planning,
     validate_task_plan,
     generate_task_sheets,
     planning_run_start,
@@ -121,7 +125,11 @@ def _build_parser() -> argparse.ArgumentParser:
     planning_sub = planning.add_subparsers(dest="action", required=True)
     pf = planning_sub.add_parser("preflight"); pf.add_argument("root", type=Path)
     facts = planning_sub.add_parser("facts-validate"); facts.add_argument("path", type=Path); facts.add_argument("--root", type=Path)
+    normalize = planning_sub.add_parser("facts-normalize"); normalize.add_argument("path", type=Path); normalize.add_argument("--run-id")
+    conflicts = planning_sub.add_parser("facts-conflict-detect"); conflicts.add_argument("path", type=Path); conflicts.add_argument("--run-id")
+    gate = planning_sub.add_parser("facts-gate-planning"); gate.add_argument("path", type=Path); gate.add_argument("--run-id")
     requirement = planning_sub.add_parser("requirement-facts-validate"); requirement.add_argument("path", type=Path); requirement.add_argument("--root", type=Path)
+    model_validate = planning_sub.add_parser("facts-model-validate"); model_validate.add_argument("path", type=Path); model_validate.add_argument("--root", type=Path)
     plan = planning_sub.add_parser("task-plan-validate"); plan.add_argument("path", type=Path); plan.add_argument("--project-facts", type=Path); plan.add_argument("--requirement-facts", type=Path); plan.add_argument("--root", type=Path)
     consistency = planning_sub.add_parser("task-plan-contract-consistency")
     consistency.add_argument("task_plan", type=Path)
@@ -883,8 +891,20 @@ def _main(argv: list[str] | None = None) -> int:
                 else:
                     print(json.dumps(value, ensure_ascii=True))
                 return PASS if value["status"] == "pass" else CONFIG
-            if args.action in {"facts-validate", "requirement-facts-validate", "task-plan-validate"}:
+            if args.action in {"facts-normalize", "facts-conflict-detect", "facts-gate-planning", "facts-model-validate", "facts-validate", "requirement-facts-validate", "task-plan-validate"}:
                 value = json.loads(args.path.read_text(encoding="utf-8"))
+                if args.action == "facts-normalize":
+                    result = normalize_facts(value, planning_run_id=args.run_id)
+                    print(json.dumps(result, ensure_ascii=True, sort_keys=True)); return PASS
+                if args.action == "facts-conflict-detect":
+                    result = detect_fact_conflicts(value, planning_run_id=args.run_id)
+                    print(json.dumps(result, ensure_ascii=True, sort_keys=True)); return PASS if result["status"] == "pass" else BLOCKED
+                if args.action == "facts-gate-planning":
+                    result = gate_facts_for_planning(value, planning_run_id=args.run_id)
+                    print(json.dumps(result, ensure_ascii=True, sort_keys=True)); return PASS if result["planning_allowed"] else BLOCKED
+                if args.action == "facts-model-validate":
+                    errors = validate_facts_model(value, args.root)
+                    print(json.dumps({"status": "pass" if not errors else "fail", "errors": errors}, ensure_ascii=True)); return PASS if not errors else CONFIG
                 if args.action == "facts-validate":
                     errors = validate_project_facts(value, args.root)
                 elif args.action == "requirement-facts-validate":

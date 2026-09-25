@@ -575,6 +575,113 @@ def _validate_refs(
     return used
 
 
+FACT_CATEGORIES = {"requirement", "project", "assumption", "unknown"}
+FACT_SOURCE_FIELDS = ("source_id", "source_ref", "source")
+FACT_STATUS = {"open", "resolved", "accepted", "rejected", "blocking", "non_blocking"}
+
+
+def _fact_source(record: dict[str, Any]) -> str | None:
+    for field in FACT_SOURCE_FIELDS:
+        value = record.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def normalize_facts(value: Any, *, planning_run_id: str | None = None) -> dict[str, Any]:
+    """Normalize the mechanical planning-facts envelope without semantic inference."""
+    if not isinstance(value, dict):
+        return {"schema": 1, "planning_run_id": planning_run_id, "facts": [], "assumptions": [], "unknowns": [], "conflicts": [], "non_goals": [], "decision_blockers": []}
+    result = {"schema": value.get("schema", 1), "planning_run_id": value.get("planning_run_id", planning_run_id)}
+    for field in ("facts", "assumptions", "unknowns", "conflicts", "non_goals", "decision_blockers"):
+        items = value.get(field, [])
+        result[field] = items if isinstance(items, list) else []
+    # Accept the existing requirement/project exports as input, preserving records.
+    if not result["facts"]:
+        for category, key in (("requirement", "requirements"), ("project", "resources")):
+            for item in value.get(key, []) if isinstance(value.get(key), list) else []:
+                record = dict(item) if isinstance(item, dict) else {"id": item}
+                record.setdefault("category", category)
+                result["facts"].append(record)
+    for record in result["facts"]:
+        if isinstance(record, dict):
+            record.setdefault("category", record.get("type", "project"))
+    return result
+
+
+def validate_facts_model(value: Any, root: Path | None = None) -> list[str]:
+    """Validate identity, sources, paths and blocking states only."""
+    errors: list[str] = []
+    model = normalize_facts(value)
+    if model.get("schema") != 1:
+        errors.append("schema must be 1")
+    run_id = model.get("planning_run_id")
+    if run_id is not None and not _safe_identifier(run_id):
+        errors.append("planning_run_id must be a safe identifier")
+    seen: set[str] = set()
+    for field in ("facts", "assumptions", "unknowns", "conflicts", "non_goals", "decision_blockers"):
+        records = model.get(field)
+        if not isinstance(records, list):
+            errors.append(f"{field} must be an array")
+            continue
+        for index, record in enumerate(records, 1):
+            if not isinstance(record, dict):
+                errors.append(f"{field}[{index}] must be an object")
+                continue
+            identifier = record.get("id")
+            if not _safe_identifier(identifier):
+                errors.append(f"{field}[{index}] must contain a safe id")
+            elif identifier in seen:
+                errors.append(f"duplicate fact id: {identifier}")
+            else:
+                seen.add(identifier)
+            if field == "facts" and record.get("category") not in {"requirement", "project"}:
+                errors.append(f"facts[{index}] category must be requirement or project")
+            if field == "assumptions" and record.get("status", "open") not in FACT_STATUS:
+                errors.append(f"assumptions[{index}] has invalid status")
+            if field == "unknowns" and record.get("status", "blocking") not in FACT_STATUS:
+                errors.append(f"unknowns[{index}] has invalid status")
+            if field in {"facts", "assumptions", "unknowns"} and _fact_source(record) is None:
+                errors.append(f"{field}[{index}] must contain a source")
+            path = record.get("path")
+            if path is not None and (not isinstance(path, str) or (root is not None and not _safe_rel(root, path)) or (root is None and (not _safe_reference(path) or ".." in PurePosixPath(path.replace("\\\\", "/")).parts))):
+                errors.append(f"{field}[{index}] path is unsafe")
+            source_hash = record.get("source_sha256")
+            if source_hash is not None and (not isinstance(source_hash, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", source_hash)):
+                errors.append(f"{field}[{index}] source_sha256 is invalid")
+            if record.get("not_applicable") is True and not _not_applicable_reason(record):
+                errors.append(f"{field}[{index}] not_applicable requires reason")
+    return errors
+
+
+def detect_fact_conflicts(value: Any, *, planning_run_id: str | None = None) -> dict[str, Any]:
+    """Produce auditable conflicts; never choose between competing values."""
+    model = normalize_facts(value, planning_run_id=planning_run_id)
+    errors = validate_facts_model(model)
+    conflicts = [dict(item) for item in model["conflicts"] if isinstance(item, dict)]
+    by_entity: dict[str, list[dict[str, Any]]] = {}
+    for record in model["facts"]:
+        if isinstance(record, dict) and record.get("entity_id") is not None:
+            by_entity.setdefault(str(record["entity_id"]), []).append(record)
+    for entity, records in by_entity.items():
+        values = {json.dumps(record.get("value"), sort_keys=True, ensure_ascii=True) for record in records if "value" in record}
+        if len(values) > 1:
+            conflicts.append({"id": f"conflict-{entity}", "entity_id": entity, "kind": "mutually-exclusive-values", "fact_ids": [r.get("id") for r in records], "status": "blocking", "decision_required": True, "next_actions": ["obtain product decision", "re-run facts validation"]})
+    blockers = [dict(item) for item in model["decision_blockers"] if isinstance(item, dict)]
+    blockers.extend({"id": c.get("id"), "kind": "conflict", "status": "blocking", "decision_required": True} for c in conflicts if c.get("status") == "blocking")
+    blockers.extend({"id": item.get("id"), "kind": "unknown", "status": "blocking", "decision_required": True} for item in model["unknowns"] if isinstance(item, dict) and item.get("status", "blocking") in {"open", "blocking"} and item.get("not_applicable") is not True)
+    blocked = bool(errors or blockers)
+    return {"schema": 1, "planning_run_id": model.get("planning_run_id"), "status": "blocked" if blocked else "pass", "errors": errors, "facts": model["facts"], "assumptions": model["assumptions"], "unknowns": model["unknowns"], "conflicts": conflicts, "non_goals": model["non_goals"], "decision_blockers": blockers, "decision_required": bool(blockers), "next_actions": ["resolve decision blockers before planning"] if blocked else [], "unverified": ["semantic correctness"]}
+
+
+def gate_facts_for_planning(value: Any, *, planning_run_id: str | None = None) -> dict[str, Any]:
+    result = detect_fact_conflicts(value, planning_run_id=planning_run_id)
+    result["planning_allowed"] = result["status"] == "pass"
+    result["generation_allowed"] = result["planning_allowed"]
+    result["dispatch_allowed"] = result["planning_allowed"]
+    return result
+
+
 def validate_requirement_facts(facts: dict[str, Any], root: Path | None = None) -> list[str]:
     """Validate requirement facts and their source/acceptance references."""
     errors: list[str] = []
