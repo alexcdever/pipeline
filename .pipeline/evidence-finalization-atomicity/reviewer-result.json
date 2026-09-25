@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "task_id": "evidence-finalization-atomicity",
+  "role": "reviewer",
+  "status": "pass",
+  "identity": {
+    "product_head": "6ef8a8dc8f61f7ef30623a975b5f8d6e0e7a8f43",
+    "head": "fc0e9e42c86dae2e62238c68a2d287dc1d27d582",
+    "branch": "evidence-finalization-atomicity",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/evidence-finalization-atomicity",
+    "contract": "ff0c363984d48e632f76d0f431c849e5e1ac6446"
+  },
+  "acceptance": [
+    {"id":"acceptance-test-cleanup-no-marker","status":"pass","exit_code":0,"evidence_refs":[".pipeline/evidence-finalization-atomicity/review-report.md"]},
+    {"id":"acceptance-test-cleanup-preserves-raw","status":"pass","exit_code":0,"evidence_refs":[".pipeline/evidence-finalization-atomicity/review-report.md"]},
+    {"id":"acceptance-test-cleanup-idempotence","status":"pass","exit_code":0,"evidence_refs":[".pipeline/evidence-finalization-atomicity/review-report.md"]},
+    {"id":"acceptance-test-existing-finalization","status":"pass","exit_code":0,"evidence_refs":[".pipeline/evidence-finalization-atomicity/review-report.md"]},
+    {"id":"acceptance-test-regression","status":"pass","exit_code":0,"evidence_refs":[".pipeline/evidence-finalization-atomicity/review-report.md"]},
+    {"id":"acceptance-test-contract","status":"pass","exit_code":0,"evidence_refs":[".pipeline/evidence-finalization-atomicity/review-report.md"]}
+  ],
+  "unverified": [],
+  "evidence_refs": [".pipeline/evidence-finalization-atomicity/review-report.md", ".pipeline/evidence-finalization-atomicity/reviewer-result.json"],
+  "recommendation": "PASS"
+}
