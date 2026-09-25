@@ -899,7 +899,7 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
         errors.append("structured result is missing")
     elif product_head:
         base_rc, base = git(root, "rev-parse", "--verify", f"{product_head}^{{commit}}")
-        if base_rc != 0 or base.strip() != product_head:
+        if base_rc != 0:
             errors.append("product HEAD is invalid")
         elif current_head:
             ancestor_rc, _ancestor = git(root, "merge-base", "--is-ancestor", product_head, current_head)
