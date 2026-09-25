@@ -56,6 +56,25 @@ class PlanningLifecycleTests(unittest.TestCase):
             self.assertEqual(planning_run_transition(root, "ordered-finalize", "generated")["status"], "pass")
             self.assertEqual(planning_run_finalize(root, "ordered-finalize", success=True)["status"], "finalized")
 
+    def test_manual_finalize_requires_approval_but_automatic_finalize_does_not(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            planning_run_start(root, "automatic-finalize", approval_mode="automatic")
+            for phase in ("preflight", "planned", "generated"):
+                self.assertEqual(planning_run_transition(root, "automatic-finalize", phase)["status"], "pass")
+            automatic = planning_run_finalize(root, "automatic-finalize", success=True)
+            self.assertEqual(automatic["status"], "finalized")
+
+            planning_run_start(root, "manual-finalize", approval_mode="manual")
+            for phase in ("preflight", "planned", "generated"):
+                self.assertEqual(planning_run_transition(root, "manual-finalize", phase)["status"], "pass")
+            waiting = planning_run_finalize(root, "manual-finalize", success=True)
+            self.assertEqual(waiting["status"], "blocked")
+            self.assertIn("manual approval required", waiting["errors"])
+            approved = planning_run_finalize(root, "manual-finalize", success=True, approval=True)
+            self.assertEqual(approved["status"], "finalized")
+
     def test_failure_interruption_and_conflict_preserve_auditable_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
