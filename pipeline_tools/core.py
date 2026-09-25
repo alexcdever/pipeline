@@ -885,7 +885,7 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
 
 
 def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path | None = None) -> dict[str, Any]:
-    """Compare structured result identity and evidence timestamps with current Git state."""
+    """Compare result identity while allowing only task-evidence-only commits."""
     result = _json_file(result_path) if result_path else None
     errors: list[str] = []
     observed: list[dict[str, Any]] = []
@@ -893,9 +893,34 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
     current_head = head.strip() if rc == 0 else None
     if current_head:
         observed.append({"fact": "head", "value": current_head})
+    identity = result.get("identity", {}) if isinstance(result, dict) else {}
+    product_head = identity.get("product_head") if isinstance(identity, dict) else None
     if result is None:
         errors.append("structured result is missing")
-    elif result.get("identity", {}).get("head") and result["identity"]["head"] != current_head:
+    elif product_head:
+        base_rc, base = git(root, "rev-parse", "--verify", f"{product_head}^{{commit}}")
+        if base_rc != 0:
+            errors.append("product HEAD is invalid")
+        elif current_head:
+            ancestor_rc, _ancestor = git(root, "merge-base", "--is-ancestor", product_head, current_head)
+            if ancestor_rc != 0:
+                errors.append("product HEAD is not an ancestor of current HEAD")
+            else:
+                diff_rc, diff = git(root, "diff", "--name-only", product_head, current_head, redact_output=False)
+                changed_paths = [path.replace("\\", "/") for path in diff.splitlines() if path.strip()]
+                try:
+                    evidence_root = evidence_directory.resolve().relative_to(root.resolve()).as_posix()
+                except (OSError, ValueError):
+                    evidence_root = ""
+                evidence_only = bool(evidence_root) and all(
+                    path == evidence_root or path.startswith(evidence_root + "/") for path in changed_paths
+                )
+                observed.append({"fact": "product_head", "value": product_head})
+                observed.append({"fact": "changed_paths", "value": changed_paths})
+                observed.append({"fact": "evidence_only", "value": evidence_only})
+                if diff_rc != 0 or not evidence_only:
+                    errors.append("product/test HEAD drifted")
+    elif identity.get("head") and identity["head"] != current_head:
         errors.append("result HEAD is stale")
     evidence_refs: list[str] = []
     if result:
