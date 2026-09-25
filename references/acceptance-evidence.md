@@ -55,3 +55,5 @@
 ## 结论分类
 
 状态：`PASS`、`FAIL`、`BLOCKED`、`FLAKY`、`EXPLORATORY_ONLY`。重试后通过是 `FLAKY` 不是干净 `PASS`；缺真实 API 是 `BLOCKED`，不是降级断言后的 `PASS`。
+
+证据最终化必须先将待清理 raw evidence 移入同目录临时暂存区，完成清理并移除暂存区后，才可原子写入 `finalization.json`。任何清理异常都必须回滚暂存移动、删除临时 marker、返回 `blocked`，并保留 raw evidence 的路径与字节；相同故障重试不得留下 marker，故障解除后重试才可完成且重复成功幂等。

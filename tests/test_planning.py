@@ -1,7 +1,9 @@
 import json
+import os
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from pipeline_tools.planning import (
     append_progress,
@@ -26,6 +28,34 @@ def chain():
 
 
 class PlanningTests(unittest.TestCase):
+    def _write_valid_finalization_fixture(self, directory):
+        directory.mkdir(parents=True)
+        for name, role in (
+            ('executor-report.md', 'executor'),
+            ('review-report.md', 'reviewer'),
+            ('final-check.md', 'main-final'),
+        ):
+            (directory / name).write_text(
+                '```pipeline-evidence\n' + json.dumps({
+                    'schema': 1, 'task_id': 'demo', 'worktree': 'worktree',
+                    'branch': 'branch', 'role': role, 'round': 1, 'status': 'PASS',
+                    'commands': [{'command': 'python -m unittest', 'exit_code': 0, 'evidence_ref': name}],
+                    'assertions': ['verified'], 'evidence_refs': [name], 'unverified': [],
+                }) + '\n```\n', encoding='utf-8'
+            )
+        for name, role in (('executor-result.json', 'executor'), ('reviewer-result.json', 'reviewer')):
+            (directory / name).write_text(json.dumps({
+                'schema': 1, 'task_id': 'demo', 'role': role, 'status': 'pass',
+                'acceptance': [{'id': 'acceptance-test-1', 'status': 'pass', 'exit_code': 0, 'evidence_refs': [name]}],
+                'unverified': [],
+            }), encoding='utf-8')
+        (directory / 'final-result.json').write_text(json.dumps({
+            'schema': 1, 'task_id': 'demo', 'role': 'main-final', 'status': 'pass',
+            'decision': 'READY_FOR_EVIDENCE_FINALIZATION',
+            'acceptance': [{'id': 'acceptance-test-1', 'status': 'pass', 'exit_code': 0, 'evidence_refs': ['final-check.md']}],
+            'unverified': [],
+        }), encoding='utf-8')
+
     def test_planning_preflight(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -279,6 +309,72 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(result['status'], 'finalized')
             self.assertFalse((directory / 'raw.log').exists())
             self.assertTrue((directory / 'finalization.json').exists())
+            self.assertEqual(finalize_evidence(directory, 'demo', True)['status'], 'finalized')
+
+    def test_finalization_cleanup_failure_leaves_no_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d) / '.pipeline' / 'demo'
+            self._write_valid_finalization_fixture(directory)
+            (directory / 'raw.log').write_text('raw', encoding='utf-8')
+            original_replace = os.replace
+
+            def fail_cleanup(source, target):
+                if Path(source).name == 'raw.log':
+                    raise OSError('injected cleanup failure')
+                return original_replace(source, target)
+
+            with mock.patch('pipeline_tools.planning.os.replace', fail_cleanup):
+                result = finalize_evidence(directory, 'demo', True)
+            self.assertEqual(result['status'], 'blocked')
+            self.assertIsNone(result['finalization'])
+            self.assertFalse((directory / 'finalization.json').exists())
+
+    def test_finalization_cleanup_failure_preserves_raw_evidence(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d) / '.pipeline' / 'demo'
+            self._write_valid_finalization_fixture(directory)
+            raw = directory / 'raw.log'
+            raw.write_bytes(b'raw bytes')
+            original_replace = os.replace
+
+            def fail_cleanup(source, target):
+                if Path(source).name == 'raw.log':
+                    raise OSError('injected cleanup failure')
+                return original_replace(source, target)
+
+            with mock.patch('pipeline_tools.planning.os.replace', fail_cleanup):
+                finalize_evidence(directory, 'demo', True)
+            self.assertEqual(raw.read_bytes(), b'raw bytes')
+            self.assertFalse((directory / 'finalization.json').exists())
+
+    def test_finalization_cleanup_failure_retry_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d) / '.pipeline' / 'demo'
+            self._write_valid_finalization_fixture(directory)
+            raw = directory / 'raw.log'
+            raw.write_text('raw', encoding='utf-8')
+            original_replace = os.replace
+
+            def fail_cleanup(source, target):
+                if Path(source).name == 'raw.log':
+                    raise OSError('injected cleanup failure')
+                return original_replace(source, target)
+
+            with mock.patch('pipeline_tools.planning.os.replace', fail_cleanup):
+                first = finalize_evidence(directory, 'demo', True)
+                second = finalize_evidence(directory, 'demo', True)
+            self.assertEqual(first['status'], 'blocked')
+            self.assertEqual(second['status'], 'blocked')
+            self.assertTrue(raw.exists())
+            self.assertFalse((directory / 'finalization.json').exists())
+            recovered = finalize_evidence(directory, 'demo', True)
+            self.assertEqual(recovered['status'], 'finalized')
+            snapshot = sorted(path.relative_to(directory).as_posix() for path in directory.rglob('*'))
+            self.assertEqual(snapshot, sorted([
+                'executor-report.md', 'executor-result.json', 'final-check.md',
+                'final-result.json', 'finalization.json', 'review-report.md',
+                'reviewer-result.json',
+            ]))
             self.assertEqual(finalize_evidence(directory, 'demo', True)['status'], 'finalized')
 
     def test_finalization_preserves_referenced_raw_evidence_on_reference_gap(self):

@@ -1709,22 +1709,45 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
         "retained": retained,
         "approved_by": "main",
     }
+    staging = directory / ".finalization-staging"
+    moved: list[tuple[Path, Path]] = []
     try:
+        if staging.exists():
+            raise OSError("stale finalization staging directory")
+        staging.mkdir()
+        retained_set = set(retained)
+        for path in sorted(directory.rglob("*"), key=lambda item: len(item.parts)):
+            if path == staging or staging in path.parents:
+                continue
+            relative = path.relative_to(directory).as_posix()
+            if relative in retained_set:
+                continue
+            staged = staging / path.relative_to(directory)
+            if path.is_file() or path.is_symlink():
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(path, staged)
+                moved.append((path, staged))
+        for path in sorted(staging.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+            elif path.is_dir():
+                path.rmdir()
+        staging.rmdir()
         temporary = marker.with_suffix(".tmp")
         temporary.write_text(json.dumps(value, ensure_ascii=True, indent=2), encoding="utf-8")
         os.replace(temporary, marker)
-        retained_set = set(retained)
-        for path in sorted(directory.rglob("*"), key=lambda item: len(item.parts), reverse=True):
-            if path.is_file() or path.is_symlink():
-                if path.relative_to(directory).as_posix() not in retained_set:
-                    path.unlink()
-            elif path.is_dir() and path != directory:
-                try:
-                    path.rmdir()
-                except OSError:
-                    pass
     except (OSError, ValueError, RuntimeError) as error:
-        # The marker itself is evidence of approval; if cleanup fails, report a
-        # blocked result and leave any remaining raw files for recovery.
+        temporary = marker.with_suffix(".tmp")
+        if temporary.exists():
+            temporary.unlink()
+        for original, staged in reversed(moved):
+            if staged.exists():
+                original.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(staged, original)
+        if staging.exists():
+            for path in sorted(staging.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+                if path.is_dir():
+                    path.rmdir()
+            staging.rmdir()
         return {"status": "blocked", "missing": [f"cleanup failed: {type(error).__name__}"], "finalization": None}
     return {"status": "finalized", "missing": [], "finalization": str(marker)}
