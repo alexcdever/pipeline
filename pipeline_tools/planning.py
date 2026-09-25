@@ -1710,6 +1710,7 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
         "approved_by": "main",
     }
     staging = directory / ".finalization-staging"
+    backup = staging / ".backup"
     moved: list[tuple[Path, Path]] = []
     try:
         if staging.exists():
@@ -1727,12 +1728,14 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
                 staged.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(path, staged)
                 moved.append((path, staged))
-        for path in sorted(staging.rglob("*"), key=lambda item: len(item.parts), reverse=True):
-            if path.is_file() or path.is_symlink():
-                path.unlink()
-            elif path.is_dir():
-                path.rmdir()
-        staging.rmdir()
+        for original, staged in moved:
+            preserved = backup / original.relative_to(directory)
+            preserved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(staged, preserved, follow_symlinks=False)
+        for _original, staged in reversed(moved):
+            if staged.exists():
+                staged.unlink()
+        shutil.rmtree(staging)
         temporary = marker.with_suffix(".tmp")
         temporary.write_text(json.dumps(value, ensure_ascii=True, indent=2), encoding="utf-8")
         os.replace(temporary, marker)
@@ -1740,14 +1743,15 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
         temporary = marker.with_suffix(".tmp")
         if temporary.exists():
             temporary.unlink()
-        for original, staged in reversed(moved):
-            if staged.exists():
+        for original, staged in moved:
+            preserved = backup / original.relative_to(directory)
+            if preserved.exists():
+                original.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(preserved, original, follow_symlinks=False)
+            elif staged.exists():
                 original.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(staged, original)
         if staging.exists():
-            for path in sorted(staging.rglob("*"), key=lambda item: len(item.parts), reverse=True):
-                if path.is_dir():
-                    path.rmdir()
-            staging.rmdir()
+            shutil.rmtree(staging, ignore_errors=True)
         return {"status": "blocked", "missing": [f"cleanup failed: {type(error).__name__}"], "finalization": None}
     return {"status": "finalized", "missing": [], "finalization": str(marker)}

@@ -329,6 +329,30 @@ class PlanningTests(unittest.TestCase):
             self.assertIsNone(result['finalization'])
             self.assertFalse((directory / 'finalization.json').exists())
 
+    def test_finalization_cleanup_failure_mid_delete_preserves_all_raw_evidence(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d) / '.pipeline' / 'demo'
+            self._write_valid_finalization_fixture(directory)
+            raw_files = {'raw-first.log': b'first raw', 'raw-second.log': b'second raw'}
+            for name, content in raw_files.items():
+                (directory / name).write_bytes(content)
+            original_unlink = Path.unlink
+            calls = {'count': 0}
+
+            def fail_second_delete(path, *args, **kwargs):
+                if path.parent.name == '.finalization-staging':
+                    calls['count'] += 1
+                    if calls['count'] == 2:
+                        raise OSError('injected second delete failure')
+                return original_unlink(path, *args, **kwargs)
+
+            with mock.patch.object(Path, 'unlink', fail_second_delete):
+                result = finalize_evidence(directory, 'demo', True)
+            self.assertEqual(result['status'], 'blocked')
+            self.assertFalse((directory / 'finalization.json').exists())
+            for name, content in raw_files.items():
+                self.assertEqual((directory / name).read_bytes(), content)
+
     def test_finalization_cleanup_failure_preserves_raw_evidence(self):
         with tempfile.TemporaryDirectory() as d:
             directory = Path(d) / '.pipeline' / 'demo'
