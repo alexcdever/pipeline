@@ -158,6 +158,28 @@ class CLITests(unittest.TestCase):
                          '--timeout', '5', '--'])
             self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
 
+    def test_worktree_dispatch_cli_lifecycle_and_blocked_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, head = make_repo(d)
+            sheet = root / 'docs' / 'tasks' / 'dispatch.md'
+            sheet.parent.mkdir(parents=True)
+            sheet.write_text('''# dispatch\n<!-- Task ID: dispatch-task -->\n```pipeline-contract\n{"schema":2,"task_id":"dispatch-task","task_type":"prerequisite","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["src/**"],"forbidden_paths":[],"operations":[{"id":"create","kind":"create","scope":"worktree","acceptance_tests":["acceptance-test-1"]}],"chain":{"entry":["cli.py"],"interaction":["cli.py"],"application":["app.py"],"domain":["domain.py"],"persistence":[".worktrees/<task-id>/"],"readback":["cli.py"],"recovery":["app.py"]},"dependencies":[],"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_cli.py","command_ref":"python -m unittest"}],"required_evidence_levels":[3]}\n```\n''', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'freeze'], check=True)
+            head = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+            command = ['--format', 'json', 'dispatch', 'worktree-create', str(root), str(sheet), '--task-id', 'dispatch-task', '--branch', 'dispatch-branch', '--baseline', head]
+            created = run_cli(command)
+            self.assertEqual(created.returncode, 0, (created.stdout, created.stderr))
+            value = json.loads(created.stdout)
+            self.assertEqual(value['status'], 'pass')
+            self.assertEqual(value['identity']['branch'], 'dispatch-branch')
+            self.assertEqual(value['identity']['head'], head)
+            readback = run_cli(command)
+            self.assertEqual(readback.returncode, 3, (readback.stdout, readback.stderr))
+            blocked = json.loads(readback.stdout)
+            self.assertEqual(blocked['status'], 'blocked')
+            self.assertTrue(blocked['blockers'])
+
     def test_task_preflight_and_freeze_check_subcommands(self):
         # SKILL.md stable interface: `pipeline-tools task preflight` / `task freeze-check`
         with tempfile.TemporaryDirectory() as d:

@@ -68,6 +68,25 @@ class GitChecks(unittest.TestCase):
             self.assertTrue((p / '.pipeline' / 'metrics' / 'event.json').exists())
 
 
+    def test_dispatch_scope_requires_registered_task_worktree_and_role_identity(self):
+        from pipeline_tools.core import create_worktree_dispatch
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+            (root / 'implement-plan.md').write_text('plan\n')
+            sheet = root / 'task.md'
+            sheet.write_text('''<!-- Task ID: scope-task -->\n```pipeline-contract\n{"schema":2,"task_id":"scope-task","task_type":"prerequisite","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["src/**"],"forbidden_paths":[],"operations":[{"id":"op","kind":"create","scope":"worktree","acceptance_tests":["acceptance-test-1"]}],"chain":{"entry":["cli"],"interaction":["cli"],"application":["app"],"domain":["domain"],"persistence":["db"],"readback":["app"],"recovery":["app"]},"dependencies":[],"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":2,"test_ref":"tests/test_git_checks.py","command_ref":"python -m unittest"}],"required_evidence_levels":[2]}\n```\n''')
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True); subprocess.run(['git', 'commit', '-qm', 'freeze'], cwd=root, check=True)
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+            result = create_worktree_dispatch(root, sheet, 'scope-task', 'scope-branch', head, role='reviewer')
+            self.assertEqual(result['status'], 'pass')
+            self.assertEqual(result['identity']['role'], 'reviewer')
+            wrong = create_worktree_dispatch(root, sheet, 'scope-task', 'other-branch', head, role='bad')
+            self.assertEqual(wrong['status'], 'blocked')
+            self.assertIn('role', wrong['errors'][0])
+
     def test_tracked_metrics_are_workflow_metadata(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d); subprocess.run(['git','init'],cwd=p,capture_output=True)
