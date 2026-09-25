@@ -6,7 +6,7 @@
   "run_id": "planning-run-task-generation",
   "branch": "planning-run-task-generation",
   "head": "d7c83ef3ff585c876ffde381001cf94ae4792201",
-  "identity": {"head": "d7c83ef3ff585c876ffde381001cf94ae4792201", "product_head": "b388c11", "branch": "planning-run-task-generation", "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-task-generation"},
+  "identity": {"head": "d7c83ef3ff585c876ffde381001cf94ae4792201", "product_head": "d7c83ef3ff585c876ffde381001cf94ae4792201", "branch": "planning-run-task-generation", "worktree": "D:/Projects/Skills/pipeline/.worktrees/planning-run-task-generation"},
   "round": 3,
   "acceptance": [
     {"id": "acceptance-test-1", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/planning-run-task-generation/executor-report.md"]},
