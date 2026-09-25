@@ -58,6 +58,47 @@ class CLITests(unittest.TestCase):
             p = run_cli(['planning', 'preflight', str(root)])
             self.assertEqual(p.returncode, 3, (p.stdout, p.stderr))
 
+    def test_planning_generate_task_sheets_cli_lifecycle(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+            (root / 'implement-plan.md').write_text('stable implement plan\n', encoding='utf-8')
+            (root / 'src').mkdir()
+            (root / 'src' / 'app.py').write_text('app\n', encoding='utf-8')
+            chain = {name: ['src/app.py'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
+            acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_cli.py: test_planning_generate_task_sheets_cli_lifecycle', 'command_ref': 'python -m unittest tests.test_cli -v'}]
+            project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'src/app.py'}], 'operations': [{'id': 'operate', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain}
+            requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'operate', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
+            plan = {'schema': 1, 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'operate', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['operate'], 'depends_on': []}]}
+            paths = []
+            for name, value in [('project.json', project), ('requirements.json', requirements), ('plan.json', plan)]:
+                path = root / name
+                path.write_text(json.dumps(value), encoding='utf-8')
+                paths.append(path)
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+            command = ['planning', 'generate-task-sheets', str(root), '--run-id', 'cli-run', '--project-facts', str(paths[0]), '--requirement-facts', str(paths[1]), '--task-plan', str(paths[2])]
+            success = run_cli(command)
+            self.assertEqual(success.returncode, 0, (success.stdout, success.stderr))
+            value = json.loads(success.stdout)
+            self.assertEqual(value['status'], 'pass')
+            self.assertEqual(value['task_id'], None)
+            self.assertEqual(value['run_id'], 'cli-run')
+            self.assertTrue((root / 'docs' / 'tasks' / 'cli-task.md').is_file())
+            repeat = run_cli(command)
+            self.assertEqual(repeat.returncode, 3, (repeat.stdout, repeat.stderr))
+            repeated = json.loads(repeat.stdout)
+            self.assertEqual(repeated['status'], 'blocked')
+            self.assertTrue(any('already exists' in error for error in repeated['errors']))
+            (root / 'requirements.json').write_text(json.dumps({**requirements, 'sources': []}), encoding='utf-8')
+            failed = run_cli(command[:-1] + [str(root / 'requirements.json')])
+            self.assertEqual(failed.returncode, 3, (failed.stdout, failed.stderr))
+            failure = json.loads(failed.stdout)
+            self.assertEqual(failure['status'], 'blocked')
+            self.assertTrue((root / '.pipeline' / 'planning' / 'cli-run' / 'generation-result.json').is_file())
+
     def test_planning_cli_task_plan_validate_accepts_root_and_rejects_bad_plan(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
