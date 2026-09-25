@@ -915,8 +915,6 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
         drift = _planning_identity_matches(root, state)
         if drift:
             return planning_run_transition(root, run_id, "conflict", status="conflict", error="identity drift: " + ", ".join(drift))
-        if success and state.get("approval_mode") == "manual" and not approval:
-            return {"status": "blocked", "run_id": run_id, "errors": ["manual approval required"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["approve then finalize"]}
         if state.get("status") == "finalized":
             result_path = directory / "result.json"
             if result_path.is_file():
@@ -927,6 +925,10 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
                 except (OSError, UnicodeError, json.JSONDecodeError):
                     pass
             return {"status": "finalized", "run_id": run_id, "phase": "finalized", "artifacts": ["lifecycle.json"], "errors": [], "next_actions": []}
+        if success and state.get("phase") != "generated":
+            return {"status": "blocked", "run_id": run_id, "phase": state.get("phase"), "errors": ["successful finalization requires generated phase"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["transition to generated before finalizing"]}
+        if success and state.get("approval_mode") == "manual" and not approval:
+            return {"status": "blocked", "run_id": run_id, "errors": ["manual approval required"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["approve then finalize"]}
         state.update({"phase": "finalized" if success else "failed", "status": "finalized" if success else "failed", "result": "pass" if success else "fail", "next_actions": []})
         state.setdefault("history", []).append({"phase": state["phase"], "status": state["status"]})
         _write_planning_json(directory / "lifecycle.json", state)

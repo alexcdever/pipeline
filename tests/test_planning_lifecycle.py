@@ -41,6 +41,21 @@ class PlanningLifecycleTests(unittest.TestCase):
             self.assertEqual(state["head"], started["identity"]["head"])
             self.assertEqual(state["root"], str(root.resolve()))
 
+    def test_successful_finalize_cannot_bypass_generated_phase(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            planning_run_start(root, "ordered-finalize")
+            for phase, next_phase in (("started", "preflight"), ("preflight", "planned"), ("planned", "generated")):
+                result = planning_run_finalize(root, "ordered-finalize", success=True)
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["phase"], phase)
+                self.assertIn("generated", result["errors"][0])
+                if next_phase != "generated":
+                    self.assertEqual(planning_run_transition(root, "ordered-finalize", next_phase)["status"], "pass")
+            self.assertEqual(planning_run_transition(root, "ordered-finalize", "generated")["status"], "pass")
+            self.assertEqual(planning_run_finalize(root, "ordered-finalize", success=True)["status"], "finalized")
+
     def test_failure_interruption_and_conflict_preserve_auditable_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
