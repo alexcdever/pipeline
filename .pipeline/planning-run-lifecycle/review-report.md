@@ -29,7 +29,7 @@ All `pipeline-tools` commands were run with `PIPELINE_TOOLS_DISABLE_AUTO_METRICS
 
 ## Conclusion
 
-The implementation-specific tests and full regression suite pass, and the requested identity, hash/run-id binding, manual approval, and failure-recovery behaviors were directly exercised. Final-check is now present, readiness and evidence verification pass, and the current reviewer conclusion is **PASS / READY-TO-MERGE** at product HEAD `99e761ecf146285cc7756f9c17a0ab0260e36f3d`. No product, test, task-sheet, implement-plan, or IDEA files were modified by this review.
+The implementation-specific tests and full regression suite pass, and the requested identity, hash/run-id binding, manual approval, and failure-recovery behaviors were directly exercised. Final-check is now present, readiness and evidence verification pass, and the current reviewer conclusion is **PASS / READY-TO-MERGE** at product HEAD `99e761ecf146285cc7756f9c17a0ab0260e36f3d`, with reviewer evidence finalized at HEAD `2c11b22441e77700bfb8836b8ee5938549b43ac7`. No product, test, task-sheet, implement-plan, or IDEA files were modified by this review.
 
 ```pipeline-evidence
 {
