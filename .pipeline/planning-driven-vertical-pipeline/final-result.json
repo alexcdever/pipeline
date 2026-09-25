@@ -18,5 +18,6 @@
     {"id":"acceptance-test-5","status":"pass","exit_code":0,"evidence_refs":["final-cli.log"]},
     {"id":"acceptance-test-6","status":"pass","exit_code":0,"evidence_refs":["final-full-tests.log","final-diff-check.log"]}
   ],
-  "unverified": ["formal evidence finalization", "merge verification"]
+  "unverified": ["formal evidence finalization", "merge verification"],
+  "context": ["Historical final-readiness-before exit code 3 remains in its retained log and is not part of final acceptance commands."]
 }
