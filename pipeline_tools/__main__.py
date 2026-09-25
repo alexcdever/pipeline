@@ -45,6 +45,7 @@ from .core import (
     evidence_readiness,
     verify_structured_result,
     write_dispatch,
+    create_worktree_dispatch,
     purge_metrics,
     role_scope_check,
     run_command,
@@ -280,6 +281,13 @@ def _build_parser() -> argparse.ArgumentParser:
     dispatch_write.add_argument("input", type=Path)
     dispatch_write.add_argument("output", type=Path)
     dispatch_write.add_argument("--run-id")
+    dispatch_create = dispatch_sub.add_parser("worktree-create")
+    dispatch_create.add_argument("root", type=Path)
+    dispatch_create.add_argument("task_sheet", type=Path)
+    dispatch_create.add_argument("--task-id", required=True)
+    dispatch_create.add_argument("--branch", required=True)
+    dispatch_create.add_argument("--baseline", required=True)
+    dispatch_create.add_argument("--role", choices=("executor", "reviewer"), default="executor")
     result = groups.add_parser("result", help="structured agent result checks")
     result_sub = result.add_subparsers(dest="action", required=True)
     result_verify = result_sub.add_parser("verify")
@@ -575,14 +583,14 @@ def _raw_stage_args(argv: list[str]) -> argparse.Namespace | None:
             if next_index < len(argv):
                 action = argv[next_index]
         values: dict[str, object] = {"group": group, "action": action}
-        option_names = ("cwd", "log", "task-id", "attempt", "root", "directory", "workflow", "path", "result")
+        option_names = ("cwd", "log", "task-id", "attempt", "root", "directory", "workflow", "path", "result", "task-sheet", "branch", "baseline", "role")
         cursor = index + 1
         while cursor < len(argv):
             token = argv[cursor]
             matched = next((name for name in option_names if token == f"--{name}"), None)
             if matched is not None and cursor + 1 < len(argv):
                 value: object = argv[cursor + 1]
-                if matched in {"cwd", "log", "root", "directory", "workflow", "path", "result"}:
+                if matched in {"cwd", "log", "root", "directory", "workflow", "path", "result", "task-sheet"}:
                     value = Path(str(value))
                 elif matched in {"attempt"}:
                     try:
@@ -639,6 +647,9 @@ def _auto_root_and_reference(args: argparse.Namespace) -> tuple[Path, str | None
         root = _git_root(directory)
         return root, _safe_project_reference(root, directory)
     if group == "dispatch":
+        if args.action == "worktree-create":
+            root = _git_root(Path(args.root))
+            return root, _safe_project_reference(root, Path(args.task_sheet))
         root = _git_root(Path(args.output))
         return root, _safe_project_reference(root, Path(args.output))
     if group == "result":
@@ -702,6 +713,8 @@ def _auto_task_id(args: argparse.Namespace, root: Path) -> str:
         task_id = _task_id_from_path(workflow)
         return _safe_task_id(task_id or (workflow.name if workflow else "unknown"))
     if group == "dispatch":
+        if args.action == "worktree-create":
+            return _safe_task_id(args.task_id)
         try:
             data = json.loads(Path(args.input).read_text(encoding="utf-8"))
             if isinstance(data, dict) and isinstance(data.get("task_id"), str):
@@ -1031,6 +1044,13 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print("PASS dispatch.write")
             return PASS
+        if args.group == "dispatch" and args.action == "worktree-create":
+            value = create_worktree_dispatch(args.root, args.task_sheet, args.task_id, args.branch, args.baseline, role=args.role)
+            if args.format == "json":
+                _emit(value, args)
+            else:
+                print(f"{value['status'].upper()} dispatch.worktree-create task={args.task_id}")
+            return PASS if value["status"] == "pass" else BLOCKED
         if args.group == "result" and args.action == "verify":
             errors = verify_structured_result(args.path, args.task_id, args.role)
             value = _envelope("result.verify", "pass" if not errors else "fail", task_id=args.task_id, errors=errors)
