@@ -93,12 +93,12 @@
     "**/*token*"
   ],
   "acceptance_tests": [
-    {"id": "AT1", "evidence_level": 3, "test_ref": "tests/test_contract.py", "command_ref": "python -m unittest discover -s tests"},
-    {"id": "AT2", "evidence_level": 2, "test_ref": "tests/test_git_checks.py", "command_ref": "python -m unittest discover -s tests"},
-    {"id": "AT3", "evidence_level": 1, "test_ref": "tests/test_runner.py", "command_ref": "python -m unittest discover -s tests"},
-    {"id": "AT4", "evidence_level": 2, "test_ref": "tests/test_evidence.py", "command_ref": "python -m unittest discover -s tests"},
-    {"id": "AT5", "evidence_level": 1, "test_ref": "tests/test_metrics.py", "command_ref": "python -m unittest discover -s tests"},
-    {"id": "AT6", "evidence_level": 1, "test_ref": "tests/test_cli.py", "command_ref": "python -m unittest discover -s tests"}
+    {"id": "acceptance-test-1", "evidence_level": 3, "test_ref": "tests/test_contract.py", "command_ref": "python -m unittest discover -s tests"},
+    {"id": "acceptance-test-2", "evidence_level": 2, "test_ref": "tests/test_git_checks.py", "command_ref": "python -m unittest discover -s tests"},
+    {"id": "acceptance-test-3", "evidence_level": 1, "test_ref": "tests/test_runner.py", "command_ref": "python -m unittest discover -s tests"},
+    {"id": "acceptance-test-4", "evidence_level": 2, "test_ref": "tests/test_evidence.py", "command_ref": "python -m unittest discover -s tests"},
+    {"id": "acceptance-test-5", "evidence_level": 1, "test_ref": "tests/test_metrics.py", "command_ref": "python -m unittest discover -s tests"},
+    {"id": "acceptance-test-6", "evidence_level": 1, "test_ref": "tests/test_cli.py", "command_ref": "python -m unittest discover -s tests"}
   ]
 }
 ```
