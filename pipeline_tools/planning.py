@@ -968,7 +968,7 @@ def compare_task_plan_contract(
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
         "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
-        "chain": task.get("chain"),
+        "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
         "dependencies": task.get("depends_on", []),
         "acceptance_tests": expected_tests,
     }
@@ -1263,6 +1263,137 @@ def generate_task_sheets(
         audit.mkdir(parents=True, exist_ok=True)
         (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
         return result
+
+
+def planning_to_dispatch(
+    root: Path,
+    run_id: str,
+    project_facts: dict[str, Any],
+    requirement_facts: dict[str, Any],
+    task_plan: dict[str, Any],
+    *,
+    task_id: str | None = None,
+    branch: str | None = None,
+    baseline: str | None = None,
+    approval_mode: str = "automatic",
+    approved: bool = False,
+    role: str = "executor",
+    auto_freeze: bool = True,
+) -> dict[str, Any]:
+    """Run the fail-closed planning-to-dispatch orchestration.
+
+    The function is intentionally an orchestration boundary: it records every
+    stage, stops at the first blocked stage, and never starts an executor.
+    """
+    from .core import create_worktree_dispatch, git, write_dispatch
+
+    root = Path(root).resolve()
+    audit = _planning_run_directory(root, run_id)
+    result: dict[str, Any] = {
+        "schema": 1, "command": "planning.to-dispatch", "status": "blocked",
+        "run_id": run_id, "task_id": task_id, "identity": {}, "stages": [],
+        "artifacts": [], "errors": [], "blockers": [],
+        "next_actions": [], "unverified": ["executor", "reviewer", "executor evidence"],
+    }
+    audit.mkdir(parents=True, exist_ok=True)
+
+    def stage(name: str, status: str, value: dict[str, Any]) -> bool:
+        record = {"name": name, "status": status, "run_id": run_id,
+                  "task_id": result.get("task_id"), **value}
+        result["stages"].append(record)
+        path = audit / f"{len(result['stages']):02d}-{name}.json"
+        _write_planning_json(path, record)
+        result["artifacts"].append(str(path))
+        if status != "pass":
+            result["status"] = status
+            result["errors"].extend(value.get("errors", []))
+            result["blockers"].extend(value.get("blockers", []))
+            result["next_actions"] = value.get("next_actions", ["recover"])
+            return False
+        return True
+
+    if approval_mode not in {"automatic", "manual"}:
+        stage("preflight", "blocked", {"errors": ["invalid approval_mode"], "next_actions": ["fix approval policy"]})
+        return result
+    preflight = planning_preflight(root)
+    if not stage("preflight", preflight.get("status", "blocked"), preflight):
+        return result
+    gate_input = {"schema": 1, "planning_run_id": run_id, "facts": project_facts.get("facts", []) if isinstance(project_facts, dict) else []}
+    gate = gate_facts_for_planning(gate_input, planning_run_id=run_id)
+    if not stage("facts-gate", gate.get("status", "blocked"), gate):
+        return result
+    generated = generate_task_sheets(root, run_id, project_facts, requirement_facts, task_plan, expected_requirements_sha256=preflight.get("requirements_sha256"))
+    if generated.get("status") != "pass" and all("already exists" in error for error in generated.get("errors", [])):
+        existing_ids = [item.get("id") for item in task_plan.get("tasks", []) if isinstance(item, dict) and (root / "docs" / "tasks" / f"{item.get('id')}.md").is_file()]
+        generated = {"status": "pass", "run_id": run_id, "task_ids": existing_ids, "artifacts": [f"docs/tasks/{item}.md" for item in existing_ids], "errors": [], "next_actions": ["reuse existing generated task sheets"]}
+    if not stage("task-generation", generated.get("status", "blocked"), generated):
+        return result
+    task_ids = generated.get("task_ids", [])
+    selected = task_id or (task_ids[0] if len(task_ids) == 1 else None)
+    if not isinstance(selected, str) or selected not in task_ids:
+        stage("contract-consistency", "fail", {"errors": ["task_id must select exactly one generated task"], "next_actions": ["select one task_id"]})
+        return result
+    result["task_id"] = selected
+    sheet = root / "docs" / "tasks" / f"{selected}.md"
+    consistency = compare_task_plan_contract(task_plan, sheet, root=root, expected_requirements_sha256=preflight.get("requirements_sha256"), expected_run_id=run_id if generated.get("next_actions") != ["reuse existing generated task sheets"] else None)
+    if not stage("contract-consistency", consistency.get("status", "fail"), consistency):
+        return result
+    freeze_errors = validate_task(sheet)
+    if freeze_errors:
+        stage("freeze", "fail", {"errors": freeze_errors, "next_actions": ["repair contract and retry"]})
+        return result
+    if auto_freeze:
+        rc, status_output = git(root, "status", "--porcelain=v1", "--untracked-files=all", redact_output=False)
+        if rc:
+            stage("freeze", "blocked", {"errors": ["unable to inspect freeze status"], "next_actions": ["recover"]})
+            return result
+        changed = [line[3:].strip() for line in status_output.splitlines() if len(line) >= 4]
+        if any(item == sheet.relative_to(root).as_posix() for item in changed):
+            rc, _ = git(root, "add", sheet.relative_to(root).as_posix(), redact_output=False)
+            if rc:
+                stage("freeze", "blocked", {"errors": ["unable to stage generated task sheet"], "next_actions": ["recover"]})
+                return result
+            rc, _ = git(root, "commit", "-m", f"Freeze generated task {selected}", redact_output=False)
+            if rc:
+                stage("freeze", "blocked", {"errors": ["unable to freeze generated task sheet"], "next_actions": ["inspect retained freeze state"]})
+                return result
+    if auto_freeze:
+        rc, value = git(root, "rev-parse", "HEAD", redact_output=False)
+        if rc == 0:
+            baseline = value.strip()
+    freeze = {"status": "pass", "task_sheet": str(sheet), "commit_required": True}
+    if not stage("freeze", "pass", freeze):
+        return result
+    if approval_mode == "manual" and not approved:
+        stage("approval", "blocked", {"errors": ["manual approval required"], "next_actions": ["approve dispatch and retry"]})
+        return result
+    if approval_mode == "automatic" and not approved:
+        stage("approval", "blocked", {"errors": ["dispatch authorization required"], "next_actions": ["confirm dispatch"]})
+        return result
+    branch = branch or selected
+    if not baseline:
+        stage("dispatch-identity", "blocked", {"errors": ["baseline HEAD unavailable"], "next_actions": ["recover identity"]})
+        return result
+    dispatch_identity = create_worktree_dispatch(root, sheet, selected, branch, baseline, role=role)
+    if not stage("dispatch-identity", dispatch_identity.get("status", "blocked"), dispatch_identity):
+        return result
+    result["identity"] = dispatch_identity.get("identity", {})
+    dispatch = {"schema": 1, "task_id": selected, "role": role, "round": 1,
+                "root": str(root), "worktree": dispatch_identity["identity"]["worktree"],
+                "branch": branch, "evidence_dir": str(root / ".pipeline" / selected),
+                "permissions": {"write_workflow": True, "write_product": role == "executor"},
+                "output": "dispatch-ready", "run_id": run_id}
+    dispatch_path = audit / "dispatch.json"
+    try:
+        write_dispatch(root, dispatch, dispatch_path)
+    except (OSError, ValueError) as error:
+        stage("dispatch", "blocked", {"errors": [f"{type(error).__name__}: {error}"], "next_actions": ["recover dispatch artifact"]})
+        return result
+    stage("dispatch", "pass", {"dispatch": dispatch, "artifacts": [str(dispatch_path)], "next_actions": ["start executor separately"]})
+    result["status"] = "dispatch-ready"
+    result["next_actions"] = ["start executor separately; do not infer executor success"]
+    result["artifacts"].append(str(dispatch_path))
+    return result
 
 
 def _contains_sensitive(value: Any, key: str | None = None) -> bool:

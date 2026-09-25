@@ -542,6 +542,38 @@ class CLITests(unittest.TestCase):
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
             self.assertEqual(json.loads(p.stdout)['status'], 'pass')
 
+    def test_planning_to_dispatch_cli_contract_and_failure_boundaries(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, head = make_repo(d)
+            (root / "implement-plan.md").write_text("stable plan\n", encoding="utf-8")
+            (root / "src").mkdir()
+            (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
+            project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "operate", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_cli.py", "command_ref": "python -m unittest"}], "chain": {name: ["src/app.py"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}}
+            requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": project["acceptance_tests"]}
+            plan = {"schema": 1, "requirements": ["requirement"], "resources": ["resource"], "operations": [{"id": "operate", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "cli-integration-task", "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource"], "operations": ["operate"], "depends_on": []}]}
+            paths = []
+            for name, value in (("project.json", project), ("requirements.json", requirements), ("plan.json", plan)):
+                path = root / name
+                path.write_text(json.dumps(value), encoding="utf-8")
+                paths.append(path)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "inputs"], cwd=root, check=True)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            args = ["--format", "json", "planning", "to-dispatch", str(root), "--run-id", "cli-integration-run", "--project-facts", str(paths[0]), "--requirement-facts", str(paths[1]), "--task-plan", str(paths[2]), "--task-id", "cli-integration-task", "--branch", "cli-integration-branch", "--baseline", head, "--approve"]
+            completed = run_cli(args, cwd=root, env={"PYTHONPATH": str(ROOT)})
+            self.assertEqual(completed.returncode, 0, (completed.stdout, completed.stderr))
+            value = json.loads(completed.stdout)
+            self.assertEqual(value["status"], "dispatch-ready")
+            self.assertEqual(value["run_id"], "cli-integration-run")
+            self.assertEqual(value["identity"]["task_id"], "cli-integration-task")
+            self.assertIn("stages", value)
+            self.assertIn("dispatch.json", " ".join(value["artifacts"]))
+            replay = run_cli(args, cwd=root, env={"PYTHONPATH": str(ROOT)})
+            self.assertEqual(replay.returncode, 3, (replay.stdout, replay.stderr))
+            blocked = json.loads(replay.stdout)
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertTrue(blocked["errors"])
+
     def test_task_plan_contract_consistency_cli_accepts_matching_schema2_sheet(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
