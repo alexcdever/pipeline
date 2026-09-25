@@ -17,7 +17,7 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
-from .contract import validate_task
+from .contract import load_contract, validate_task
 
 CHAIN = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 ROLES = {"executor", "reviewer", "main"}
@@ -810,6 +810,89 @@ def validate_task_plan(
     return errors
 
 
+def _canonical(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _canonical(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_canonical(item) for item in value]
+    return value
+
+
+def compare_task_plan_contract(
+    task_plan: dict[str, Any],
+    task_sheet: Path,
+    *,
+    root: Path | None = None,
+    expected_requirements_sha256: str | None = None,
+    expected_run_id: str | None = None,
+) -> dict[str, Any]:
+    """Compare one planned task with its generated schema-2 task sheet.
+
+    This is deliberately read-only and fail-closed: the plan and sheet must both
+    validate, identify exactly one task, and agree on every mechanically derived
+    field before the result can be used for freeze or dispatch.
+    """
+    errors: list[dict[str, Any]] = []
+    plan_errors = validate_task_plan(task_plan)
+    errors.extend({"field": "task_plan", "reason": error, "source": "task-plan"} for error in plan_errors)
+    contract, contract_errors = load_contract(Path(task_sheet))
+    errors.extend({"field": "task_sheet", "reason": error, "source": str(task_sheet)} for error in contract_errors)
+    if contract is None:
+        return {"schema": 1, "status": "fail", "task_id": None, "conflicts": errors,
+                "errors": [item["reason"] for item in errors], "next_actions": ["do not freeze or dispatch"]}
+
+    task_id = contract.get("task_id")
+    tasks = [item for item in task_plan.get("tasks", []) if isinstance(item, dict) and item.get("id") == task_id]
+    if len(tasks) != 1:
+        errors.append({"field": "task_id", "reason": "task sheet must map to exactly one task-plan task", "source": "task-plan/task-sheet"})
+        return {"schema": 1, "status": "fail", "task_id": task_id, "conflicts": errors,
+                "errors": [item["reason"] for item in errors], "next_actions": ["do not freeze or dispatch"]}
+    task = tasks[0]
+    plan_acceptance = {item.get("id"): item for item in task_plan.get("acceptance_tests", []) if isinstance(item, dict)}
+    task_operation_ids = task.get("operations", [])
+    operations = [item for item in task_plan.get("operations", []) if isinstance(item, dict) and item.get("id") in task_operation_ids]
+    expected_tests = [plan_acceptance[test_id] for operation in operations for test_id in operation.get("acceptance_tests", []) if test_id in plan_acceptance]
+    expected = {
+        "task_type": task.get("type"),
+        "requirements": task.get("requirements", []),
+        "resources": task.get("resources", []),
+        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
+        "chain": task.get("chain"),
+        "dependencies": task.get("depends_on", []),
+        "acceptance_tests": expected_tests,
+    }
+    actual = {key: contract.get(key) for key in expected}
+    for field in expected:
+        if _canonical(actual[field]) != _canonical(expected[field]):
+            errors.append({"field": field, "reason": f"{field} differs between task-plan and task sheet", "source": "task-plan/task-sheet", "expected": expected[field], "actual": actual[field]})
+
+    implement_plan = contract.get("implement_plan")
+    if not isinstance(implement_plan, dict):
+        errors.append({"field": "implement_plan", "reason": "implement_plan must be an object", "source": "task-sheet"})
+    else:
+        plan_root = Path(root) if root is not None else Path(task_sheet).resolve().parent.parent.parent
+        plan_path = plan_root / str(implement_plan.get("path", "implement-plan.md"))
+        try:
+            plan_path.read_text(encoding="utf-8")
+            live_hash = _sha256(plan_path)
+        except (OSError, UnicodeError):
+            live_hash = None
+            errors.append({"field": "implement_plan.path", "reason": "implement-plan is missing or unreadable", "source": "implement-plan/task-sheet"})
+        if expected_requirements_sha256 is not None and implement_plan.get("sha256") != expected_requirements_sha256:
+            errors.append({"field": "implement_plan.sha256", "reason": "implement-plan hash differs from expected hash", "source": "task-sheet"})
+        if live_hash is not None and implement_plan.get("sha256") != live_hash:
+            errors.append({"field": "implement_plan.sha256", "reason": "implement-plan hash drift", "source": "implement-plan/task-sheet"})
+        if expected_run_id is not None and implement_plan.get("planning_run_id") != expected_run_id:
+            errors.append({"field": "implement_plan.planning_run_id", "reason": "planning run id differs from expected run id", "source": "task-sheet"})
+    status = "pass" if not errors else "fail"
+    return {"schema": 1, "status": status, "task_id": task_id, "conflicts": errors,
+            "errors": [item["reason"] for item in errors], "next_actions": [] if status == "pass" else ["do not freeze or dispatch"]}
+
+
+def task_plan_contract_consistency(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return compare_task_plan_contract(*args, **kwargs)
+
+
 def _planning_run_directory(root: Path, run_id: str) -> Path:
     if not _safe_identifier(run_id):
         raise ValueError("invalid planning run id")
@@ -963,8 +1046,12 @@ def _task_sheet_text(task: dict[str, Any], plan: dict[str, Any], requirements_sh
         "task_id": task_id,
         "task_type": task_type,
         "implement_plan": {"path": "implement-plan.md", "sha256": requirements_sha256, "planning_run_id": run_id},
+        "requirements": task.get("requirements", []),
+        "resources": task.get("resources", []),
         "allowed_paths": [str(item).replace("\\\\", "/") for item in task.get("resources", [])] or ["pipeline_tools/**"],
         "forbidden_paths": ["implement-plan.md", "IDEA.md", ".pipeline/** existing history"],
+        "requirements": task.get("requirements", []),
+        "resources": task.get("resources", []),
         "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
         "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
         "acceptance_tests": tests,

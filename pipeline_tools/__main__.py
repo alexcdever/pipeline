@@ -24,6 +24,7 @@ from .planning import (
     planning_run_transition,
     planning_run_finalize,
     planning_run_recover,
+    compare_task_plan_contract,
 )
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
 from .core import (
@@ -120,6 +121,12 @@ def _build_parser() -> argparse.ArgumentParser:
     facts = planning_sub.add_parser("facts-validate"); facts.add_argument("path", type=Path); facts.add_argument("--root", type=Path)
     requirement = planning_sub.add_parser("requirement-facts-validate"); requirement.add_argument("path", type=Path); requirement.add_argument("--root", type=Path)
     plan = planning_sub.add_parser("task-plan-validate"); plan.add_argument("path", type=Path); plan.add_argument("--project-facts", type=Path); plan.add_argument("--requirement-facts", type=Path); plan.add_argument("--root", type=Path)
+    consistency = planning_sub.add_parser("task-plan-contract-consistency")
+    consistency.add_argument("task_plan", type=Path)
+    consistency.add_argument("task_sheet", type=Path)
+    consistency.add_argument("--root", type=Path)
+    consistency.add_argument("--expected-requirements-sha256")
+    consistency.add_argument("--expected-run-id")
     progress = planning_sub.add_parser("progress-append"); progress.add_argument("root", type=Path); progress.add_argument("--task-id", required=True); progress.add_argument("--role", required=True); progress.add_argument("event")
     final = planning_sub.add_parser("evidence-finalize"); final.add_argument("directory", type=Path); final.add_argument("--task-id", required=True); final.add_argument("--success", action="store_true")
     generate = planning_sub.add_parser("generate-task-sheets")
@@ -842,6 +849,17 @@ def _main(argv: list[str] | None = None) -> int:
                 else:
                     print(json.dumps(value, ensure_ascii=True))
                 return PASS if value.get("status") in {"pass", "finalized"} else BLOCKED
+            if args.action == "task-plan-contract-consistency":
+                value = compare_task_plan_contract(
+                    _json_file_for_cli(args.task_plan), args.task_sheet, root=args.root,
+                    expected_requirements_sha256=args.expected_requirements_sha256,
+                    expected_run_id=args.expected_run_id,
+                )
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(json.dumps(value, ensure_ascii=True))
+                return PASS if value["status"] == "pass" else CONFIG
             if args.action in {"facts-validate", "requirement-facts-validate", "task-plan-validate"}:
                 value = json.loads(args.path.read_text(encoding="utf-8"))
                 if args.action == "facts-validate":

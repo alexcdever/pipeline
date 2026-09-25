@@ -1,0 +1,18 @@
+# Executor report
+
+- task-id: `task-plan-contract-consistency`
+- role: `executor`
+- worktree: `D:/Projects/Skills/pipeline/.worktrees/task-plan-contract-consistency`
+- branch: `task-plan-contract-consistency`
+- product_head: `d3d306e`
+- contract_commit: `a818e08`
+
+Fixed fail-closed behavior: missing or unreadable `implement-plan.md` now produces an `implement_plan.path` conflict instead of allowing consistency PASS. Added regression coverage for both missing and invalid-UTF-8 plan files.
+
+The CLI acceptance test remains in `tests/test_cli.py: CLITests.test_task_plan_contract_consistency_cli_accepts_matching_schema2_sheet`.
+
+Commands and results are recorded in `executor-result.json`.
+
+```pipeline-evidence
+{"schema":1,"task_id":"task-plan-contract-consistency","worktree":"D:/Projects/Skills/pipeline/.worktrees/task-plan-contract-consistency","branch":"task-plan-contract-consistency","role":"executor","round":3,"status":"PASS","commands":[{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency -v","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_task_plan_contract_consistency_cli_accepts_matching_schema2_sheet -v","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task validate docs/tasks/task-plan-contract-consistency.md","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task preflight . --contract a818e08 --expected-head d3d306e --expected-branch task-plan-contract-consistency --expected-worktree D:/Projects/Skills/pipeline/.worktrees/task-plan-contract-consistency","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task freeze-check . --contract a818e08 --expected-head d3d306e --expected-branch task-plan-contract-consistency --expected-worktree D:/Projects/Skills/pipeline/.worktrees/task-plan-contract-consistency","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope check . --allowed pipeline_tools/contract.py pipeline_tools/planning.py pipeline_tools/__main__.py tests/test_task_plan_contract_consistency.py tests/test_cli.py .pipeline/task-plan-contract-consistency/** --forbidden implement-plan.md IDEA.md docs/tasks/** .pipeline/metrics/**","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"git diff --check","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/task-plan-contract-consistency/executor-result.json --task-id task-plan-contract-consistency --role executor","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/task-plan-contract-consistency --result .pipeline/task-plan-contract-consistency/executor-result.json","exit_code":0,"evidence_ref":"executor-report.md"}],"assertions":["missing implement-plan is rejected","unreadable implement-plan is rejected","CLI consistency acceptance passes","full regression suite passes","contract identity and freeze checks pass","scope and diff checks pass","structured result and freshness pass"],"evidence_refs":["executor-report.md","executor-result.json"],"unverified":[]}
+```
