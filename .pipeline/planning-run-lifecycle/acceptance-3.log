@@ -1,0 +1,11 @@
+
+=== acceptance-3 ===
+$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_run_lifecycle_success_and_idempotent_finalize -v
+test_planning_run_lifecycle_success_and_idempotent_finalize (tests.test_cli.CLITests.test_planning_run_lifecycle_success_and_idempotent_finalize) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 3.516s
+
+OK
+
+EXIT_CODE=0

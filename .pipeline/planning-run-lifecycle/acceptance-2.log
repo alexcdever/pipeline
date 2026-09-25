@@ -1,0 +1,11 @@
+
+=== acceptance-2 ===
+$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_lifecycle.PlanningLifecycleTests.test_failure_interruption_and_conflict_preserve_auditable_artifacts -v
+test_failure_interruption_and_conflict_preserve_auditable_artifacts (tests.test_planning_lifecycle.PlanningLifecycleTests.test_failure_interruption_and_conflict_preserve_auditable_artifacts) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 2.227s
+
+OK
+
+EXIT_CODE=0
