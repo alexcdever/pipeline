@@ -819,6 +819,135 @@ def _planning_run_directory(root: Path, run_id: str) -> Path:
     return directory
 
 
+_PLANNING_PHASES = ("started", "preflight", "planned", "generated", "finalized")
+_PLANNING_TERMINAL = {"finalized", "failed", "blocked", "interrupted", "conflict"}
+
+
+def _planning_identity(root: Path, run_id: str) -> dict[str, Any]:
+    root = Path(root).resolve()
+    plan = root / "implement-plan.md"
+    facts, errors = _worktree_facts(root)
+    if errors or not plan.is_file():
+        raise ValueError("planning run identity unavailable")
+    return {
+        "run_id": run_id,
+        "root": str(root),
+        "head": facts.get("head"),
+        "branch": facts.get("branch"),
+        "requirements_sha256": _sha256(plan),
+    }
+
+
+def _write_planning_json(path: Path, value: dict[str, Any], *, create_only: bool = False) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if create_only and path.exists():
+        raise FileExistsError(str(path))
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _read_planning_state(root: Path, run_id: str) -> tuple[Path, dict[str, Any]]:
+    directory = _planning_run_directory(Path(root), run_id)
+    path = directory / "lifecycle.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("planning lifecycle state is unreadable") from error
+    if not isinstance(value, dict) or value.get("run_id") != run_id:
+        raise ValueError("planning lifecycle identity is invalid")
+    return directory, value
+
+
+def _planning_identity_matches(root: Path, state: dict[str, Any]) -> list[str]:
+    try:
+        live = _planning_identity(Path(root), str(state.get("run_id")))
+    except (OSError, ValueError):
+        return ["live planning identity unavailable"]
+    return [field for field in ("root", "head", "branch", "requirements_sha256") if state.get(field) != live.get(field)]
+
+
+def planning_run_start(root: Path, run_id: str | None = None, *, approval_mode: str = "automatic") -> dict[str, Any]:
+    root = Path(root).resolve()
+    if approval_mode not in {"automatic", "manual"}:
+        return {"status": "blocked", "errors": ["invalid approval_mode"], "artifacts": [], "next_actions": []}
+    if run_id is None:
+        run_id = f"planning-{time.time_ns()}"
+    try:
+        identity = _planning_identity(root, run_id)
+        directory = _planning_run_directory(root, run_id)
+        state = {"schema": 1, **identity, "approval_mode": approval_mode, "phase": "started", "status": "active", "history": [{"phase": "started", "status": "active"}], "artifacts": [], "errors": [], "next_actions": ["preflight"]}
+        _write_planning_json(directory / "lifecycle.json", state, create_only=True)
+        return {"status": "pass", "run_id": run_id, "phase": "started", "identity": identity, "artifacts": [str(directory / "lifecycle.json")], "errors": [], "next_actions": ["preflight"]}
+    except FileExistsError:
+        return {"status": "blocked", "run_id": run_id, "errors": ["planning run already exists"], "artifacts": [], "next_actions": ["recover"]}
+    except (OSError, ValueError) as error:
+        return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["fix identity and retry"]}
+
+
+def planning_run_transition(root: Path, run_id: str, phase: str, *, status: str = "active", error: str | None = None) -> dict[str, Any]:
+    if phase not in _PLANNING_PHASES or status not in {"active", "failed", "blocked", "interrupted", "conflict"}:
+        return {"status": "blocked", "run_id": run_id, "errors": ["invalid phase or status"], "artifacts": [], "next_actions": []}
+    try:
+        directory, state = _read_planning_state(root, run_id)
+        drift = _planning_identity_matches(root, state)
+        if drift:
+            state.update({"status": "conflict", "phase": "conflict", "errors": ["identity drift: " + ", ".join(drift)]})
+            _write_planning_json(directory / "lifecycle.json", state)
+            return {"status": "blocked", "run_id": run_id, "phase": "conflict", "errors": state["errors"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["restore bound identity; do not resume"]}
+        current = state.get("phase")
+        if status == "active" and (current not in _PLANNING_PHASES or _PLANNING_PHASES.index(phase) != _PLANNING_PHASES.index(current) + 1):
+            return {"status": "blocked", "run_id": run_id, "phase": current, "errors": ["invalid lifecycle transition"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["recover"]}
+        state["phase"], state["status"] = phase, status
+        if error:
+            state.setdefault("errors", []).append(error)
+        state.setdefault("history", []).append({"phase": phase, "status": status, "error": error})
+        state["next_actions"] = [] if status != "active" and phase in _PLANNING_TERMINAL else (["finalize"] if phase == "generated" else ["next phase"])
+        _write_planning_json(directory / "lifecycle.json", state)
+        return {"status": "pass" if status == "active" else status, "run_id": run_id, "phase": phase, "artifacts": [str(directory / "lifecycle.json")], "errors": state.get("errors", []), "next_actions": state["next_actions"]}
+    except (OSError, ValueError) as error:
+        return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["recover"]}
+
+
+def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: bool = False) -> dict[str, Any]:
+    try:
+        directory, state = _read_planning_state(root, run_id)
+        drift = _planning_identity_matches(root, state)
+        if drift:
+            return planning_run_transition(root, run_id, "conflict", status="conflict", error="identity drift: " + ", ".join(drift))
+        if success and state.get("approval_mode") == "manual" and not approval:
+            return {"status": "blocked", "run_id": run_id, "errors": ["manual approval required"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["approve then finalize"]}
+        if state.get("status") == "finalized":
+            result_path = directory / "result.json"
+            if result_path.is_file():
+                try:
+                    existing = json.loads(result_path.read_text(encoding="utf-8"))
+                    if isinstance(existing, dict):
+                        return existing
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    pass
+            return {"status": "finalized", "run_id": run_id, "phase": "finalized", "artifacts": ["lifecycle.json"], "errors": [], "next_actions": []}
+        state.update({"phase": "finalized" if success else "failed", "status": "finalized" if success else "failed", "result": "pass" if success else "fail", "next_actions": []})
+        state.setdefault("history", []).append({"phase": state["phase"], "status": state["status"]})
+        _write_planning_json(directory / "lifecycle.json", state)
+        result = {"schema": 1, "run_id": run_id, "status": state["status"], "requirements_sha256": state["requirements_sha256"], "artifacts": ["lifecycle.json"], "errors": [], "next_actions": [], "phase": state["phase"]}
+        _write_planning_json(directory / "result.json", result)
+        return result
+    except (OSError, ValueError) as error:
+        return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["recover"]}
+
+
+def planning_run_recover(root: Path, run_id: str) -> dict[str, Any]:
+    try:
+        directory, state = _read_planning_state(root, run_id)
+        drift = _planning_identity_matches(root, state)
+        if drift:
+            return {"status": "blocked", "run_id": run_id, "phase": "conflict", "errors": ["identity drift: " + ", ".join(drift)], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["do not resume"]}
+        return {"status": "pass", "run_id": run_id, "phase": state.get("phase"), "identity": {key: state.get(key) for key in ("root", "head", "branch", "requirements_sha256")}, "artifacts": [str(directory / name) for name in ("lifecycle.json", "result.json") if (directory / name).is_file()], "errors": state.get("errors", []), "next_actions": state.get("next_actions", [])}
+    except (OSError, ValueError) as error:
+        return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["inspect retained failure evidence"]}
+
+
 def _task_sheet_text(task: dict[str, Any], plan: dict[str, Any], requirements_sha256: str, run_id: str) -> str:
     task_id = task["id"]
     task_type = task["type"]
