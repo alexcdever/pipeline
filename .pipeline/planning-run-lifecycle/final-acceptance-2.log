@@ -1,0 +1,6 @@
+test_failure_interruption_and_conflict_preserve_auditable_artifacts (tests.test_planning_lifecycle.PlanningLifecycleTests.test_failure_interruption_and_conflict_preserve_auditable_artifacts) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 2.062s
+
+OK
