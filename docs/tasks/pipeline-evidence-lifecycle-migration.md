@@ -25,37 +25,37 @@
   ],
   "acceptance_tests": [
     {
-      "id": "AT1",
+      "id": "acceptance-test-1",
       "evidence_level": 2,
       "test_ref": "tests/test_git_checks.py: commit-range evidence path guard cases",
       "command_ref": "python -m unittest tests.test_git_checks -v"
     },
     {
-      "id": "AT2",
+      "id": "acceptance-test-2",
       "evidence_level": 2,
       "test_ref": "tests/test_evidence.py: active/finalized evidence verification and finalization cases",
       "command_ref": "python -m unittest tests.test_evidence -v"
     },
     {
-      "id": "AT3",
+      "id": "acceptance-test-3",
       "evidence_level": 2,
       "test_ref": "tests/test_cli.py: commit check, evidence finalize and finalized gate cases",
       "command_ref": "python -m unittest tests.test_cli -v"
     },
     {
-      "id": "AT4",
+      "id": "acceptance-test-4",
       "evidence_level": 2,
       "test_ref": "tests/test_layout.py and tests/test_cli.py: legacy layout reconciliation cases",
       "command_ref": "python -m unittest tests.test_layout tests.test_cli -v"
     },
     {
-      "id": "AT5",
+      "id": "acceptance-test-5",
       "evidence_level": 1,
       "test_ref": "tests/: complete regression suite",
       "command_ref": "python -m unittest discover -s tests -v"
     },
     {
-      "id": "AT6",
+      "id": "acceptance-test-6",
       "evidence_level": 1,
       "test_ref": "SKILL.md, README.md, references and templates: script/LLM boundary and lifecycle policy",
       "command_ref": "python -m pipeline_tools task validate docs/tasks/pipeline-evidence-lifecycle-migration.md"
@@ -221,12 +221,12 @@
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| AT1 | 未开始 | - | - | - |
-| AT2 | 未开始 | - | - | - |
-| AT3 | 未开始 | - | - | - |
-| AT4 | 未开始 | - | - | - |
-| AT5 | 未开始 | - | - | - |
-| AT6 | 未开始 | - | - | - |
+| acceptance-test-1 | 未开始 | - | - | - |
+| acceptance-test-2 | 未开始 | - | - | - |
+| acceptance-test-3 | 未开始 | - | - | - |
+| acceptance-test-4 | 未开始 | - | - | - |
+| acceptance-test-5 | 未开始 | - | - | - |
+| acceptance-test-6 | 未开始 | - | - | - |
 
 ### 执行记录
 

@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "task_id": "acceptance-id-and-template-compliance",
+  "role": "reviewer",
+  "status": "pass",
+  "identity": {
+    "head": "95c9411a42153a8d0aad2ee4ceac23f7680fd894",
+    "product_head": "ba7e80d8f02018226e4fe6cd6c7a42f408ceefd1",
+    "contract": "3714e50e17ea9e49a5fc9675e20052f25bee90b7",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/acceptance-id-and-template-compliance",
+    "branch": "acceptance-id-and-template-compliance"
+  },
+  "acceptance": [
+    {"id":"acceptance-test-1","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]},
+    {"id":"acceptance-test-2","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]},
+    {"id":"acceptance-test-3","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]},
+    {"id":"acceptance-test-4","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]},
+    {"id":"acceptance-test-5","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]},
+    {"id":"acceptance-test-6","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]},
+    {"id":"acceptance-test-7","status":"pass","exit_code":0,"evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"]}
+  ],
+  "unverified":[],
+  "commands":[
+    {"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/acceptance-id-and-template-compliance/executor-result.json --task-id acceptance-id-and-template-compliance --role executor --run-id final-r1","exit_code":0,"evidence_ref":".pipeline/acceptance-id-and-template-compliance/review-report.md"},
+    {"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/acceptance-id-and-template-compliance --result .pipeline/acceptance-id-and-template-compliance/reviewer-result.json --run-id final-r1","exit_code":0,"evidence_ref":".pipeline/acceptance-id-and-template-compliance/review-report.md"},
+    {"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope check . --task-id acceptance-id-and-template-compliance --allowed docs/tasks/pipeline-tools-v1.md docs/tasks/pipeline-evidence-lifecycle-migration.md docs/tasks/pipeline-tools-v1-continuation-1.md references/acceptance-evidence.md tests/test_acceptance_id_and_template_compliance.py .pipeline/acceptance-id-and-template-compliance/** --forbidden implement-plan.md IDEA.md .pipeline/metrics/** docs/tasks/** other new task sheets .worktrees/** metrics/**","exit_code":0,"evidence_ref":".pipeline/acceptance-id-and-template-compliance/review-report.md"},
+    {"command":"git diff --check 3714e50...HEAD","exit_code":0,"evidence_ref":".pipeline/acceptance-id-and-template-compliance/review-report.md"}
+  ],
+  "blockers":[],
+  "evidence_refs":[".pipeline/acceptance-id-and-template-compliance/review-report.md"],
+  "recommendation":"ready_for_review"
+}

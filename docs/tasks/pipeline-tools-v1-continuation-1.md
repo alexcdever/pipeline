@@ -31,133 +31,133 @@
   ],
   "acceptance_tests": [
     {
-      "id": "AT1",
+      "id": "acceptance-test-1",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_workflow_command_automatically_records_tracked_metric",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_workflow_command_automatically_records_tracked_metric"
     },
     {
-      "id": "AT2",
+      "id": "acceptance-test-2",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_automatic_timeout_records_feedback_event",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_timeout_records_feedback_event"
     },
     {
-      "id": "AT2B",
+      "id": "acceptance-test-2b",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_automatic_command_uses_task_id_from_workflow_log_path",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_command_uses_task_id_from_workflow_log_path"
     },
     {
-      "id": "AT2C",
+      "id": "acceptance-test-2c",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_automatic_retry_records_first_retry_attempt",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_retry_records_first_retry_attempt"
     },
     {
-      "id": "AT2D",
+      "id": "acceptance-test-2d",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_malformed_non_metrics_command_records_a_failure_metric",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_malformed_non_metrics_command_records_a_failure_metric"
     },
     {
-      "id": "AT2E",
+      "id": "acceptance-test-2e",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_automatic_metrics_redact_sensitive_path_components",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_metrics_redact_sensitive_path_components"
     },
     {
-      "id": "AT2F",
+      "id": "acceptance-test-2f",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_top_level_parse_error_records_a_failure_metric",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_top_level_parse_error_records_a_failure_metric"
     },
     {
-      "id": "AT2G",
+      "id": "acceptance-test-2g",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_subcommand_help_records_a_help_metric",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_subcommand_help_records_a_help_metric"
     },
     {
-      "id": "AT3",
+      "id": "acceptance-test-3",
       "evidence_level": 2,
       "test_ref": "tests/test_cli.py and tests/test_git_checks.py: metrics recursion and scope behavior",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_metrics_commands_do_not_recursively_record_stage_metrics tests.test_git_checks.GitChecks.test_generated_metrics_are_not_scope_drift"
     },
     {
-      "id": "AT3B",
+      "id": "acceptance-test-3b",
       "evidence_level": 2,
       "test_ref": "tests/test_git_checks.py: test_forbidden_metrics_pattern_still_wins",
       "command_ref": "python -m unittest tests.test_git_checks.GitChecks.test_forbidden_metrics_pattern_still_wins"
     },
     {
-      "id": "AT3C",
+      "id": "acceptance-test-3c",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: malformed/attributed command and sensitive component protections",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_malformed_non_metrics_command_records_a_failure_metric tests.test_cli.CLITests.test_automatic_metrics_redact_sensitive_path_components"
     },
     {
-      "id": "AT3D",
+      "id": "acceptance-test-3d",
       "evidence_level": 2,
       "test_ref": "tests/test_git_checks.py: test_tracked_metrics_are_workflow_metadata",
       "command_ref": "python -m unittest tests.test_git_checks.GitChecks.test_tracked_metrics_are_workflow_metadata"
     },
     {
-      "id": "AT3E",
+      "id": "acceptance-test-3e",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_automatic_runtime_and_lifecycle_events_keep_identity",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_runtime_and_lifecycle_events_keep_identity"
     },
     {
-      "id": "AT4",
+      "id": "acceptance-test-4",
       "evidence_level": 1,
       "test_ref": "tests/: complete regression suite",
       "command_ref": "python -m unittest discover -s tests -v"
     },
     {
-      "id": "AT4B",
+      "id": "acceptance-test-4b",
       "evidence_level": 1,
       "test_ref": "tests/test_metrics.py: test_automatic_event_counts_are_available_for_new_stage_names",
       "command_ref": "python -m unittest tests.test_metrics.MetricsTests.test_automatic_event_counts_are_available_for_new_stage_names"
     },
     {
-      "id": "AT4C",
+      "id": "acceptance-test-4c",
       "evidence_level": 1,
       "test_ref": "tests/test_metrics.py: test_sensitive_identifiers_are_redacted_at_metric_boundary",
       "command_ref": "python -m unittest tests.test_metrics.MetricsTests.test_sensitive_identifiers_are_redacted_at_metric_boundary"
     },
     {
-      "id": "AT4D",
+      "id": "acceptance-test-4d",
       "evidence_level": 1,
       "test_ref": "tests/test_metrics.py: test_extended_sensitive_vocabulary_is_redacted_at_metric_boundary",
       "command_ref": "python -m unittest tests.test_metrics.MetricsTests.test_extended_sensitive_vocabulary_is_redacted_at_metric_boundary"
     },
     {
-      "id": "AT5",
+      "id": "acceptance-test-5",
       "evidence_level": 1,
       "test_ref": "docs and code: automatic collection contract and tracked metrics policy",
       "command_ref": "python -m pipeline_tools task validate docs/tasks/pipeline-tools-v1-continuation-1.md"
     },
     {
-      "id": "AT6",
+      "id": "acceptance-test-6",
       "evidence_level": 1,
       "test_ref": "tests/test_metrics.py: aggregate rate, task/run and recovery dimensions",
       "command_ref": "python -m unittest tests.test_metrics.MetricsTests.test_aggregate_distinguishes_all_event_rates_from_known_result_rate tests.test_metrics.MetricsTests.test_aggregate_groups_events_by_task_and_reports_terminal_gate"
     },
     {
-      "id": "AT7",
+      "id": "acceptance-test-7",
       "evidence_level": 2,
       "test_ref": "tests/test_cli.py: task-filtered terminal report and evidence readiness",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_metrics_report_filters_by_task_and_terminal tests.test_cli.CLITests.test_evidence_readiness_reports_missing_final_check_without_gate_claim"
     },
     {
-      "id": "AT8",
+      "id": "acceptance-test-8",
       "evidence_level": 1,
       "test_ref": "tests/test_metrics.py and tests/test_cli.py: metric run/terminal identity dimensions",
       "command_ref": "python -m unittest tests.test_metrics.MetricsTests.test_metric_event_preserves_run_and_terminal_dimensions tests.test_cli.CLITests.test_automatic_events_carry_task_and_evidence_identity"
     },
     {
-      "id": "AT9",
+      "id": "acceptance-test-9",
       "evidence_level": 1,
       "test_ref": "tests/test_cli.py: test_evidence_readiness_records_not_ready_feedback",
       "command_ref": "python -m unittest tests.test_cli.CLITests.test_evidence_readiness_records_not_ready_feedback"
@@ -236,12 +236,12 @@
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| AT1 | 已通过 | targeted automatic collection test | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | task validate writes tracked event |
-| AT2 | 已通过 | timeout feedback test | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | stage + derived timeout |
-| AT2B–AT2F | 已通过 | attribution/retry/argparse/redaction tests | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | path and failure boundaries |
-| AT3–AT3E | 已通过 | recursion/scope/identity tests | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | forbidden override retained |
-| AT4 / AT4B / AT4C / AT4D | 已通过 | full unittest suite | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | 62 tests OK |
-| AT5 | 已通过 | task validate / scope / compile / diff check / pnpm10 preflight | `.pipeline/pipeline-tools-v1-continuation-1/runtime-preflight-pnpm10.json` | continuation contract and current runtime valid |
+| acceptance-test-1 | 已通过 | targeted automatic collection test | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | task validate writes tracked event |
+| acceptance-test-2 | 已通过 | timeout feedback test | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | stage + derived timeout |
+| acceptance-test-2b–acceptance-test-2f | 已通过 | attribution/retry/argparse/redaction tests | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | path and failure boundaries |
+| acceptance-test-3–acceptance-test-3e | 已通过 | recursion/scope/identity tests | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | forbidden override retained |
+| acceptance-test-4 / acceptance-test-4b / acceptance-test-4c / acceptance-test-4d | 已通过 | full unittest suite | `.pipeline/pipeline-tools-v1-continuation-1/full-test.raw.log` | 62 tests OK |
+| acceptance-test-5 | 已通过 | task validate / scope / compile / diff check / pnpm10 preflight | `.pipeline/pipeline-tools-v1-continuation-1/runtime-preflight-pnpm10.json` | continuation contract and current runtime valid |
 
 ### 最终结果
 
