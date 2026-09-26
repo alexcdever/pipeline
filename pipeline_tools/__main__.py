@@ -819,7 +819,11 @@ def _record_automatic_metrics(argv: list[str], exit_code: int, duration_s: float
         root, evidence_ref = _auto_root_and_reference(parsed)
         task_id = _auto_task_id(parsed, root)
     except Exception:
-        root, evidence_ref, task_id = _git_root(Path.cwd()), None, "unknown"
+        try:
+            root = _git_root(Path.cwd())
+        except Exception:
+            root = Path.cwd()
+        evidence_ref, task_id = None, "unknown"
     result = _metric_result(exit_code)
     head, branch = _git_metadata(root)
     run_id = _auto_run_id(parsed, root, task_id)
@@ -876,9 +880,9 @@ def _record_automatic_metrics(argv: list[str], exit_code: int, duration_s: float
                 "supersedes": None,
             }))
     except Exception as error:
-        # Metrics are feedback, not an acceptance gate.  A read-only project
-        # must not change the original command's result.
-        print(f"WARNING: automatic metrics unavailable ({type(error).__name__})", file=sys.stderr)
+        # Metrics are feedback, not an acceptance gate. A bounded diagnostic
+        # preserves the original command result without recursive collection.
+        print(f"WARNING: automatic_metrics_not_collected ({type(error).__name__})", file=sys.stderr)
         return recorded
     return recorded
 

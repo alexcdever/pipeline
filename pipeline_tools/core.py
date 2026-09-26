@@ -462,11 +462,12 @@ def evidence_readiness(directory: Path, task_id: str) -> dict[str, Any]:
 def _safe_identifier(value: Any) -> str:
     text = str(value or "")
     if (
-        re.search(r"(?i)(secret|token|password|api[_-]?key|passwd|authorization|cvc)", text)
+        re.search(r"(?i)(secret|token|password|api[_-]?key|passwd|authorization|bearer|cvc)", text)
         or _BEARER_RE.search(text)
+        or _PATH_RE.search(text)
     ):
         return "unknown"
-    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", str(value or "unknown"))
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", text)
     return cleaned or "unknown"
 
 
