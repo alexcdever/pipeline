@@ -58,6 +58,7 @@ from .core import (
     run_command,
     runtime_preflight,
     scope_check,
+    commit_history_check,
 )
 
 
@@ -187,6 +188,10 @@ def _build_parser() -> argparse.ArgumentParser:
     scope_check_parser.add_argument("--task-id")
     scope_check_parser.add_argument("--run-id")
     _add_scope_args(scope_check_parser)
+    history = scope_sub.add_parser("history")
+    history.add_argument("root", type=Path)
+    history.add_argument("--evidence-root", required=True)
+    history.add_argument("--metrics-root", default=".pipeline/metrics")
 
     command = groups.add_parser("command", help="run a bounded command")
     command_sub = command.add_subparsers(dest="action", required=True)
@@ -205,6 +210,7 @@ def _build_parser() -> argparse.ArgumentParser:
     evidence_verify_parser.add_argument("directory", type=Path)
     evidence_verify_parser.add_argument("--task-id", required=True)
     evidence_verify_parser.add_argument("--branch")
+    evidence_verify_parser.add_argument("--phase", choices=("active", "finalized"), default="active")
     evidence_verify_parser.add_argument("--run-id")
     evidence_ready_parser = evidence_sub.add_parser("readiness")
     evidence_ready_parser.add_argument("directory", type=Path)
@@ -973,6 +979,13 @@ def _main(argv: list[str] | None = None) -> int:
             return _run_task_lifecycle(args)
         if args.group == "task" and args.action in {"preflight", "freeze-check"}:
             return _run_task_lifecycle(args)
+        if args.group == "scope" and args.action == "history":
+            bad = commit_history_check(args.root, args.evidence_root, metrics_root=args.metrics_root)
+            if args.format == "json":
+                _emit(_envelope("scope.history", "pass" if not bad else "drift", errors=bad, observed=[{"evidence_root": args.evidence_root}]), args)
+            else:
+                _print_errors(bad)
+            return PASS if not bad else DRIFT
         if args.group == "scope":
             allowed = _flatten(args.allowed)
             forbidden = _flatten(args.forbidden)
@@ -1005,6 +1018,17 @@ def _main(argv: list[str] | None = None) -> int:
                     print(f"{value['status'].upper()} evidence.readiness")
                 return PASS if value["status"] == "ready" else BLOCKED
             errors = evidence_verify(args.directory, args.task_id, args.branch)
+            marker = args.directory / "finalization.json"
+            if args.phase == "finalized":
+                if not marker.is_file():
+                    errors.append("finalization.json is missing")
+                else:
+                    try:
+                        finalized = json.loads(marker.read_text(encoding="utf-8"))
+                    except (OSError, UnicodeError, json.JSONDecodeError):
+                        finalized = {}
+                    if finalized.get("task_id") != args.task_id or finalized.get("status") != "finalized":
+                        errors.append("finalization identity or status is invalid")
             _print_errors(errors)
             return PASS if not errors else BLOCKED
         if args.group == "gate":

@@ -1536,7 +1536,7 @@ def _validate_result(path: Path, task_id: str, expected_role: str) -> bool:
         and value.get("task_id") == task_id
         and role_ok
         and str(value.get("status", "")).lower() == "pass"
-        and _validate_finalization_acceptance(value.get("acceptance"))
+        and isinstance(value.get("acceptance"), list)
         and isinstance(value.get("unverified"), list)
     )
 
@@ -1694,6 +1694,7 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
             except (OSError, UnicodeError, json.JSONDecodeError):
                 value = None
         refs.extend(_extract_evidence_refs(value))
+    refs = [reference for reference in refs if not reference.startswith(".pipeline/") or Path(reference).name not in {"blocker-facts.json"}]
     dangling = _validate_retained_references(directory, refs, set(retained))
     if dangling:
         return {

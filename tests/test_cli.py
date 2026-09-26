@@ -30,6 +30,38 @@ def make_repo(tmp):
 
 
 class CLITests(unittest.TestCase):
+    def _write_machine_report(self, directory, role, task_id='demo', branch='feature/demo'):
+        value = {
+            'schema': 1, 'task_id': task_id, 'worktree': str(directory), 'branch': branch,
+            'role': role, 'round': 1, 'status': 'PASS',
+            'commands': [{'command': 'python -m unittest', 'exit_code': 0, 'evidence_ref': 'test.log'}],
+            'assertions': ['machine assertion'], 'evidence_refs': ['test.log'], 'unverified': [],
+        }
+        name = {'executor': 'executor-report.md', 'reviewer': 'review-report.md', 'main-final': 'final-check.md'}[role]
+        (directory / name).write_text('```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8')
+
+    def test_evidence_finalize_current_command_preserves_raw_on_block_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); evidence = root / '.pipeline' / 'demo'; evidence.mkdir(parents=True)
+            raw = evidence / 'raw.log'; raw.write_text('raw', encoding='utf-8')
+            blocked = run_cli(['planning', 'evidence-finalize', str(evidence), '--task-id', 'demo', '--success'])
+            self.assertEqual(blocked.returncode, 3, (blocked.stdout, blocked.stderr))
+            self.assertTrue(raw.is_file()); self.assertFalse((evidence / 'finalization.json').exists())
+            (evidence / 'finalization.json').write_text(json.dumps({'schema': 1, 'task_id': 'demo', 'status': 'finalized'}), encoding='utf-8')
+            repeat = run_cli(['planning', 'evidence-finalize', str(evidence), '--task-id', 'demo', '--success'])
+            self.assertEqual(repeat.returncode, 0, (repeat.stdout, repeat.stderr))
+            self.assertEqual(json.loads(repeat.stdout)['status'], 'finalized')
+
+    def test_evidence_verify_current_command_reports_machine_identity_and_finalization_state(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); evidence = root / '.pipeline' / 'demo'; evidence.mkdir(parents=True)
+            (evidence / 'test.log').write_text('ok', encoding='utf-8')
+            for role in ('executor', 'reviewer', 'main-final'):
+                self._write_machine_report(evidence, role)
+            (evidence / 'finalization.json').write_text(json.dumps({'schema': 1, 'task_id': 'demo', 'status': 'finalized'}), encoding='utf-8')
+            verified = run_cli(['evidence', 'verify', str(evidence), '--task-id', 'demo', '--branch', 'feature/demo', '--phase', 'finalized'])
+            self.assertEqual(verified.returncode, 0, (verified.stdout, verified.stderr))
+
     def test_help(self):
         p = run_cli(['--help'])
         self.assertEqual(p.returncode, 0)
