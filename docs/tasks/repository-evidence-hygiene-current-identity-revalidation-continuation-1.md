@@ -218,26 +218,30 @@
 
 ### 任务锚点
 
-- 基线 HEAD：UNVERIFIED
-- 契约提交：UNVERIFIED
-- 执行分支：repository-evidence-hygiene-current-identity-revalidation-continuation-1
+- 基线 HEAD：`ac0ea53e190e61abbe3296e83b4301339b150000`
+- 契约提交：`ac0ea53e190e61abbe3296e83b4301339b150000`
+- 执行分支：`repository-evidence-hygiene-current-identity-revalidation-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene-current-identity-revalidation-continuation-1`
+- 执行证据提交：`74eae19381f6cdf5541f648582a4eab963cce150`
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-current-identity | UNVERIFIED | - | - | 待契约提交和 worktree 核对 |
-| acceptance-test-task-sheet-validation | UNVERIFIED | - | - | 待执行 |
-| acceptance-test-repository-hygiene | UNVERIFIED | - | - | metrics 忽略 |
-| acceptance-test-full-regression | UNVERIFIED | - | - | 待执行 |
-| acceptance-test-evidence-closure | UNVERIFIED | - | - | readiness → verify → gate 待执行 |
+| acceptance-test-current-identity | PASS | `git rev-parse --show-toplevel && git branch --show-current && git rev-parse HEAD && git worktree list --porcelain` | `.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/executor-report.md` | current-main baseline and unique worktree verified |
+| acceptance-test-task-sheet-validation | PASS | `for task in docs/tasks/*.md; do python scripts/validate_task_sheet.py "$task" || exit $?; done` | `.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/review-report.md` | all 20 task sheets validate |
+| acceptance-test-repository-hygiene | PASS | `python -m pipeline_tools task validate ...` plus identity/scope review | `.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/review-report.md` | historical evidence preserved; metrics ignored |
+| acceptance-test-full-regression | PASS | `python -m unittest discover -s tests -v` | `.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/review-report.md` | 157 tests, underlying unittest result OK |
+| acceptance-test-evidence-closure | PASS | readiness → verify → gate pre-merge | `.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/final-check.md` | all current identity evidence reports PASS |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| 创建轮 | 新增当前-main identity continuation task sheet | UNVERIFIED | 本文件 | 提交契约后创建唯一 worktree |
+| 创建轮 | schema 2 current-main continuation task sheet committed | PASS | commit `ac0ea53e190e61abbe3296e83b4301339b150000` | created unique execution worktree |
+| 执行轮1 | executor identity, task validation and full regression | PASS | `executor-report.md`, `executor-result.json` | independent review |
+| 审查轮1 | reviewer reran validation, regression and diff check | PASS | `review-report.md`, `reviewer-result.json` | main final check |
+| 终检轮1 | readiness → verify → pre-merge gate | PASS | `final-check.md` | merge evidence commit |
 
 ### 设计变更与延续任务索引
 
@@ -247,13 +251,13 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
-- 合并提交：-
-- 合并后复验：未开始
-- 遗留项：-
+- 状态：READY_FOR_MERGE（当前 identity evidence closure PASS）
+- 执行子代理：PASS；`.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/executor-report.md`
+- 独立审查子代理：PASS；`.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/review-report.md`
+- 主代理最终检查：PASS；`.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/final-check.md`
+- 合并提交：待主工作树合并
+- 合并后复验：待主工作树复验
+- 遗留项：metrics 按用户要求忽略；parent continuation-5 历史 evidence 保留且不作为当前 evidence
 
 ## 外部操作
 
