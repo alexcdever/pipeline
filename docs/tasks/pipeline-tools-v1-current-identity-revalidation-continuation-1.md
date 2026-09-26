@@ -202,26 +202,26 @@
 
 ### 任务锚点
 
-- 基线 HEAD：`afdb49d71660a570c8c8363cdd1ce6de778123c3`
-- 契约提交：待提交
-- 执行分支：待创建
+- 基线 HEAD：`1e31e13a021d4c89c6eb9bb59d9d0c409bd7a14a`
+- 契约提交：`1e31e13a021d4c89c6eb9bb59d9d0c409bd7a14a`
+- 执行分支：`pipeline-tools-v1-current-identity-revalidation-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-current-identity-revalidation-continuation-1`
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-1 | 未开始 | - | - | - |
-| acceptance-test-2 | 未开始 | - | - | - |
-| acceptance-test-3 | 未开始 | - | - | - |
-| acceptance-test-4 | 未开始 | - | - | - |
-| acceptance-test-5 | 未开始 | - | - | - |
+| acceptance-test-1 | PASS | task validate | executor-report.md | current sheet validated |
+| acceptance-test-2 | PASS | runtime preflight | executor-report.md | current runtime available |
+| acceptance-test-3 | PASS | task preflight/freeze/scope | executor-report.md | current identity consistent |
+| acceptance-test-4 | BLOCKED | unittest discover (157 tests, 2 failures) | executor-report.md; review-report.md | current product regression |
+| acceptance-test-5 | BLOCKED | evidence readiness/verify | final-check.md | gate not eligible while regression blocked |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| - | task sheet 创建 | 未开始 | - | 提交冻结契约 |
+| round 1 | task sheet 冻结、唯一 worktree 创建、executor/reviewer/final-check | BLOCKED | 当前 `.pipeline/pipeline-tools-v1-current-identity-revalidation-continuation-1/` | 产品回归失败，建立后续产品修复 continuation |
 
 ### 设计变更与延续任务索引
 
@@ -229,10 +229,10 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
+- 状态：BLOCKED（当前产品回归失败）
+- 执行子代理：BLOCKED，当前身份证据已生成
+- 独立审查子代理：BLOCKED，独立复验复现同一失败
+- 主代理最终检查：BLOCKED，未授权合并
 - 合并提交：-
-- 合并后复验：未开始
-- 遗留项：metrics 忽略；旧 branch/worktree 身份漂移保留为历史事实
+- 合并后复验：未执行（未合并）
+- 遗留项：`test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity` 失败；metrics 忽略；旧 branch/worktree 身份漂移保留为历史事实
