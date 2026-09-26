@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "task_id": "pipeline-evidence-lifecycle-migration-continuation-1",
+  "status": "finalized",
+  "retained": [
+    "executor-report.md",
+    "executor-result.json",
+    "review-report.md",
+    "reviewer-result.json",
+    "final-check.md",
+    "final-result.json",
+    "finalization.json"
+  ],
+  "approved_by": "main"
+}
