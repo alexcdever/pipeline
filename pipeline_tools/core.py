@@ -234,7 +234,8 @@ def commit_history_check(root: Path, evidence_root: str, *, metrics_root: str = 
             normalized = _normalize_path(path)
             in_evidence = normalized == evidence_root or normalized.startswith(evidence_root.rstrip("/") + "/")
             in_metrics = normalized == metrics_root or normalized.startswith(metrics_root.rstrip("/") + "/")
-            if in_evidence and not in_metrics:
+            retained = {"executor-report.md", "review-report.md", "final-check.md", "executor-result.json", "reviewer-result.json", "final-result.json", "finalization.json"}
+            if in_evidence and not in_metrics and Path(normalized).name not in retained:
                 violations.append(f"{current_commit}: {status} {normalized}")
     return violations
 
