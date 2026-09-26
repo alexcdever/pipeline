@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "task_id": "task-evidence-reconcile",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "875203aa1a06f98ce2def5b2fb0a1ea6f8c0d4ee",
+    "head": "88a10eaccd83f6b794b694e5a8f88005f9c4b183"
+  },
+  "acceptance": [
+    {"id": "acceptance-test-contract", "status": "pass", "exit_code": 0, "evidence_refs": ["reconcile-gates.log"]},
+    {"id": "acceptance-test-dispatch", "status": "pass", "exit_code": 0, "evidence_refs": ["reconcile-full.log"]},
+    {"id": "acceptance-test-finalization", "status": "pass", "exit_code": 0, "evidence_refs": ["reconcile-full.log"]},
+    {"id": "acceptance-test-acceptance", "status": "pass", "exit_code": 0, "evidence_refs": ["reconcile-full.log"]},
+    {"id": "acceptance-test-reconcile", "status": "pass", "exit_code": 0, "evidence_refs": ["reconcile-focused.log"]}
+  ],
+  "unverified": ["independent review", "final-check", "scope check blocked by pre-existing metrics artifact"]
+}
