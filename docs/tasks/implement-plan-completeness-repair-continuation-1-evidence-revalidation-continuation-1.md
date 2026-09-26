@@ -99,7 +99,7 @@
 - canonical parent：`implement-plan-completeness-repair-continuation-1`（任务单 `docs/tasks/implement-plan-completeness-repair-continuation-1.md`，证据 `.pipeline/implement-plan-completeness-repair-continuation-1/`）
 - 历史证据策略：父任务单、父分支/worktree、父 reports 与父证据全部保留原样，不修改、不搬运、不覆盖、不重新归属。
 - 执行 worktree 约定：`<仓库根目录>/.worktrees/implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1`，由主代理在契约提交后用 `git worktree add` 创建唯一 worktree
-- 状态：未开始
+- 状态：已完成并已合并，主工作树复验通过
 
 ## 依赖与范围
 
@@ -245,7 +245,10 @@
 ### 任务锚点
 
 - 基线 HEAD：`f8aa3795961a28a2fd0ed4c84192e605b19f9f21`
-- 契约提交：`f8aa3795961a28a2fd0ed4c84192e605b19f9f21`
+- 契约提交：`49ae00cb60b7e96808161cebd88ecd3d93acfb56`
+- 产品实现提交：`0e188fedd60c04c1964fcfba68a6c23a1038c156`
+- 证据提交：`41ffd69eae9ad0853ceec0906e09ca9989c83d58`
+- 合并提交（main）：`cc7f6d47026bcb73c683cf45d6c63586bedb0866`
 - 执行分支：`implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1`
 
@@ -253,18 +256,23 @@
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| 验收测试1 | 未开始 | - | - | 当前 main 身份与唯一 worktree |
-| 验收测试2 | 未开始 | - | - | 任务单结构校验 |
-| 验收测试3 | 未开始 | - | - | executor/reviewer 结果新鲜度 |
-| 验收测试4 | 未开始 | - | - | 完整回归 |
-| 验收测试5 | 未开始 | - | - | evidence closure |
-| 验收测试6 | 未开始 | - | - | full_test.log 卫生 |
+| 验收测试1 | PASS | `git rev-parse --show-toplevel && git branch --show-current && git rev-parse HEAD && git worktree list --porcelain` | `executor-report.md` | 当前 main 基线与唯一 worktree 已核对 |
+| 验收测试2 | PASS | `python scripts/validate_task_sheet.py ... && python -m pipeline_tools task validate ...` | `executor-report.md` | schema2 合同与结构有效 |
+| 验收测试3 | PASS | `pipeline_tools result verify` executor + reviewer | `final-check.md` | 两角色结果均 pass |
+| 验收测试4 | PASS | `python -m unittest discover -s tests -v` | `executor-report.md`; `review-report.md` | 168 tests OK |
+| 验收测试5 | PASS | `evidence readiness/verify` + `gate pre-merge/post-merge` | `final-check.md` | 当前身份闭环 PASS |
+| 验收测试6 | PASS | `git check-ignore -v full_test.log && git status --short` | `executor-report.md` | 陈旧日志被忽略且未删除 |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| 创建轮 | schema 2 current-main revalidation continuation task sheet committed | 未开始 | - | 创建唯一执行 worktree |
+| 创建轮 | schema 2 current-main revalidation continuation task sheet committed | PASS | commit `49ae00c` | 创建唯一执行 worktree |
+| 执行轮1 | executor 身份、任务单、全量回归、full_test.log 卫生 | PASS | `executor-report.md`, `executor-result.json` | 独立审查 |
+| 审查轮1 | reviewer 独立重跑校验与全量回归 | PASS | `review-report.md`, `reviewer-result.json` | 主代理终检 |
+| 终检轮1 | readiness → verify → result verify → pre-merge gate | PASS | `final-check.md`, `final-result.json`, `finalization.json` | 合并回 main |
+| 合并轮 | `git merge --no-ff` 到 main | PASS | merge commit `cc7f6d4` | 主工作树复验 |
+| 复验轮 | main 全量回归、task validate、post-merge gate、卫生检查 | PASS | 168 tests OK；post-merge gate PASS；`full_test.log` 被忽略 | 完成 |
 
 ### 设计变更与延续任务索引
 
@@ -274,10 +282,10 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
-- 合并提交：-
-- 合并后复验：未开始
-- 遗留项：父任务历史身份漂移与缺失 final-result/finalization 保留为历史事实，不在本任务改写
+- 状态：MERGED（当前 main 身份证据闭环 PASS）
+- 执行子代理：PASS；`.pipeline/implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1/executor-report.md`
+- 独立审查子代理：PASS；`.pipeline/implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1/review-report.md`
+- 主代理最终检查：PASS；`.pipeline/implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1/final-check.md`
+- 合并提交：`cc7f6d47026bcb73c683cf45d6c63586bedb0866`
+- 合并后复验：PASS；主树 `python -m unittest discover -s tests -v`（168 tests OK）、task validate、post-merge gate、`full_test.log` 忽略检查均通过
+- 遗留项：父任务 `implement-plan-completeness-repair-continuation-1` 的历史身份漂移（reviewer/product head 非当前 main）与缺失 `final-result.json`/`finalization.json` 保留为历史事实，不在本任务改写；metrics 按用户要求忽略
