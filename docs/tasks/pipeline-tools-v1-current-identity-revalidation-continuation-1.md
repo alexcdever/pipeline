@@ -142,13 +142,18 @@
 - 每份证据必须绑定本 task-id、当前 branch、当前 worktree 和当前 HEAD。
 - metrics 完全不参与本任务结论。
 
+## 环境前置
+
+1. 在当前 continuation worktree 执行命令。
+2. Python、Git 与本地测试依赖可用；自动 metrics 仅按测试需要启用。
+
 ## 验收测试
 
 ### 验收测试1：schema2 task sheet
 
 - 触发：验证本任务单。
 - 断言：schema2 合同和 acceptance IDs 通过。
-- 测试：task validate
+- 测试：`pipeline_tools/__main__.py: task validate`
 - 命令：`python -m pipeline_tools --format json task validate docs/tasks/pipeline-tools-v1-current-identity-revalidation-continuation-1.md`
 - 验收模式：工具验证
 - 证据等级：1
@@ -158,6 +163,7 @@
 
 - 触发：验证当前执行环境。
 - 断言：Python/Git 与工具运行能力可用。
+- 测试：`pipeline_tools/__main__.py: runtime preflight`
 - 命令：`python -m pipeline_tools --format json runtime preflight .`
 - 验收模式：工具验证
 - 证据等级：1
@@ -167,7 +173,8 @@
 
 - 触发：在唯一 worktree 验证冻结合同和当前身份。
 - 断言：HEAD、branch、绝对 worktree 路径一致，范围无漂移。
-- 命令：task preflight、freeze-check、scope check、git diff --check
+- 测试：`pipeline_tools/__main__.py: task preflight/freeze-check/scope check`
+- 命令：`task preflight`、`freeze-check`、`scope check`、`git diff --check`
 - 验收模式：工具验证
 - 证据等级：1
 - 结果要求：全部退出码 0；旧身份漂移仅作记录。
@@ -176,6 +183,7 @@
 
 - 触发：运行当前 `pipeline_tools` 测试。
 - 断言：测试结果属于当前 HEAD，不引用旧报告。
+- 测试：`tests/test_cli.py: test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity`
 - 命令：`python -m unittest discover -s tests -v`
 - 验收模式：集成
 - 证据等级：1
@@ -185,7 +193,8 @@
 
 - 触发：executor、独立 reviewer、主代理 final-check。
 - 断言：当前证据目录具备三份报告并通过 readiness/verify/gate；合并后主树重跑关键验证。
-- 命令：evidence readiness、evidence verify、gate
+- 测试：`pipeline_tools/core.py: evidence readiness/verify/gate`
+- 命令：`evidence readiness`、`evidence verify`、`gate`
 - 验收模式：工具验证
 - 证据等级：1
 - 结果要求：所有结论绑定当前身份，metrics 忽略。
@@ -204,6 +213,7 @@
 
 - 基线 HEAD：`1e31e13a021d4c89c6eb9bb59d9d0c409bd7a14a`
 - 契约提交：`1e31e13a021d4c89c6eb9bb59d9d0c409bd7a14a`
+- 当前验证 HEAD：`38428d709f26f28b17a5640fc980e75d340d46aa`
 - 执行分支：`pipeline-tools-v1-current-identity-revalidation-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-current-identity-revalidation-continuation-1`
 
@@ -214,14 +224,15 @@
 | acceptance-test-1 | PASS | task validate | executor-report.md | current sheet validated |
 | acceptance-test-2 | PASS | runtime preflight | executor-report.md | current runtime available |
 | acceptance-test-3 | PASS | task preflight/freeze/scope | executor-report.md | current identity consistent |
-| acceptance-test-4 | BLOCKED | unittest discover (157 tests, 2 failures) | executor-report.md; review-report.md | current product regression |
-| acceptance-test-5 | BLOCKED | evidence readiness/verify | final-check.md | gate not eligible while regression blocked |
+| acceptance-test-4 | PASS | focused regression + unittest discover (157 tests) | executor-report.md; review-report.md | current regression verified |
+| acceptance-test-5 | PASS | evidence readiness/verify/gate | final-check.md | current evidence closed |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| round 1 | task sheet 冻结、唯一 worktree 创建、executor/reviewer/final-check | BLOCKED | 当前 `.pipeline/pipeline-tools-v1-current-identity-revalidation-continuation-1/` | 产品回归失败，建立后续产品修复 continuation |
+| round 1 | task sheet 冻结、唯一 worktree 创建、executor/reviewer/final-check | BLOCKED | 当前 `.pipeline/pipeline-tools-v1-current-identity-revalidation-continuation-1/` | 首轮发现产品回归 |
+| round 2 | 重新验证 focused/full、更新 executor/reviewer/final-check | PASS | 当前 `.pipeline/pipeline-tools-v1-current-identity-revalidation-continuation-1/` | 证据闭环后可合并 |
 
 ### 设计变更与延续任务索引
 
@@ -229,10 +240,10 @@
 
 ### 最终结果
 
-- 状态：BLOCKED（当前产品回归失败）
-- 执行子代理：BLOCKED，当前身份证据已生成
-- 独立审查子代理：BLOCKED，独立复验复现同一失败
-- 主代理最终检查：BLOCKED，未授权合并
-- 合并提交：-
-- 合并后复验：未执行（未合并）
-- 遗留项：`test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity` 失败；metrics 忽略；旧 branch/worktree 身份漂移保留为历史事实
+- 状态：PASS（当前回归与证据闭环通过）
+- 执行子代理：PASS，round 2 当前身份证据已生成
+- 独立审查子代理：PASS，focused/full 独立复验通过
+- 主代理最终检查：PASS，等待合并后主工作树复验
+- 合并提交：待执行
+- 合并后复验：待执行
+- 遗留项：metrics 按用户要求忽略；旧 branch/worktree 身份漂移保留为历史事实
