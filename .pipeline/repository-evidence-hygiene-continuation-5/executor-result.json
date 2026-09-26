@@ -1,20 +1,17 @@
 {
-  "schema": 1,
-  "task_id": "repository-evidence-hygiene-continuation-5",
-  "role": "executor",
-  "status": "pass",
-  "identity": {
-    "head": "f947062",
-    "branch": "repository-evidence-hygiene",
-    "worktree": "D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene"
-  },
-  "acceptance": [
-    {"id": "acceptance-test-untracked-metrics", "status": "pass", "exit_code": 0},
-    {"id": "acceptance-test-full-regression", "status": "pass", "exit_code": 0},
-    {"id": "acceptance-test-task-sheets-validate", "status": "pass", "exit_code": 0},
-    {"id": "acceptance-test-evidence-readiness", "status": "blocked", "exit_code": 3},
-    {"id": "acceptance-test-evidence-verify", "status": "blocked", "exit_code": 3},
-    {"id": "acceptance-test-gate", "status": "blocked", "exit_code": 3}
+  "schema":1,
+  "task_id":"repository-evidence-hygiene-continuation-5",
+  "role":"executor",
+  "status":"pass",
+  "identity":{"product_head":"ba1ac15","contract":"cd79ce7","head":"837c9f54b897ed6c6abcc0ee095bcbabbf87d554","branch":"repository-evidence-hygiene","worktree":"D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene","evidence_only":true},
+  "acceptance":[
+    {"id":"acceptance-test-untracked-metrics","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-task-sheets-validate","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-full-regression","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-evidence-readiness","status":"blocked","exit_code":3,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-evidence-verify","status":"blocked","exit_code":3,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-gate","status":"blocked","exit_code":3,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]}
   ],
-  "unverified": ["historical acceptance outcomes", "independent review", "final-check", "merge readiness"]
+  "evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"],
+  "unverified":["historical acceptance outcomes","independent review","final-check","merge readiness"]
 }
