@@ -251,12 +251,12 @@
 
 ### 最终结果
 
-- 状态：READY_FOR_MERGE（当前 identity evidence closure PASS）
+- 状态：MERGED（当前 identity evidence closure PASS）
 - 执行子代理：PASS；`.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/executor-report.md`
 - 独立审查子代理：PASS；`.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/review-report.md`
 - 主代理最终检查：PASS；`.pipeline/repository-evidence-hygiene-current-identity-revalidation-continuation-1/final-check.md`
-- 合并提交：待主工作树合并
-- 合并后复验：待主工作树复验
+- 合并提交：`12215bd` merge plus final evidence commit `d79951c`
+- 合并后复验：PASS；finalized evidence verify and post-merge gate both PASS
 - 遗留项：metrics 按用户要求忽略；parent continuation-5 历史 evidence 保留且不作为当前 evidence
 
 ## 外部操作
