@@ -76,6 +76,9 @@ entry：`pipeline_tools/__main__.py`；interaction：dispatch JSON 与 Git 命�
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_worktree_dispatch_identity.WorktreeDispatchIdentityTests.test_create_and_verify_standard_worktree_identity -v`
 - 验收模式：Git 集成；证据等级：3；结果要求：退出码 0，list 前后证据可读。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试2：路径、分支和基线漂移拒绝
 
 - 触发：传入仓库外路径、已占用分支、错误 HEAD 或复制 dispatch identity。
@@ -84,6 +87,9 @@ entry：`pipeline_tools/__main__.py`；interaction：dispatch JSON 与 Git 命�
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_worktree_dispatch_identity.WorktreeDispatchIdentityTests.test_identity_drift_and_duplicate_worktree_are_blocked -v`
 - 验收模式：Git 安全边界；证据等级：3；结果要求：每个变体非零且既有注册项不变。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试3：角色路径与 scope 校验
 
 - 触发：executor/reviewer 使用错误 worktree、写入禁止路径或试图创建第二 worktree。
@@ -92,6 +98,9 @@ entry：`pipeline_tools/__main__.py`；interaction：dispatch JSON 与 Git 命�
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecksTests.test_dispatch_scope_requires_registered_task_worktree_and_role_identity -v`
 - 验收模式：机械检查；证据等级：2；结果要求：退出码 0 表示非法输入被正确拒绝。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试4：回归
 
 - 触发：全量测试、契约和 diff check。
@@ -135,9 +144,69 @@ entry：`pipeline_tools/__main__.py`；interaction：dispatch JSON 与 Git 命�
 - 状态：未开始；执行子代理：未开始；独立审查子代理：未开始；主代理最终检查：未开始；合并提交：-；合并后复验：未开始；遗留项：-
 
 ```pipeline-contract
-{"schema":2,"task_id":"task-worktree-dispatch-identity","task_type":"prerequisite","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/core.py","pipeline_tools/planning.py","pipeline_tools/__main__.py","tests/test_worktree_dispatch_identity.py","tests/test_git_checks.py","references/**","SKILL.md","docs/tasks/task-worktree-dispatch-identity.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"worktree-create-identity","kind":"create","scope":"worktree","acceptance_tests":["acceptance-test-1"]},{"id":"dispatch-identity-verify","kind":"validate","scope":"dispatch","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"dispatch-path-scope-check","kind":"gate","scope":"dispatch","acceptance_tests":["acceptance-test-2","acceptance-test-3"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/core.py","pipeline_tools/planning.py"],"domain":["pipeline_tools/core.py"],"persistence":[".worktrees/<task-id>/",".pipeline/<task-id>/"],"readback":["pipeline_tools/__main__.py"],"recovery":["pipeline_tools/core.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_worktree_dispatch_identity.py: WorktreeDispatchIdentityTests.test_create_and_verify_standard_worktree_identity","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_worktree_dispatch_identity.WorktreeDispatchIdentityTests.test_create_and_verify_standard_worktree_identity -v"},{"id":"acceptance-test-2","evidence_level":3,"test_ref":"tests/test_worktree_dispatch_identity.py: WorktreeDispatchIdentityTests.test_identity_drift_and_duplicate_worktree_are_blocked","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_worktree_dispatch_identity.WorktreeDispatchIdentityTests.test_identity_drift_and_duplicate_worktree_are_blocked -v"},{"id":"acceptance-test-3","evidence_level":2,"test_ref":"tests/test_git_checks.py: GitChecksTests.test_dispatch_scope_requires_registered_task_worktree_and_role_identity","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecksTests.test_dispatch_scope_requires_registered_task_worktree_and_role_identity -v"},{"id":"acceptance-test-4","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["planning-run-lifecycle","task-plan-contract-consistency"],"required_evidence_levels":[1,2,3]}
+{"schema":2,"task_id":"task-worktree-dispatch-identity","task_type":"prerequisite","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/core.py","pipeline_tools/planning.py","pipeline_tools/__main__.py","tests/test_worktree_dispatch_identity.py","tests/test_git_checks.py","references/**","SKILL.md","docs/tasks/task-worktree-dispatch-identity.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"worktree-create-identity","kind":"create","scope":"worktree","acceptance_tests":["acceptance-test-1"]},{"id":"dispatch-identity-verify","kind":"validate","scope":"dispatch","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"dispatch-path-scope-check","kind":"gate","scope":"dispatch","acceptance_tests":["acceptance-test-2","acceptance-test-3"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/core.py","pipeline_tools/planning.py"],"domain":["pipeline_tools/core.py"],"persistence":[".worktrees/task-worktree-dispatch-identity/",".pipeline/task-worktree-dispatch-identity/"],"readback":["pipeline_tools/__main__.py"],"recovery":["pipeline_tools/core.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_worktree_dispatch_identity.py: WorktreeDispatchIdentityTests.test_create_and_verify_standard_worktree_identity","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_worktree_dispatch_identity.WorktreeDispatchIdentityTests.test_create_and_verify_standard_worktree_identity -v"},{"id":"acceptance-test-2","evidence_level":3,"test_ref":"tests/test_worktree_dispatch_identity.py: WorktreeDispatchIdentityTests.test_identity_drift_and_duplicate_worktree_are_blocked","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_worktree_dispatch_identity.WorktreeDispatchIdentityTests.test_identity_drift_and_duplicate_worktree_are_blocked -v"},{"id":"acceptance-test-3","evidence_level":2,"test_ref":"tests/test_git_checks.py: GitChecksTests.test_dispatch_scope_requires_registered_task_worktree_and_role_identity","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecksTests.test_dispatch_scope_requires_registered_task_worktree_and_role_identity -v"},{"id":"acceptance-test-4","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["planning-run-lifecycle","task-plan-contract-consistency"],"required_evidence_levels":[1,2,3]}
 ```
 
 ## 生命周期记录
 
 过程事件写入 `.pipeline/task-worktree-dispatch-identity/`，不改冻结契约。
+
+- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v`（历史命令未重新核验）
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
+
+
+## 任务身份
+
+- 项目：pipeline
+- 领域或阶段：历史任务结构迁移
+- 用户结果或系统能力：保留原任务语义并符合当前结构校验。
+- 执行 worktree 约定：UNVERIFIED（历史任务单未在本轮重新核验）
+- 状态：UNVERIFIED
+
+
+## 依赖与范围
+
+### 前置条件
+
+- 原任务单、当前 schema 和校验脚本。
+
+### 允许修改
+
+- 本任务单结构字段。
+
+### 明确不改
+
+- implement-plan.md、IDEA.md、产品代码、metrics 和历史验收结论。
+
+
+## 事实、假设与待决
+
+### 已确认事实
+
+- 本轮仅依据 task validate 输出修复结构缺口。
+
+### 未验证事实
+
+- 历史验收结果、提交和证据新鲜度保持 UNVERIFIED。
+
+### 禁止猜测
+
+- 不把结构校验通过解释为产品或验收通过。
+
+
+### 任务锚点
+
+- 基线 HEAD：UNVERIFIED
+- 契约提交：UNVERIFIED
+- 执行分支：UNVERIFIED
+- 执行 worktree：UNVERIFIED
+
+
+### 验收台账
+
+| 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
+|---|---|---|---|---|
+| 验收测试1 | UNVERIFIED | - | - | 历史结果未重新核验 |
+
+- 合并提交：UNVERIFIED

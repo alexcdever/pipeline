@@ -81,6 +81,20 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertNotIn("<", item["command_ref"])
             self.assertRegex(item["id"], r"^acceptance-test-[a-z0-9.-]+$")
 
+    def test_all_task_sheets_validate_after_historical_schema_migration(self):
+        from scripts.validate_task_sheet import validate
+
+        task_sheets = sorted((ROOT / "docs/tasks").glob("*.md"))
+        self.assertGreater(len(task_sheets), 1)
+        for path in task_sheets:
+            self.assertEqual(validate(path), [], path)
+            text = path.read_text(encoding="utf-8")
+            contract = re.search(r"```pipeline-contract\n(.*?)\n```", text, re.DOTALL)
+            self.assertIsNotNone(contract, path)
+            self.assertNotIn("<task-id>", contract.group(1))
+            self.assertNotIn("<complete command>", contract.group(1))
+            self.assertTrue("UNVERIFIED" in text or "未开始" in text or "已合并" in text, path)
+
 
 if __name__ == "__main__":
     unittest.main()

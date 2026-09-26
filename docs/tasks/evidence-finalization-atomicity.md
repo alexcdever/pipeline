@@ -4,7 +4,7 @@
 <!-- Contract section is frozen after commit. Lifecycle sections are maintained by the main agent. -->
 
 ```pipeline-contract
-{"schema":2,"task_id":"evidence-finalization-atomicity","task_type":"repair","implement_plan":{"path":"implement-plan.md"},"requirements":["repair evidence finalization so cleanup failure is fail-closed and atomic: no finalization marker is left behind, raw evidence remains preserved, and retry is idempotent"],"resources":["pipeline_tools/planning.py","tests/test_planning.py","docs/tasks/evidence-finalization-atomicity.md","references/acceptance-evidence.md","references/execution-and-review.md","references/merge-and-recovery.md"],"allowed_paths":["pipeline_tools/planning.py","tests/**","docs/tasks/evidence-finalization-atomicity.md","references/**"],"forbidden_paths":["implement-plan.md","IDEA.md","pipeline_tools/** other than pipeline_tools/planning.py","docs/tasks/** other than docs/tasks/evidence-finalization-atomicity.md",".pipeline/**",".pipeline/metrics/**","metrics/**",".worktrees/**","**/*secret*","**/*token*"],"operations":[{"id":"finalization-cleanup-atomicity","kind":"repair","scope":"evidence finalization cleanup failure","acceptance_tests":["acceptance-test-cleanup-no-marker","acceptance-test-cleanup-preserves-raw","acceptance-test-cleanup-idempotence"]},{"id":"finalization-regression","kind":"validate","scope":"existing evidence finalization behavior","acceptance_tests":["acceptance-test-existing-finalization","acceptance-test-regression"]},{"id":"finalization-contract","kind":"validate","scope":"task contract and references","acceptance_tests":["acceptance-test-contract"]}],"chain":{"entry":["pipeline_tools/planning.py: finalize_evidence entry"],"interaction":["tests/test_planning.py: finalization cleanup failure fixtures"],"application":["pipeline_tools/planning.py: finalization validation and cleanup transaction"],"domain":["pipeline_tools/planning.py: finalized versus blocked state"],"persistence":[".pipeline/<task-id>/finalization.json and raw evidence files"],"readback":["pipeline_tools/planning.py: finalize_evidence result status and marker"],"recovery":["pipeline_tools/planning.py: preserve raw evidence and retry without partial marker"]},"acceptance_tests":[{"id":"acceptance-test-cleanup-no-marker","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_cleanup_failure_leaves_no_marker","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_cleanup_failure_leaves_no_marker -v"},{"id":"acceptance-test-cleanup-preserves-raw","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_cleanup_failure_preserves_raw_evidence","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_cleanup_failure_preserves_raw_evidence -v"},{"id":"acceptance-test-cleanup-idempotence","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_cleanup_failure_retry_is_idempotent","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_cleanup_failure_retry_is_idempotent -v"},{"id":"acceptance-test-existing-finalization","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_requires_main_approval_and_keeps_raw_on_failure","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_requires_main_approval_and_keeps_raw_on_failure -v"},{"id":"acceptance-test-regression","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"},{"id":"acceptance-test-contract","evidence_level":1,"test_ref":"docs/tasks/evidence-finalization-atomicity.md: schema 2 repair contract validation","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task validate docs/tasks/evidence-finalization-atomicity.md"}],"dependencies":["dispatch-fail-closed-and-approval-semantics"],"required_evidence_levels":[1,2]}
+{"schema":2,"task_id":"evidence-finalization-atomicity","task_type":"repair","implement_plan":{"path":"implement-plan.md"},"requirements":["repair evidence finalization so cleanup failure is fail-closed and atomic: no finalization marker is left behind, raw evidence remains preserved, and retry is idempotent"],"resources":["pipeline_tools/planning.py","tests/test_planning.py","docs/tasks/evidence-finalization-atomicity.md","references/acceptance-evidence.md","references/execution-and-review.md","references/merge-and-recovery.md"],"allowed_paths":["pipeline_tools/planning.py","tests/**","docs/tasks/evidence-finalization-atomicity.md","references/**"],"forbidden_paths":["implement-plan.md","IDEA.md","pipeline_tools/** other than pipeline_tools/planning.py","docs/tasks/** other than docs/tasks/evidence-finalization-atomicity.md",".pipeline/**",".pipeline/metrics/**","metrics/**",".worktrees/**","**/*secret*","**/*token*"],"operations":[{"id":"finalization-cleanup-atomicity","kind":"repair","scope":"evidence finalization cleanup failure","acceptance_tests":["acceptance-test-cleanup-no-marker","acceptance-test-cleanup-preserves-raw","acceptance-test-cleanup-idempotence"]},{"id":"finalization-regression","kind":"validate","scope":"existing evidence finalization behavior","acceptance_tests":["acceptance-test-existing-finalization","acceptance-test-regression"]},{"id":"finalization-contract","kind":"validate","scope":"task contract and references","acceptance_tests":["acceptance-test-contract"]}],"chain":{"entry":["pipeline_tools/planning.py: finalize_evidence entry"],"interaction":["tests/test_planning.py: finalization cleanup failure fixtures"],"application":["pipeline_tools/planning.py: finalization validation and cleanup transaction"],"domain":["pipeline_tools/planning.py: finalized versus blocked state"],"persistence":[".pipeline/evidence-finalization-atomicity/finalization.json and raw evidence files"],"readback":["pipeline_tools/planning.py: finalize_evidence result status and marker"],"recovery":["pipeline_tools/planning.py: preserve raw evidence and retry without partial marker"]},"acceptance_tests":[{"id":"acceptance-test-cleanup-no-marker","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_cleanup_failure_leaves_no_marker","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_cleanup_failure_leaves_no_marker -v"},{"id":"acceptance-test-cleanup-preserves-raw","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_cleanup_failure_preserves_raw_evidence","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_cleanup_failure_preserves_raw_evidence -v"},{"id":"acceptance-test-cleanup-idempotence","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_cleanup_failure_retry_is_idempotent","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_cleanup_failure_retry_is_idempotent -v"},{"id":"acceptance-test-existing-finalization","evidence_level":2,"test_ref":"tests/test_planning.py: PlanningTests.test_finalization_requires_main_approval_and_keeps_raw_on_failure","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning.PlanningTests.test_finalization_requires_main_approval_and_keeps_raw_on_failure -v"},{"id":"acceptance-test-regression","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"},{"id":"acceptance-test-contract","evidence_level":1,"test_ref":"docs/tasks/evidence-finalization-atomicity.md: schema 2 repair contract validation","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task validate docs/tasks/evidence-finalization-atomicity.md"}],"dependencies":["dispatch-fail-closed-and-approval-semantics"],"required_evidence_levels":[1,2]}
 ```
 
 ## 任务身份
@@ -107,6 +107,8 @@
 - 验收模式：本地文件系统集成测试；证据等级：2
 - 结果要求：退出码 0；断言直接检查 marker 路径和结构化返回。
 
+
+- 证据等级：1
 ### 验收测试2：清理失败保留 raw evidence
 
 - 触发：与验收测试1相同，在至少一个 raw 文件清理动作失败。
@@ -116,6 +118,8 @@
 - 验收模式：本地文件系统集成测试；证据等级：2
 - 结果要求：退出码 0；断言保存失败前后 raw 文件哈希/字节一致。
 
+
+- 证据等级：1
 ### 验收测试3：清理失败重试幂等
 
 - 触发：同一清理失败 fixture 连续调用最终化至少两次，再解除故障并重试。
@@ -125,6 +129,8 @@
 - 验收模式：本地文件系统集成测试；证据等级：2
 - 结果要求：退出码 0；断言失败、恢复、重复成功三个状态及目录快照。
 
+
+- 证据等级：1
 ### 验收测试4：既有最终化前置失败行为不回归
 
 - 触发：审批、报告、引用闭包失败以及正常最终化 fixture。
@@ -134,6 +140,8 @@
 - 验收模式：本地文件系统集成测试；证据等级：2
 - 结果要求：退出码 0；既有断言和新原子性断言同时成立。
 
+
+- 证据等级：1
 ### 验收测试5：完整回归
 
 - 触发：运行仓库现有完整测试套件。
@@ -143,6 +151,8 @@
 - 验收模式：回归；证据等级：1
 - 结果要求：退出码 0；失败时保留现场并不得标记 PASS。
 
+
+- 证据等级：1
 ### 验收测试6：任务单结构与 schema 2 校验
 
 - 触发：从仓库根目录验证本任务单。
@@ -200,3 +210,5 @@
 - 合并提交：不执行
 - 合并后复验：未开始
 - 遗留项：-
+
+- 证据等级：1
