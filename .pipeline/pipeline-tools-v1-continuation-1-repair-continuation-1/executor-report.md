@@ -5,7 +5,9 @@ Worktree: `D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation
 Branch: `pipeline-tools-v1-continuation-1-repair-continuation-1`
 Role: `executor`
 Round: 1
-HEAD: `e24373153d6b51bc518fdca595add44e07526437`
+HEAD: `900feb1f1528356720aab524359fe6a518bea039`
+Baseline/product-test: `900feb1f1528356720aab524359fe6a518bea039` (current repair product/test HEAD)
+Contract commit: `3b152cca1e8d9912f02dadef95ed3ae12d0be9c7`
 
 ## 修复内容
 
@@ -30,10 +32,12 @@ HEAD: `e24373153d6b51bc518fdca595add44e07526437`
 ## Required gates
 
 - `task validate`: PASS, exit 0.
-- `task preflight`: PASS, exit 0.
-- `freeze-check`: PASS, exit 0.
+- `python -m pipeline_tools --format json task preflight . --contract pipeline-tools-v1-continuation-1-repair-continuation-1 --task-sheet docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md --expected-head 3b152cca1e8d9912f02dadef95ed3ae12d0be9c7 --expected-branch pipeline-tools-v1-continuation-1-repair-continuation-1 --expected-worktree D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1`: PASS, exit 0.
+- `python -m pipeline_tools --format json freeze-check . --contract pipeline-tools-v1-continuation-1-repair-continuation-1 --task-sheet docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md --expected-head 3b152cca1e8d9912f02dadef95ed3ae12d0be9c7 --expected-branch pipeline-tools-v1-continuation-1-repair-continuation-1 --expected-worktree D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1`: PASS, exit 0.
 - `scope check`: PASS, exit 0.
 - `git diff --check`: PASS, exit 0.
+- `python -m pipeline_tools --format json result verify .pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-result.json --task-id pipeline-tools-v1-continuation-1-repair-continuation-1 --role executor`: PASS, exit 0.
+- `python -m pipeline_tools --format json freshness . .pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1 --result .pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-result.json`: PASS, exit 0 after binding product_head to current committed repair HEAD.
 - Full regression: `Ran 156 tests ... OK`.
 
 Generated `.pipeline/metrics/*.json` files remain untracked local artifacts and were not staged or committed.
@@ -50,9 +54,9 @@ Generated `.pipeline/metrics/*.json` files remain untracked local artifacts and 
   "commands": [
     {"command": "python -m unittest discover -s tests -v", "exit_code": 0, "evidence_ref": "executor-report.md"},
     {"command": "python -m pipeline_tools --format json task validate docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md", "exit_code": 0, "evidence_ref": "executor-report.md"},
-    {"command": "python -m pipeline_tools --format json task preflight ...", "exit_code": 0, "evidence_ref": "executor-report.md"},
-    {"command": "python -m pipeline_tools --format json freeze-check ...", "exit_code": 0, "evidence_ref": "executor-report.md"},
-    {"command": "python -m pipeline_tools --format json scope check ...", "exit_code": 0, "evidence_ref": "executor-report.md"},
+    {"command": "python -m pipeline_tools --format json task preflight . --contract pipeline-tools-v1-continuation-1-repair-continuation-1 --task-sheet docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md --expected-head a34d69ed323471ab3de554c1c5631df862f1ea12 --expected-branch pipeline-tools-v1-continuation-1-repair-continuation-1 --expected-worktree D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1", "exit_code": 0, "evidence_ref": "executor-report.md"},
+    {"command": "python -m pipeline_tools --format json freeze-check . --contract pipeline-tools-v1-continuation-1-repair-continuation-1 --task-sheet docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md --expected-head a34d69ed323471ab3de554c1c5631df862f1ea12 --expected-branch pipeline-tools-v1-continuation-1-repair-continuation-1 --expected-worktree D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1", "exit_code": 0, "evidence_ref": "executor-report.md"},
+    {"command": "python -m pipeline_tools --format json scope check . --allowed docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md pipeline_tools/__main__.py pipeline_tools/core.py tests/test_cli.py tests/test_metrics.py tests/test_git_checks.py .gitignore .pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/** --forbidden implement-plan.md IDEA.md docs/tasks/pipeline-tools-v1.md docs/tasks/pipeline-tools-v1-continuation-1.md .pipeline/pipeline-tools-v1-continuation-1/**", "exit_code": 0, "evidence_ref": "executor-report.md"},
     {"command": "git diff --check", "exit_code": 0, "evidence_ref": "executor-report.md"}
   ],
   "assertions": [
