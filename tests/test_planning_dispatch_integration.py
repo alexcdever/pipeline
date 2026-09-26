@@ -70,6 +70,23 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             self.assertEqual(blocked["stages"][-1]["name"], "facts-gate")
             self.assertFalse(any(stage["name"] in {"task-generation", "freeze", "dispatch"} for stage in blocked["stages"]))
 
+    def test_decision_blocker_states_gate_dispatch_end_to_end(self):
+        for status, expected in (("blocking", "facts-gate"), ("resolved", "dispatch"), ("non_blocking", "dispatch"), ("unknown", "facts-gate"), (None, "facts-gate")):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                root, head = self.make_repo(directory)
+                project, requirements, plan = self.inputs()
+                blocker = {"id": "decision-1"}
+                if status is not None:
+                    blocker["status"] = status
+                project.update({"facts": [], "assumptions": [], "unknowns": [], "conflicts": [], "non_goals": [], "decision_blockers": [blocker]})
+                result = planning_to_dispatch(root, f"blocker-{status or 'missing'}", project, requirements, plan, task_id="integration-task", branch=f"branch-{status or 'missing'}", baseline=head, approved=True)
+                self.assertEqual(result["stages"][-1]["name"], expected, result)
+                if expected == "facts-gate":
+                    self.assertNotEqual(result["status"], "dispatch-ready")
+                    self.assertFalse((root / ".worktrees" / "integration-task").exists())
+                else:
+                    self.assertEqual(result["status"], "dispatch-ready", result)
+
     def test_valid_planning_run_reaches_identity_verified_dispatch(self):
         with tempfile.TemporaryDirectory() as directory:
             root, head = self.make_repo(directory)

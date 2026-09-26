@@ -372,6 +372,15 @@ class CLITests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 1, (enabled, completed.stdout, completed.stderr))
                 self.assertIn('"exit_code": 7', completed.stdout.replace("'", '"'))
 
+    def test_planning_cli_rejects_historical_task_as_current_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "implement-plan.md").write_text("current", encoding="utf-8")
+            historical = root / "docs" / "tasks" / "historical.md"; historical.parent.mkdir(parents=True); historical.write_text("historical", encoding="utf-8")
+            completed = run_cli(["planning", "task-plan-validate", str(historical), "--root", str(root)])
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertNotIn("dispatch-ready", completed.stdout + completed.stderr)
+
     def test_planning_to_dispatch_cli_blocks_when_facts_envelope_has_conflicts(self):
         with tempfile.TemporaryDirectory() as d:
             root, head = make_repo(d)

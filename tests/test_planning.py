@@ -56,6 +56,23 @@ class PlanningTests(unittest.TestCase):
             'unverified': [],
         }), encoding='utf-8')
 
+    def test_current_implement_plan_target_isolated_from_historical_task_inputs(self):
+        from pipeline_tools.planning import generate_task_sheets
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "op", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 1, "test_ref": "tests/test_planning.py", "command_ref": "python -m unittest"}], "chain": chain()}
+            requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "req", "source_refs": ["source"]}], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"]}
+            plan = {"schema": 1, "requirements": ["req"], "resources": ["resource"], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "current-task", "type": "prerequisite", "requirements": ["req"], "resources": ["resource"], "operations": ["op"], "depends_on": []}]}
+            (root / "implement-plan.md").write_text("current target", encoding="utf-8")
+            (root / "src").mkdir(); (root / "src" / "app.py").write_text("app", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True); subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True); subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True); subprocess.run(["git", "add", "."], cwd=root, check=True); subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            historical = root / "docs" / "tasks" / "historical-task.md"; historical.parent.mkdir(parents=True); historical.write_text("historical artifact", encoding="utf-8")
+            result = generate_task_sheets(root, "current-run", project, requirements, plan)
+            self.assertEqual(result["status"], "pass", result)
+            self.assertEqual(result["task_ids"], ["current-task"])
+            self.assertTrue((root / "docs" / "tasks" / "current-task.md").is_file())
+            self.assertEqual(historical.read_text(encoding="utf-8"), "historical artifact")
+
     def test_planning_preflight(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
