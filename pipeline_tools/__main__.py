@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from .contract import validate_task
+from .reconcile import reconcile_tasks
 from .planning import (
     append_progress,
     finalize_evidence,
@@ -209,6 +210,10 @@ def _build_parser() -> argparse.ArgumentParser:
     evidence_ready_parser.add_argument("directory", type=Path)
     evidence_ready_parser.add_argument("--task-id", required=True)
     evidence_ready_parser.add_argument("--run-id")
+    evidence_reconcile_parser = evidence_sub.add_parser("reconcile")
+    evidence_reconcile_parser.add_argument("root", type=Path)
+    evidence_reconcile_parser.add_argument("--task-id")
+    evidence_reconcile_parser.add_argument("--update", action="store_true")
 
     gate = groups.add_parser("gate", help="run merge gates")
     gate_sub = gate.add_subparsers(dest="action", required=True)
@@ -985,6 +990,13 @@ def _main(argv: list[str] | None = None) -> int:
                 return CONFIG
             return _command_result(result)
         if args.group == "evidence":
+            if args.action == "reconcile":
+                value = reconcile_tasks(args.root, args.task_id, update=args.update)
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(json.dumps(value, ensure_ascii=True, sort_keys=True))
+                return PASS
             if args.action == "readiness":
                 value = evidence_readiness(args.directory, args.task_id)
                 if args.format == "json":

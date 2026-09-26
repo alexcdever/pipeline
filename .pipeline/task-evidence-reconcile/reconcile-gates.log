@@ -1,0 +1,5 @@
+Runtime preflight: pass; Git 2.55.0, Node 22.23.2, pnpm 10.27.0.
+Task validate current and all task sheets: exit code 0.
+Freeze-check baseline 875203aa1a06f98ce2def5b2fb0a1ea6f8c0d4ee: exit code 0.
+Git diff --check: exit code 0.
+Scope check: blocked by pre-existing untracked .pipeline/metrics artifact; artifact was removed only because it was newly generated and untracked, no tracked metrics were deleted.
