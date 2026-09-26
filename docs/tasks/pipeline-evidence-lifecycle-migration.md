@@ -212,38 +212,42 @@
 
 ### 任务锚点
 
-- 基线 HEAD：`1a691b5`
-- 契约提交：待提交
-- 执行分支：待创建
+- 基线 HEAD：`764c875dd756bef43413477a94ecc500eae42ae3`
+- 契约提交：`764c875dd756bef43413477a94ecc500eae42ae3`
+- 执行分支：`pipeline-evidence-lifecycle-migration`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/pipeline-evidence-lifecycle-migration`
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-1 | 未开始 | - | - | - |
-| acceptance-test-2 | 未开始 | - | - | - |
-| acceptance-test-3 | 未开始 | - | - | - |
-| acceptance-test-4 | 未开始 | - | - | - |
-| acceptance-test-5 | 未开始 | - | - | - |
-| acceptance-test-6 | 未开始 | - | - | - |
+| acceptance-test-1 | BLOCKED | `python -m unittest tests.test_git_checks -v` | `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | Frozen contract requires commit-history guard absent from baseline tool surface. |
+| acceptance-test-2 | BLOCKED | `python -m unittest tests.test_evidence -v` | `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | Frozen contract requires finalize/finalized lifecycle absent from baseline CLI surface. |
+| acceptance-test-3 | BLOCKED | `python -m unittest tests.test_cli -v` | `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | Required commit/evidence-finalize CLI commands are not present at baseline. |
+| acceptance-test-4 | BLOCKED | `python -m unittest tests.test_layout tests.test_cli -v` | `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | `tests/test_layout.py` and the required conflict-safe lifecycle are absent at baseline. |
+| acceptance-test-5 | BLOCKED | `python -m unittest discover -s tests -v` | `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | Full regression was not run as acceptance because the frozen contract cannot be dispatched by current schema-2 tooling. |
+| acceptance-test-6 | BLOCKED | `python -m pipeline_tools task validate docs/tasks/pipeline-evidence-lifecycle-migration.md` | `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | Legacy schema-1 task is readable but not dispatchable under current schema-2 contract enforcement. |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| - | 任务单创建 | 未开始 | - | 契约提交后创建 worktree |
+| 2026-09-26 / 1 | 任务单冻结、身份核对与 runtime preflight | PASS | runtime output; worktree HEAD `764c875dd756bef43413477a94ecc500eae42ae3` | Continue with executor only if contract/tool compatibility is resolved |
+| 2026-09-26 / 1 | Executor compatibility check | BLOCKED | `.pipeline/pipeline-evidence-lifecycle-migration/executor-report.md`, `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json` | Preserve scene; establish continuation task for schema/tool migration |
+| 2026-09-26 / 1 | Independent review | BLOCKED | `.pipeline/pipeline-evidence-lifecycle-migration/review-report.md` | Do not claim PASS or merge |
+| 2026-09-26 / 1 | Main final check | BLOCKED | `.pipeline/pipeline-evidence-lifecycle-migration/final-check.md` | Await continuation decision |
 
 ### 设计变更与延续任务索引
 
-- 无。
+- `continuation-required`: current tools enforce schema 2 while this frozen task sheet is schema 1; do not rewrite this task sheet or `implement-plan.md`.
+- Fact record: `.pipeline/pipeline-evidence-lifecycle-migration/blocker-facts.json`
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
+- 状态：BLOCKED
+- 执行子代理：BLOCKED（未执行产品实现）
+- 独立审查子代理：BLOCKED（未进行产品复验）
+- 主代理最终检查：BLOCKED
 - 合并提交：-
-- 合并后复验：未开始
-- 遗留项：-
+- 合并后复验：未执行
+- 遗留项：必须由主代理建立 continuation 任务并决定 schema-1 兼容策略；本任务现场和基线契约保留不变。
