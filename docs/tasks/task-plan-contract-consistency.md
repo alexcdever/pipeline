@@ -74,6 +74,9 @@ entry：`pipeline_tools/__main__.py`；interaction：task-plan/任务单 JSON；
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_matching_plan_and_schema2_sheet_pass -v`
 - 验收模式：契约 / 集成；证据等级：2；结果要求：退出码 0。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试2：字段漂移逐项拒绝
 
 - 触发：分别改变 task type、operations、chain、acceptance binding、dependencies 或 hash。
@@ -82,6 +85,9 @@ entry：`pipeline_tools/__main__.py`；interaction：task-plan/任务单 JSON；
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_field_drift_is_reported_and_fail_closed -v`
 - 验收模式：契约 / 安全边界；证据等级：2；结果要求：每个变体均非零且输入未改。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试3：重复、缺失和越界安全
 
 - 触发：重复 task ID、未知 acceptance ID、循环依赖、越界路径和既有任务单覆盖尝试。
@@ -90,6 +96,9 @@ entry：`pipeline_tools/__main__.py`；interaction：task-plan/任务单 JSON；
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_duplicate_missing_and_unsafe_plan_inputs_are_rejected -v`
 - 验收模式：安全边界；证据等级：2；结果要求：结构化错误可定位。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试4：回归
 
 - 触发：全量测试和契约测试。
@@ -134,9 +143,69 @@ entry：`pipeline_tools/__main__.py`；interaction：task-plan/任务单 JSON；
 - 状态：未开始；执行子代理：未开始；独立审查子代理：未开始；主代理最终检查：未开始；合并提交：-；合并后复验：未开始；遗留项：-
 
 ```pipeline-contract
-{"schema":2,"task_id":"task-plan-contract-consistency","task_type":"prerequisite","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/contract.py","pipeline_tools/planning.py","pipeline_tools/__main__.py","tests/test_task_plan_contract_consistency.py","tests/test_contract.py","references/**","docs/tasks/task-plan-contract-consistency.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"task-plan-contract-compare","kind":"validate","scope":"task-plan","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"task-plan-contract-hash-check","kind":"validate","scope":"requirements","acceptance_tests":["acceptance-test-2"]},{"id":"task-plan-contract-freeze-check","kind":"gate","scope":"task-sheet","acceptance_tests":["acceptance-test-2","acceptance-test-3"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/planning.py"],"domain":["pipeline_tools/contract.py"],"persistence":["docs/tasks/<task-id>.md","implement-plan.md"],"readback":["pipeline_tools/contract.py"],"recovery":["pipeline_tools/planning.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":2,"test_ref":"tests/test_task_plan_contract_consistency.py: TaskPlanContractConsistencyTests.test_matching_plan_and_schema2_sheet_pass","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_matching_plan_and_schema2_sheet_pass -v"},{"id":"acceptance-test-2","evidence_level":2,"test_ref":"tests/test_task_plan_contract_consistency.py: TaskPlanContractConsistencyTests.test_field_drift_is_reported_and_fail_closed","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_field_drift_is_reported_and_fail_closed -v"},{"id":"acceptance-test-3","evidence_level":2,"test_ref":"tests/test_task_plan_contract_consistency.py: TaskPlanContractConsistencyTests.test_duplicate_missing_and_unsafe_plan_inputs_are_rejected","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_duplicate_missing_and_unsafe_plan_inputs_are_rejected -v"},{"id":"acceptance-test-4","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["planning-run-task-generation"],"required_evidence_levels":[1,2]}
+{"schema":2,"task_id":"task-plan-contract-consistency","task_type":"prerequisite","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/contract.py","pipeline_tools/planning.py","pipeline_tools/__main__.py","tests/test_task_plan_contract_consistency.py","tests/test_contract.py","references/**","docs/tasks/task-plan-contract-consistency.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"task-plan-contract-compare","kind":"validate","scope":"task-plan","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"task-plan-contract-hash-check","kind":"validate","scope":"requirements","acceptance_tests":["acceptance-test-2"]},{"id":"task-plan-contract-freeze-check","kind":"gate","scope":"task-sheet","acceptance_tests":["acceptance-test-2","acceptance-test-3"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/planning.py"],"domain":["pipeline_tools/contract.py"],"persistence":["docs/tasks/task-plan-contract-consistency.md","implement-plan.md"],"readback":["pipeline_tools/contract.py"],"recovery":["pipeline_tools/planning.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":2,"test_ref":"tests/test_task_plan_contract_consistency.py: TaskPlanContractConsistencyTests.test_matching_plan_and_schema2_sheet_pass","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_matching_plan_and_schema2_sheet_pass -v"},{"id":"acceptance-test-2","evidence_level":2,"test_ref":"tests/test_task_plan_contract_consistency.py: TaskPlanContractConsistencyTests.test_field_drift_is_reported_and_fail_closed","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_field_drift_is_reported_and_fail_closed -v"},{"id":"acceptance-test-3","evidence_level":2,"test_ref":"tests/test_task_plan_contract_consistency.py: TaskPlanContractConsistencyTests.test_duplicate_missing_and_unsafe_plan_inputs_are_rejected","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_duplicate_missing_and_unsafe_plan_inputs_are_rejected -v"},{"id":"acceptance-test-4","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["planning-run-task-generation"],"required_evidence_levels":[1,2]}
 ```
 
 ## 生命周期记录
 
 过程事件写入 `.pipeline/task-plan-contract-consistency/`，不改冻结契约。
+
+- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v`（历史命令未重新核验）
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
+
+
+## 任务身份
+
+- 项目：pipeline
+- 领域或阶段：历史任务结构迁移
+- 用户结果或系统能力：保留原任务语义并符合当前结构校验。
+- 执行 worktree 约定：UNVERIFIED（历史任务单未在本轮重新核验）
+- 状态：UNVERIFIED
+
+
+## 依赖与范围
+
+### 前置条件
+
+- 原任务单、当前 schema 和校验脚本。
+
+### 允许修改
+
+- 本任务单结构字段。
+
+### 明确不改
+
+- implement-plan.md、IDEA.md、产品代码、metrics 和历史验收结论。
+
+
+## 事实、假设与待决
+
+### 已确认事实
+
+- 本轮仅依据 task validate 输出修复结构缺口。
+
+### 未验证事实
+
+- 历史验收结果、提交和证据新鲜度保持 UNVERIFIED。
+
+### 禁止猜测
+
+- 不把结构校验通过解释为产品或验收通过。
+
+
+### 任务锚点
+
+- 基线 HEAD：UNVERIFIED
+- 契约提交：UNVERIFIED
+- 执行分支：UNVERIFIED
+- 执行 worktree：UNVERIFIED
+
+
+### 验收台账
+
+| 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
+|---|---|---|---|---|
+| 验收测试1 | UNVERIFIED | - | - | 历史结果未重新核验 |
+
+- 合并提交：UNVERIFIED

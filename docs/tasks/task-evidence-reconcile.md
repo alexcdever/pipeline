@@ -30,7 +30,7 @@
     "interaction": ["pipeline_tools dispatch and freshness checks"],
     "application": ["pipeline_tools task/evidence lifecycle"],
     "domain": ["task identity and evidence status contract"],
-    "persistence": [".pipeline/<task-id>/ reports and evidence"],
+    "persistence": [".pipeline/task-evidence-reconcile/ reports and evidence"],
     "readback": ["task-id/branch/worktree/HEAD/result/freshness/readiness/verify fields"],
     "recovery": ["UNVERIFIED for insufficient history; no fabricated PASS"]
   },
@@ -255,3 +255,9 @@
 
 ---
 
+
+
+## 决策点
+
+1. 历史语义与模板冲突时保留原语义并标记 UNVERIFIED。
+2. 产品行为或实现计划变化另开 continuation。

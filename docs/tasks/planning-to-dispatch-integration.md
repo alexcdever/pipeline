@@ -81,6 +81,9 @@ entry：`pipeline_tools/__main__.py`；interaction：结构化 planning/dispatch
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch -v`
 - 验收模式：端到端集成；证据等级：3；结果要求：退出码 0，阶段序列完整。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试2：各阶段失败 fail closed
 
 - 触发：逐一注入 preflight、facts、generation、contract、identity 失败。
@@ -89,6 +92,9 @@ entry：`pipeline_tools/__main__.py`；interaction：结构化 planning/dispatch
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_stage_failures_stop_downstream_and_preserve_artifacts -v`
 - 验收模式：端到端失败边界；证据等级：3；结果要求：每个变体非零且 artifact 哈希稳定。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试3：确认策略与重复派发幂等
 
 - 触发：自动推进关闭、人工确认拒绝、重复请求和 identity drift。
@@ -97,6 +103,9 @@ entry：`pipeline_tools/__main__.py`；interaction：结构化 planning/dispatch
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_confirmation_policy_and_repeated_dispatch_are_safe -v`
 - 验收模式：端到端策略/安全；证据等级：3；结果要求：退出码和状态分类稳定。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试4：CLI JSON 与完整回归
 
 - 触发：从 CLI 运行成功、阻塞和恢复路径。
@@ -104,6 +113,10 @@ entry：`pipeline_tools/__main__.py`；interaction：结构化 planning/dispatch
 - 测试：`tests/test_cli.py: CLITests.test_planning_to_dispatch_cli_contract_and_failure_boundaries`；命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_to_dispatch_cli_contract_and_failure_boundaries -v`
 - 验收模式：CLI；证据等级：2；结果要求：退出码 0；错误路径是预期结构化失败。
 
+
+- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v`（历史命令未重新核验）
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试5：全量回归与范围
 
 - 触发：完整测试、契约校验、diff check。
@@ -148,9 +161,69 @@ entry：`pipeline_tools/__main__.py`；interaction：结构化 planning/dispatch
 - 状态：未开始；执行子代理：未开始；独立审查子代理：未开始；主代理最终检查：未开始；合并提交：-；合并后复验：未开始；遗留项：-
 
 ```pipeline-contract
-{"schema":2,"task_id":"planning-to-dispatch-integration","task_type":"vertical-feature","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/**","tests/test_planning_dispatch_integration.py","tests/test_cli.py","references/**","SKILL.md","README.md","docs/tasks/planning-to-dispatch-integration.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"integration-preflight","kind":"validate","scope":"planning-run","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-facts-gate","kind":"gate","scope":"facts","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-task-generation","kind":"generate","scope":"task-plan","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-contract-gate","kind":"gate","scope":"task-sheet","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-dispatch-identity","kind":"dispatch","scope":"worktree","acceptance_tests":["acceptance-test-1","acceptance-test-3"]},{"id":"integration-dispatch-confirm","kind":"confirm","scope":"dispatch","acceptance_tests":["acceptance-test-3","acceptance-test-4"]},{"id":"integration-recovery-route","kind":"recover","scope":"dispatch","acceptance_tests":["acceptance-test-2","acceptance-test-3"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/core.py","pipeline_tools/planning.py"],"domain":["pipeline_tools/contract.py","pipeline_tools/planning.py"],"persistence":["docs/tasks/<task-id>.md",".pipeline/planning/<planning-run-id>/",".pipeline/<task-id>/",".worktrees/<task-id>/"],"readback":["pipeline_tools/__main__.py"],"recovery":["pipeline_tools/core.py","pipeline_tools/planning.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch -v"},{"id":"acceptance-test-2","evidence_level":3,"test_ref":"tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_stage_failures_stop_downstream_and_preserve_artifacts","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_stage_failures_stop_downstream_and_preserve_artifacts -v"},{"id":"acceptance-test-3","evidence_level":3,"test_ref":"tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_confirmation_policy_and_repeated_dispatch_are_safe","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_confirmation_policy_and_repeated_dispatch_are_safe -v"},{"id":"acceptance-test-4","evidence_level":2,"test_ref":"tests/test_cli.py: CLITests.test_planning_to_dispatch_cli_contract_and_failure_boundaries","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_to_dispatch_cli_contract_and_failure_boundaries -v"},{"id":"acceptance-test-5","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["planning-run-lifecycle","planning-facts-conflict-model","planning-run-task-generation","task-plan-contract-consistency","task-worktree-dispatch-identity","derived-task-dispatch-recovery"],"required_evidence_levels":[1,2,3]}
+{"schema":2,"task_id":"planning-to-dispatch-integration","task_type":"vertical-feature","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/**","tests/test_planning_dispatch_integration.py","tests/test_cli.py","references/**","SKILL.md","README.md","docs/tasks/planning-to-dispatch-integration.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"integration-preflight","kind":"validate","scope":"planning-run","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-facts-gate","kind":"gate","scope":"facts","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-task-generation","kind":"generate","scope":"task-plan","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-contract-gate","kind":"gate","scope":"task-sheet","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"integration-dispatch-identity","kind":"dispatch","scope":"worktree","acceptance_tests":["acceptance-test-1","acceptance-test-3"]},{"id":"integration-dispatch-confirm","kind":"confirm","scope":"dispatch","acceptance_tests":["acceptance-test-3","acceptance-test-4"]},{"id":"integration-recovery-route","kind":"recover","scope":"dispatch","acceptance_tests":["acceptance-test-2","acceptance-test-3"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/core.py","pipeline_tools/planning.py"],"domain":["pipeline_tools/contract.py","pipeline_tools/planning.py"],"persistence":["docs/tasks/planning-to-dispatch-integration.md",".pipeline/planning/historical-planning-run/",".pipeline/planning-to-dispatch-integration/",".worktrees/planning-to-dispatch-integration/"],"readback":["pipeline_tools/__main__.py"],"recovery":["pipeline_tools/core.py","pipeline_tools/planning.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch -v"},{"id":"acceptance-test-2","evidence_level":3,"test_ref":"tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_stage_failures_stop_downstream_and_preserve_artifacts","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_stage_failures_stop_downstream_and_preserve_artifacts -v"},{"id":"acceptance-test-3","evidence_level":3,"test_ref":"tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_confirmation_policy_and_repeated_dispatch_are_safe","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_confirmation_policy_and_repeated_dispatch_are_safe -v"},{"id":"acceptance-test-4","evidence_level":2,"test_ref":"tests/test_cli.py: CLITests.test_planning_to_dispatch_cli_contract_and_failure_boundaries","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_to_dispatch_cli_contract_and_failure_boundaries -v"},{"id":"acceptance-test-5","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["planning-run-lifecycle","planning-facts-conflict-model","planning-run-task-generation","task-plan-contract-consistency","task-worktree-dispatch-identity","derived-task-dispatch-recovery"],"required_evidence_levels":[1,2,3]}
 ```
 
 ## 生命周期记录
 
 过程事件写入 `.pipeline/planning-to-dispatch-integration/`，不改冻结契约。
+
+- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v`（历史命令未重新核验）
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
+
+
+## 任务身份
+
+- 项目：pipeline
+- 领域或阶段：历史任务结构迁移
+- 用户结果或系统能力：保留原任务语义并符合当前结构校验。
+- 执行 worktree 约定：UNVERIFIED（历史任务单未在本轮重新核验）
+- 状态：UNVERIFIED
+
+
+## 依赖与范围
+
+### 前置条件
+
+- 原任务单、当前 schema 和校验脚本。
+
+### 允许修改
+
+- 本任务单结构字段。
+
+### 明确不改
+
+- implement-plan.md、IDEA.md、产品代码、metrics 和历史验收结论。
+
+
+## 事实、假设与待决
+
+### 已确认事实
+
+- 本轮仅依据 task validate 输出修复结构缺口。
+
+### 未验证事实
+
+- 历史验收结果、提交和证据新鲜度保持 UNVERIFIED。
+
+### 禁止猜测
+
+- 不把结构校验通过解释为产品或验收通过。
+
+
+### 任务锚点
+
+- 基线 HEAD：UNVERIFIED
+- 契约提交：UNVERIFIED
+- 执行分支：UNVERIFIED
+- 执行 worktree：UNVERIFIED
+
+
+### 验收台账
+
+| 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
+|---|---|---|---|---|
+| 验收测试1 | UNVERIFIED | - | - | 历史结果未重新核验 |
+
+- 合并提交：UNVERIFIED

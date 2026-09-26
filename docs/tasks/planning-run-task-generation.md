@@ -205,7 +205,7 @@
     "interaction": ["pipeline_tools/__main__.py"],
     "application": ["pipeline_tools/planning.py"],
     "domain": ["pipeline_tools/contract.py", "pipeline_tools/planning.py"],
-    "persistence": ["docs/tasks/<task-id>.md", ".pipeline/planning/<planning-run-id>/"],
+    "persistence": ["docs/tasks/planning-run-task-generation.md", ".pipeline/planning/historical-planning-run/"],
     "readback": ["pipeline_tools/__main__.py", "pipeline_tools/contract.py"],
     "recovery": ["pipeline_tools/planning.py"]
   },
@@ -225,3 +225,42 @@
 ## 生命周期记录
 
 任务契约提交后，执行、审查和主代理过程事件写入 `.pipeline/planning-run-task-generation/{executor,reviewer,main}-progress.jsonl`，不修改本契约区。
+
+
+## 任务身份
+
+- 项目：pipeline
+- 领域或阶段：历史任务结构迁移
+- 用户结果或系统能力：保留原任务语义并符合当前结构校验。
+- 执行 worktree 约定：UNVERIFIED（历史任务单未在本轮重新核验）
+- 状态：UNVERIFIED
+
+
+## 依赖与范围
+
+### 前置条件
+
+- 原任务单、当前 schema 和校验脚本。
+
+### 允许修改
+
+- 本任务单结构字段。
+
+### 明确不改
+
+- implement-plan.md、IDEA.md、产品代码、metrics 和历史验收结论。
+
+
+## 事实、假设与待决
+
+### 已确认事实
+
+- 本轮仅依据 task validate 输出修复结构缺口。
+
+### 未验证事实
+
+- 历史验收结果、提交和证据新鲜度保持 UNVERIFIED。
+
+### 禁止猜测
+
+- 不把结构校验通过解释为产品或验收通过。

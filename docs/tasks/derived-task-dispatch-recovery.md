@@ -75,6 +75,9 @@ entry：`pipeline_tools/__main__.py`；interaction：父任务提交/结果 JSON
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_derived_task_binds_explicit_parent_commit_and_is_independent -v`
 - 验收模式：Git/集成；证据等级：3；结果要求：退出码 0，父子引用闭包完整。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试2：失败与证据缺失安全恢复
 
 - 触发：executor FAIL、review BLOCKED、报告缺失、commit 漂移或 worktree 不匹配。
@@ -83,6 +86,9 @@ entry：`pipeline_tools/__main__.py`；interaction：父任务提交/结果 JSON
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_missing_evidence_and_identity_drift_preserve_parent_and_block_resume -v`
 - 验收模式：恢复 / 安全边界；证据等级：3；结果要求：非零且父文件哈希不变。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试3：continuation 幂等与父历史不可改写
 
 - 触发：同一设计变更重复请求 continuation。
@@ -91,6 +97,9 @@ entry：`pipeline_tools/__main__.py`；interaction：父任务提交/结果 JSON
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history -v`
 - 验收模式：集成；证据等级：2；结果要求：退出码 0，重复请求可识别。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试4：回归
 
 - 触发：完整测试和 evidence/dispatch 校验。
@@ -134,9 +143,69 @@ entry：`pipeline_tools/__main__.py`；interaction：父任务提交/结果 JSON
 - 状态：未开始；执行子代理：未开始；独立审查子代理：未开始；主代理最终检查：未开始；合并提交：-；合并后复验：未开始；遗留项：-
 
 ```pipeline-contract
-{"schema":2,"task_id":"derived-task-dispatch-recovery","task_type":"derived","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/core.py","pipeline_tools/planning.py","pipeline_tools/__main__.py","tests/test_derived_task_dispatch_recovery.py","tests/test_evidence.py","references/**","docs/tasks/derived-task-dispatch-recovery.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"derived-task-plan","kind":"generate","scope":"derived-task","acceptance_tests":["acceptance-test-1","acceptance-test-3"]},{"id":"derived-dispatch-verify","kind":"validate","scope":"dispatch","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"derived-recovery-resume","kind":"recover","scope":"task","acceptance_tests":["acceptance-test-2","acceptance-test-3"]},{"id":"derived-recovery-preserve","kind":"record","scope":"evidence","acceptance_tests":["acceptance-test-2"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/core.py","pipeline_tools/planning.py"],"domain":["pipeline_tools/core.py"],"persistence":["docs/tasks/<task-id>.md",".pipeline/<task-id>/",".worktrees/<task-id>/"],"readback":["pipeline_tools/__main__.py"],"recovery":["pipeline_tools/core.py","pipeline_tools/planning.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_derived_task_binds_explicit_parent_commit_and_is_independent","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_derived_task_binds_explicit_parent_commit_and_is_independent -v"},{"id":"acceptance-test-2","evidence_level":3,"test_ref":"tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_missing_evidence_and_identity_drift_preserve_parent_and_block_resume","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_missing_evidence_and_identity_drift_preserve_parent_and_block_resume -v"},{"id":"acceptance-test-3","evidence_level":2,"test_ref":"tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history -v"},{"id":"acceptance-test-4","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["task-plan-contract-consistency","task-worktree-dispatch-identity","planning-run-lifecycle"],"required_evidence_levels":[1,2,3]}
+{"schema":2,"task_id":"derived-task-dispatch-recovery","task_type":"derived","implement_plan":{"path":"implement-plan.md"},"allowed_paths":["pipeline_tools/core.py","pipeline_tools/planning.py","pipeline_tools/__main__.py","tests/test_derived_task_dispatch_recovery.py","tests/test_evidence.py","references/**","docs/tasks/derived-task-dispatch-recovery.md"],"forbidden_paths":["implement-plan.md","IDEA.md","docs/tasks/** existing tasks",".pipeline/** existing history",".pipeline/metrics/**","**/*secret*","**/*token*"],"operations":[{"id":"derived-task-plan","kind":"generate","scope":"derived-task","acceptance_tests":["acceptance-test-1","acceptance-test-3"]},{"id":"derived-dispatch-verify","kind":"validate","scope":"dispatch","acceptance_tests":["acceptance-test-1","acceptance-test-2"]},{"id":"derived-recovery-resume","kind":"recover","scope":"task","acceptance_tests":["acceptance-test-2","acceptance-test-3"]},{"id":"derived-recovery-preserve","kind":"record","scope":"evidence","acceptance_tests":["acceptance-test-2"]}],"chain":{"entry":["pipeline_tools/__main__.py"],"interaction":["pipeline_tools/__main__.py"],"application":["pipeline_tools/core.py","pipeline_tools/planning.py"],"domain":["pipeline_tools/core.py"],"persistence":["docs/tasks/derived-task-dispatch-recovery.md",".pipeline/derived-task-dispatch-recovery/",".worktrees/derived-task-dispatch-recovery/"],"readback":["pipeline_tools/__main__.py"],"recovery":["pipeline_tools/core.py","pipeline_tools/planning.py"]},"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":3,"test_ref":"tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_derived_task_binds_explicit_parent_commit_and_is_independent","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_derived_task_binds_explicit_parent_commit_and_is_independent -v"},{"id":"acceptance-test-2","evidence_level":3,"test_ref":"tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_missing_evidence_and_identity_drift_preserve_parent_and_block_resume","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_missing_evidence_and_identity_drift_preserve_parent_and_block_resume -v"},{"id":"acceptance-test-3","evidence_level":2,"test_ref":"tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history -v"},{"id":"acceptance-test-4","evidence_level":1,"test_ref":"tests/: complete regression suite","command_ref":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v"}],"dependencies":["task-plan-contract-consistency","task-worktree-dispatch-identity","planning-run-lifecycle"],"required_evidence_levels":[1,2,3]}
 ```
 
 ## 生命周期记录
 
 过程事件写入 `.pipeline/derived-task-dispatch-recovery/`，不改冻结契约。
+
+- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests -v`（历史命令未重新核验）
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
+
+
+## 任务身份
+
+- 项目：pipeline
+- 领域或阶段：历史任务结构迁移
+- 用户结果或系统能力：保留原任务语义并符合当前结构校验。
+- 执行 worktree 约定：UNVERIFIED（历史任务单未在本轮重新核验）
+- 状态：UNVERIFIED
+
+
+## 依赖与范围
+
+### 前置条件
+
+- 原任务单、当前 schema 和校验脚本。
+
+### 允许修改
+
+- 本任务单结构字段。
+
+### 明确不改
+
+- implement-plan.md、IDEA.md、产品代码、metrics 和历史验收结论。
+
+
+## 事实、假设与待决
+
+### 已确认事实
+
+- 本轮仅依据 task validate 输出修复结构缺口。
+
+### 未验证事实
+
+- 历史验收结果、提交和证据新鲜度保持 UNVERIFIED。
+
+### 禁止猜测
+
+- 不把结构校验通过解释为产品或验收通过。
+
+
+### 任务锚点
+
+- 基线 HEAD：UNVERIFIED
+- 契约提交：UNVERIFIED
+- 执行分支：UNVERIFIED
+- 执行 worktree：UNVERIFIED
+
+
+### 验收台账
+
+| 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
+|---|---|---|---|---|
+| 验收测试1 | UNVERIFIED | - | - | 历史结果未重新核验 |
+
+- 合并提交：UNVERIFIED

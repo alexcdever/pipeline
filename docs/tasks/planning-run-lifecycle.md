@@ -92,6 +92,9 @@ entry：`pipeline_tools/__main__.py`；interaction：planning CLI JSON 参数；
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_lifecycle.PlanningLifecycleTests.test_run_identity_and_state_transitions_are_bound_and_idempotent -v`
 - 验收模式：集成 / CLI；证据等级：2；结果要求：退出码 0，JSON 状态可回读。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试2：失败、中断与冲突保留现场
 
 - 触发：注入哈希漂移、重复 run、写入失败和中断。
@@ -100,6 +103,9 @@ entry：`pipeline_tools/__main__.py`；interaction：planning CLI JSON 参数；
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_lifecycle.PlanningLifecycleTests.test_failure_interruption_and_conflict_preserve_auditable_artifacts -v`
 - 验收模式：集成 / 安全边界；证据等级：2；结果要求：退出码非零且错误分类稳定。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试3：成功终止不泄漏规划中间产物
 
 - 触发：完成一次有效规划运行并终止。
@@ -108,6 +114,9 @@ entry：`pipeline_tools/__main__.py`；interaction：planning CLI JSON 参数；
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_run_lifecycle_success_and_idempotent_finalize -v`
 - 验收模式：CLI 集成；证据等级：2；结果要求：退出码 0，输出可解析且无越界写入。
 
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
 ### 验收测试4：回归与契约范围
 
 - 触发：运行完整测试和本任务校验。
@@ -176,7 +185,7 @@ entry：`pipeline_tools/__main__.py`；interaction：planning CLI JSON 参数；
     {"id": "planning-run-finalize", "kind": "finalize", "scope": "planning-run", "acceptance_tests": ["acceptance-test-2", "acceptance-test-3"]},
     {"id": "planning-run-recover", "kind": "recover", "scope": "planning-run", "acceptance_tests": ["acceptance-test-2"]}
   ],
-  "chain": {"entry": ["pipeline_tools/__main__.py"], "interaction": ["pipeline_tools/__main__.py"], "application": ["pipeline_tools/planning.py"], "domain": ["pipeline_tools/planning.py", "pipeline_tools/contract.py"], "persistence": [".pipeline/planning/<planning-run-id>/"], "readback": ["pipeline_tools/__main__.py"], "recovery": ["pipeline_tools/planning.py"]},
+  "chain": {"entry": ["pipeline_tools/__main__.py"], "interaction": ["pipeline_tools/__main__.py"], "application": ["pipeline_tools/planning.py"], "domain": ["pipeline_tools/planning.py", "pipeline_tools/contract.py"], "persistence": [".pipeline/planning/historical-planning-run/"], "readback": ["pipeline_tools/__main__.py"], "recovery": ["pipeline_tools/planning.py"]},
   "acceptance_tests": [
     {"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_planning_lifecycle.py: PlanningLifecycleTests.test_run_identity_and_state_transitions_are_bound_and_idempotent", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_lifecycle.PlanningLifecycleTests.test_run_identity_and_state_transitions_are_bound_and_idempotent -v"},
     {"id": "acceptance-test-2", "evidence_level": 2, "test_ref": "tests/test_planning_lifecycle.py: PlanningLifecycleTests.test_failure_interruption_and_conflict_preserve_auditable_artifacts", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_planning_lifecycle.PlanningLifecycleTests.test_failure_interruption_and_conflict_preserve_auditable_artifacts -v"},
@@ -191,3 +200,30 @@ entry：`pipeline_tools/__main__.py`；interaction：planning CLI JSON 参数；
 ## 生命周期记录
 
 契约提交后，过程记录写入 `.pipeline/planning-run-lifecycle/`，不修改冻结契约区。
+
+- 证据等级：1
+- 结果要求：重新执行后确认退出码与证据；本轮保持 UNVERIFIED。
+
+
+## 任务身份
+
+- 项目：pipeline
+- 领域或阶段：历史任务结构迁移
+- 用户结果或系统能力：保留原任务语义并符合当前结构校验。
+- 执行 worktree 约定：UNVERIFIED（历史任务单未在本轮重新核验）
+- 状态：UNVERIFIED
+
+
+## 依赖与范围
+
+### 前置条件
+
+- 原任务单、当前 schema 和校验脚本。
+
+### 允许修改
+
+- 本任务单结构字段。
+
+### 明确不改
+
+- implement-plan.md、IDEA.md、产品代码、metrics 和历史验收结论。
