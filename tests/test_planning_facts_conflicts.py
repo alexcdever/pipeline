@@ -41,6 +41,18 @@ class PlanningFactsConflictTests(unittest.TestCase):
         self.assertEqual(result["conflicts"][0]["status"], "blocking")
         self.assertIn("obtain product decision", result["conflicts"][0]["next_actions"])
 
+    def test_decision_blocker_status_semantics_are_explicit_and_fail_closed(self):
+        for status, blocked in (("blocking", True), ("resolved", False), ("non_blocking", False), ("unknown", True), (None, True)):
+            model = self.valid_model()
+            blocker = {"id": "decision-1"}
+            if status is not None:
+                blocker["status"] = status
+            model["decision_blockers"] = [blocker]
+            result = gate_facts_for_planning(model, planning_run_id="run-1")
+            self.assertEqual(result["status"] == "blocked", blocked, status)
+            self.assertEqual(result["planning_allowed"], not blocked, status)
+            self.assertIn("decision-1", {item.get("id") for item in result["decision_blockers"]})
+
     def test_invalid_facts_and_unauthorized_resolution_are_rejected(self):
         model = self.valid_model()
         model["facts"][0]["source_id"] = ""

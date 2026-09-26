@@ -118,6 +118,46 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertFalse(list((root / "docs" / "tasks").glob("*.planning-tmp")))
             self.assertTrue((root / ".pipeline" / "planning" / "rollback-run" / "generation-result.json").is_file())
 
+    def test_single_resource_operation_has_independent_coverage_and_readback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("single-task",))
+            operation = {"id": "single-resource", "kind": "single-resource-operation", "resources": ["resource"], "acceptance_tests": ["acceptance-test-1"]}
+            project["operations"] = [operation]
+            requirements["operations"] = [operation]
+            plan["operations"] = [operation]
+            plan["tasks"][0]["operations"] = ["single-resource"]
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="single-run")
+            self.assertEqual(result["status"], "pass", result)
+            sheet = root / "docs" / "tasks" / "single-task.md"
+            text = sheet.read_text(encoding="utf-8")
+            self.assertIn('"kind": "single-resource-operation"', text)
+            self.assertIn('"resources": ["resource"]', text)
+            self.assertEqual(validate_task(sheet), [])
+            self.assertEqual(json.loads(text.split("```pipeline-contract\\n", 1)[1].split("\\n```", 1)[0])["operations"][0]["kind"], "single-resource-operation")
+
+    def test_batch_resource_operation_has_independent_coverage_and_readback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("batch-task",))
+            (root / "src" / "db.py").write_text("db\\n", encoding="utf-8")
+            project["resources"].append({"id": "resource-db", "path": "src/db.py"})
+            operation = {"id": "batch-resources", "kind": "batch-resource-operation", "resources": ["resource", "resource-db"], "acceptance_tests": ["acceptance-test-1"]}
+            project["operations"] = [operation]
+            requirements["operations"] = [operation]
+            plan["resources"] = ["resource", "resource-db"]
+            plan["operations"] = [operation]
+            plan["tasks"][0].update({"resources": ["resource", "resource-db"], "operations": ["batch-resources"]})
+            make_repo(root)
+            result = self.run_generation(root, "batch-run", project, requirements, plan)
+            self.assertEqual(result["status"], "pass", result)
+            sheet = root / "docs" / "tasks" / "batch-task.md"
+            contract = json.loads(sheet.read_text(encoding="utf-8").split("```pipeline-contract\\n", 1)[1].split("\\n```", 1)[0])
+            self.assertEqual(contract["operations"][0]["kind"], "batch-resource-operation")
+            self.assertEqual(contract["operations"][0]["resources"], ["resource", "resource-db"])
+            self.assertEqual(validate_task(sheet), [])
+
     def test_generation_rejects_implement_plan_hash_drift_and_checks_plan_sheet_consistency(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
