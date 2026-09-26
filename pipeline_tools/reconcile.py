@@ -1,0 +1,121 @@
+"""Mechanical reconciliation of task sheets and directly readable evidence."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from .contract import load_contract
+from .core import evidence_freshness, evidence_readiness, evidence_verify
+
+_REPORTS = ("executor-report.md", "review-report.md", "final-check.md")
+_RESULTS = ("executor-result.json", "reviewer-result.json", "final-result.json")
+
+
+def _machine_block(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None, ["unreadable"]
+    starts = [i for i, line in enumerate(lines) if line.strip() == "```pipeline-evidence"]
+    ends = [i for i in range(starts[0] + 1, len(lines)) if lines[i].strip() == "```"] if len(starts) == 1 else []
+    if len(starts) != 1 or len(ends) != 1:
+        return None, ["missing or duplicate pipeline-evidence block"]
+    try:
+        value = json.loads("\n".join(lines[starts[0] + 1 : ends[0]]))
+    except json.JSONDecodeError:
+        return None, ["pipeline-evidence JSON is invalid"]
+    return (value, []) if isinstance(value, dict) else (None, ["pipeline-evidence must be an object"])
+
+
+def _json(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dict[str, Any]:
+    root, task_sheet = Path(root).resolve(), Path(task_sheet).resolve()
+    contract, contract_errors = load_contract(task_sheet)
+    task_id = contract.get("task_id") if contract else task_sheet.stem
+    evidence = root / ".pipeline" / str(task_id)
+    reports: dict[str, dict[str, Any]] = {}
+    report_errors: list[str] = []
+    for name in _REPORTS:
+        path = evidence / name
+        if not path.is_file():
+            report_errors.append(f"missing {name}")
+            continue
+        value, errors = _machine_block(path)
+        if errors or value is None:
+            report_errors.extend(f"{name}: {error}" for error in errors)
+        else:
+            reports[name] = value
+    results = {name: value for name in _RESULTS if (value := _json(evidence / name)) is not None}
+    identity_values = {
+        "task_id": {value.get("task_id") for value in reports.values()},
+        "branch": {value.get("branch") for value in reports.values()},
+        "worktree": {value.get("worktree") for value in reports.values()},
+        "head": {value.get("head") for value in reports.values() if value.get("head") is not None},
+    }
+    identity = {
+        "task_id": task_id if identity_values["task_id"] == {task_id} else None,
+        "branch": next(iter(identity_values["branch"])) if len(identity_values["branch"]) == 1 else None,
+        "worktree": next(iter(identity_values["worktree"])) if len(identity_values["worktree"]) == 1 else None,
+        "head": next(iter(identity_values["head"])) if len(identity_values["head"]) == 1 else None,
+    }
+    identity_errors = []
+    if any(len(values) > 1 for values in identity_values.values()):
+        identity_errors.append("report identity conflict")
+    if reports and any(not value.get(key) for value in reports.values() for key in ("task_id", "branch", "worktree")):
+        identity_errors.append("report identity is incomplete")
+    verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"))
+    readiness = evidence_readiness(evidence, str(task_id))
+    result_path = evidence / "final-result.json"
+    if not result_path.is_file():
+        result_path = evidence / "reviewer-result.json"
+    freshness = evidence_freshness(root, evidence, result_path if result_path.is_file() else None)
+    statuses = [value.get("status") for value in reports.values()]
+    direct_pass = (not contract_errors and not report_errors and not identity_errors and not verify_errors
+                   and readiness["status"] == "ready" and freshness["status"] == "pass"
+                   and len(reports) == len(_REPORTS)
+                   and all(status in {"PASS", "READY-TO-MERGE", "MERGED"} for status in statuses))
+    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
+    output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,
+              "identity": identity, "result": {name: value.get("status") for name, value in results.items()},
+              "freshness": freshness["status"], "readiness": readiness["status"],
+              "verify": "PASS" if not verify_errors else "BLOCKED",
+              "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
+              "errors": contract_errors + report_errors + identity_errors + verify_errors,
+              "unverified": [] if direct_pass else ["task completion"], "updated": False}
+    if update and not contract_errors:
+        text = task_sheet.read_text(encoding="utf-8")
+        marker = "### 最终结果"
+        reconcile_marker = "### 机械对账（直接证据）"
+        block = (reconcile_marker + "\n\n" f"- task-id: `{task_id}`\n- result: `{status}`\n"
+                 f"- freshness: `{freshness['status']}`\n- readiness: `{readiness['status']}`\n"
+                 f"- verify: `{output['verify']}`\n- evidence: `{evidence.relative_to(root).as_posix()}`\n")
+        if reconcile_marker in text:
+            start = text.index(reconcile_marker)
+            end = text.find("\n### ", start + len(reconcile_marker))
+            end = len(text) if end < 0 else end
+            text = text[:start] + block.rstrip() + text[end:]
+        elif marker in text:
+            insert_at = text.index(marker) + len(marker)
+            text = text[:insert_at] + "\n\n" + block + text[insert_at:]
+        else:
+            text += "\n" + block
+        task_sheet.write_text(text, encoding="utf-8")
+        output["updated"] = True
+    return output
+
+
+def reconcile_tasks(root: Path, task_id: str | None = None, *, update: bool = False) -> dict[str, Any]:
+    root = Path(root).resolve()
+    sheets = sorted((root / "docs" / "tasks").glob("*.md"))
+    selected = [sheet for sheet in sheets if task_id is None or sheet.stem == task_id]
+    return {"schema": 1, "command": "evidence.reconcile", "status": "pass", "tasks": [reconcile_task(root, sheet, update=update) for sheet in selected], "updated": update}
