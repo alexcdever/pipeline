@@ -101,4 +101,24 @@ class GitChecks(unittest.TestCase):
             event.write_text('{"changed":true}')
             self.assertEqual(scope_check(p,['src/**'],[]),[])
 
+    def test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d); subprocess.run(['git', 'init'], cwd=p, capture_output=True)
+            metrics = p / '.pipeline' / 'metrics'
+            metrics.mkdir(parents=True)
+            (metrics / 'historical.json').write_text('{}')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True, capture_output=True)
+            subprocess.run(['git', 'commit', '-qm', 'historical metrics'], cwd=p, check=True)
+            (metrics / 'repository-task.json').write_text('{}')
+            (p / '.pipeline' / 'metrics-export.json').write_text('{}')
+            (p / 'IDEA.md').write_text('preserve')
+            self.assertEqual(
+                scope_check(
+                    p,
+                    ['.pipeline/repository-evidence-hygiene/**'],
+                    ['IDEA.md'],
+                ),
+                ['.pipeline/metrics-export.json', 'IDEA.md'],
+            )
+
 if __name__=='__main__': unittest.main()
