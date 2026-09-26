@@ -1194,11 +1194,15 @@ def main(argv: list[str] | None = None) -> int:
         if exit_code is not None:
             try:
                 _record_automatic_metrics(actual_argv, exit_code, round(time.monotonic() - started, 3))
-            except BaseException:
+            except BaseException as error:
                 # Automatic feedback must never replace the original command
                 # result, including when attribution or filesystem probing
-                # fails during finalization.
-                pass
+                # fails during finalization. Keep the fallback diagnostic
+                # bounded and non-recursive as well.
+                try:
+                    print(f"WARNING: automatic_metrics_not_collected ({type(error).__name__})", file=sys.stderr)
+                except BaseException:
+                    pass
 
 
 if __name__ == "__main__":
