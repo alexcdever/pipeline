@@ -2,17 +2,16 @@
   "schema":1,
   "task_id":"repository-evidence-hygiene-continuation-5",
   "role":"executor",
-  "status":"blocked",
-  "identity":{"product_head":"ba1ac15","contract":"cd79ce7","head":"837c9f54b897ed6c6abcc0ee095bcbabbf87d554","branch":"repository-evidence-hygiene","worktree":"D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene","evidence_only":true},
+  "status":"pass",
+  "identity":{"product_head":"ba1ac15","contract":"cd79ce7","head":"644291ac032b98f5cbd611ef5df9b0bb52866892","branch":"repository-evidence-hygiene","worktree":"D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene","evidence_only":true},
   "acceptance":[
     {"id":"acceptance-test-untracked-metrics","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
     {"id":"acceptance-test-task-sheets-validate","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
     {"id":"acceptance-test-full-regression","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
-    {"id":"acceptance-test-evidence-readiness","status":"blocked","exit_code":3,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
-    {"id":"acceptance-test-evidence-verify","status":"blocked","exit_code":3,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
-    {"id":"acceptance-test-gate","status":"blocked","exit_code":3,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]}
+    {"id":"acceptance-test-evidence-readiness","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-evidence-verify","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]},
+    {"id":"acceptance-test-gate","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"]}
   ],
   "evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"],
-  "unverified":["freshness after evidence commit","final-check","merge readiness"],
-  "blockers":["evidence refresh is uncommitted; freshness must be rerun after commit"]
+  "unverified":[]
 }
