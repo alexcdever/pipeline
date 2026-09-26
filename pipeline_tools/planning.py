@@ -808,15 +808,16 @@ def validate_task_plan(
             if test_id:
                 operation_acceptance_ids.add(test_id)
     top_level_tests = plan.get("acceptance_tests")
-    if top_level_tests is not None:
+    if "acceptance_tests" not in plan:
+        errors.append("acceptance_tests must declare complete top-level records")
+        complete_ids = set()
+    else:
         complete_ids = _validate_acceptance_records(top_level_tests, errors, require_complete=True)
         for operation_id, operation in operation_records.items():
             for item in operation.get("acceptance_tests", []):
                 test_id = _acceptance_id(item)
                 if test_id and test_id not in complete_ids:
                     errors.append(f"operation {operation_id} references unknown acceptance test: {test_id}")
-    else:
-        complete_ids = operation_acceptance_ids
     for operation_id, operation in operation_records.items():
         tests = operation.get("acceptance_tests")
         if not isinstance(tests, list) or not tests:
@@ -1318,7 +1319,14 @@ def planning_to_dispatch(
     preflight = planning_preflight(root)
     if not stage("preflight", preflight.get("status", "blocked"), preflight):
         return result
-    gate_input = {"schema": 1, "planning_run_id": run_id, "facts": project_facts.get("facts", []) if isinstance(project_facts, dict) else []}
+    gate_input = {"schema": 1, "planning_run_id": run_id}
+    if isinstance(project_facts, dict):
+        gate_input.update({
+            field: project_facts.get(field, [])
+            for field in ("facts", "assumptions", "unknowns", "conflicts", "non_goals", "decision_blockers")
+        })
+    else:
+        gate_input.update({field: [] for field in ("facts", "assumptions", "unknowns", "conflicts", "non_goals", "decision_blockers")})
     gate = gate_facts_for_planning(gate_input, planning_run_id=run_id)
     if not stage("facts-gate", gate.get("status", "blocked"), gate):
         return result
