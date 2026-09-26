@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "task_id": "implement-plan-completeness-repair-continuation-1-evidence-revalidation-continuation-1",
+  "status": "finalized",
+  "retained": [
+    "executor-report.md",
+    "executor-result.json",
+    "review-report.md",
+    "reviewer-result.json",
+    "final-check.md",
+    "final-result.json",
+    "finalization.json"
+  ],
+  "approved_by": "main"
+}
