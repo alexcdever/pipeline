@@ -578,6 +578,7 @@ def _validate_refs(
 FACT_CATEGORIES = {"requirement", "project", "assumption", "unknown"}
 FACT_SOURCE_FIELDS = ("source_id", "source_ref", "source")
 FACT_STATUS = {"open", "resolved", "accepted", "rejected", "blocking", "non_blocking"}
+DECISION_BLOCKER_STATUS = {"blocking", "resolved", "non_blocking"}
 UNAUTHORIZED_DECISION_FIELDS = {"resolution", "decision", "resolved_by", "resolution_source", "auto_resolve"}
 
 
@@ -642,6 +643,10 @@ def validate_facts_model(value: Any, root: Path | None = None) -> list[str]:
                 errors.append(f"assumptions[{index}] has invalid status")
             if field == "unknowns" and record.get("status", "blocking") not in FACT_STATUS:
                 errors.append(f"unknowns[{index}] has invalid status")
+            if field == "decision_blockers":
+                status = record.get("status")
+                if status not in DECISION_BLOCKER_STATUS:
+                    errors.append(f"decision_blockers[{index}] has invalid or missing status: {status!r}")
             if field in {"facts", "assumptions", "unknowns"} and _fact_source(record) is None:
                 errors.append(f"{field}[{index}] must contain a source")
             unauthorized = sorted(UNAUTHORIZED_DECISION_FIELDS.intersection(record))
@@ -674,7 +679,8 @@ def detect_fact_conflicts(value: Any, *, planning_run_id: str | None = None) -> 
     blockers = [dict(item) for item in model["decision_blockers"] if isinstance(item, dict)]
     blockers.extend({"id": c.get("id"), "kind": "conflict", "status": "blocking", "decision_required": True} for c in conflicts if c.get("status") == "blocking")
     blockers.extend({"id": item.get("id"), "kind": "unknown", "status": "blocking", "decision_required": True} for item in model["unknowns"] if isinstance(item, dict) and item.get("status", "blocking") in {"open", "blocking"} and item.get("not_applicable") is not True)
-    blocked = bool(errors or blockers)
+    blocking_blockers = [item for item in blockers if item.get("status") == "blocking"]
+    blocked = bool(errors or blocking_blockers)
     return {"schema": 1, "planning_run_id": model.get("planning_run_id"), "status": "blocked" if blocked else "pass", "errors": errors, "facts": model["facts"], "assumptions": model["assumptions"], "unknowns": model["unknowns"], "conflicts": conflicts, "non_goals": model["non_goals"], "decision_blockers": blockers, "decision_required": bool(blockers), "next_actions": ["resolve decision blockers before planning"] if blocked else [], "unverified": ["semantic correctness"]}
 
 
@@ -824,6 +830,17 @@ def validate_task_plan(
             continue
         if not any(_acceptance_id(item) in complete_ids for item in tests):
             errors.append(f"operation {operation_id} has no complete acceptance test")
+        kind = operation.get("kind")
+        if kind in {"single-resource-operation", "batch-resource-operation"}:
+            resources = operation.get("resources")
+            if not isinstance(resources, list) or not resources:
+                errors.append(f"operation {operation_id} must declare resources")
+            elif kind == "batch-resource-operation" and len(resources) < 2:
+                errors.append(f"operation {operation_id} batch must include multiple resources")
+            elif kind == "single-resource-operation" and len(resources) != 1:
+                errors.append(f"operation {operation_id} single must include exactly one resource")
+            else:
+                _validate_refs(resources, resource_known, f"operation {operation_id}.resources", errors, resource_aliases)
 
     tasks = plan.get("tasks") if isinstance(plan.get("tasks"), list) else []
     task_ids: list[str] = []
@@ -968,7 +985,7 @@ def compare_task_plan_contract(
         "task_type": task.get("type"),
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
-        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
+        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), **({"resources": item.get("resources", [])} if "resources" in item else {}), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
         "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
         "dependencies": task.get("depends_on", []),
         "acceptance_tests": expected_tests,
@@ -1164,7 +1181,7 @@ def _task_sheet_text(task: dict[str, Any], plan: dict[str, Any], requirements_sh
         "forbidden_paths": ["implement-plan.md", "IDEA.md", ".pipeline/** existing history"],
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
-        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
+        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "resources": item.get("resources", []), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
         "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
         "acceptance_tests": tests,
         "dependencies": task.get("depends_on", []),

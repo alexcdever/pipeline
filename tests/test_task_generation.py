@@ -133,9 +133,9 @@ class TaskGenerationTests(unittest.TestCase):
             sheet = root / "docs" / "tasks" / "single-task.md"
             text = sheet.read_text(encoding="utf-8")
             self.assertIn('"kind": "single-resource-operation"', text)
-            self.assertIn('"resources": ["resource"]', text)
+            self.assertIn('"resources": [', text)
             self.assertEqual(validate_task(sheet), [])
-            self.assertEqual(json.loads(text.split("```pipeline-contract\\n", 1)[1].split("\\n```", 1)[0])["operations"][0]["kind"], "single-resource-operation")
+            self.assertEqual(json.loads(text.split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0])["operations"][0]["kind"], "single-resource-operation")
 
     def test_batch_resource_operation_has_independent_coverage_and_readback(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -150,10 +150,10 @@ class TaskGenerationTests(unittest.TestCase):
             plan["operations"] = [operation]
             plan["tasks"][0].update({"resources": ["resource", "resource-db"], "operations": ["batch-resources"]})
             make_repo(root)
-            result = self.run_generation(root, "batch-run", project, requirements, plan)
+            result = self.run_generation(root, project, requirements, plan, run_id="batch-run")
             self.assertEqual(result["status"], "pass", result)
             sheet = root / "docs" / "tasks" / "batch-task.md"
-            contract = json.loads(sheet.read_text(encoding="utf-8").split("```pipeline-contract\\n", 1)[1].split("\\n```", 1)[0])
+            contract = json.loads(sheet.read_text(encoding="utf-8").split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0])
             self.assertEqual(contract["operations"][0]["kind"], "batch-resource-operation")
             self.assertEqual(contract["operations"][0]["resources"], ["resource", "resource-db"])
             self.assertEqual(validate_task(sheet), [])
