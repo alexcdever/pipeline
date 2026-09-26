@@ -28,7 +28,7 @@ _SECRET_RE = re.compile(
     r"(\s*[=:]\s*)[^\s,;]+"
 )
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z]:[\\/]|/Users/|/home/)[^\r\n\t\s,;]+")
+_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z]:[\\/]|/(?:Users|home|tmp|var|opt|private|etc|root)(?:/|$)|/)[^\r\n\t\s,;]*")
 
 
 def redact(value: Any) -> str:

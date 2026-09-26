@@ -246,27 +246,32 @@
 
 ### 任务锚点
 
-- 基线 HEAD：-
-- 契约提交：-
-- 执行分支：-
+- 基线 HEAD：`3b152cca1e8d9912f02dadef95ed3ae12d0be9c7` (`3b152cc`)
+- 契约提交：`3b152cca1e8d9912f02dadef95ed3ae12d0be9c7` (`3b152cc`)
+- 执行分支：`pipeline-tools-v1-continuation-1-repair-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1`
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-1 | 未开始 | - | - | - |
-| acceptance-test-2 | 未开始 | - | - | - |
-| acceptance-test-3 | 未开始 | - | - | - |
-| acceptance-test-4 | 未开始 | - | - | - |
-| acceptance-test-5 | 未开始 | - | - | - |
-| acceptance-test-6 | 未开始 | - | - | - |
+| acceptance-test-1 | PASS | focused metric boundary test | executor-report.md | POSIX and credential identifiers normalized |
+| acceptance-test-2 | PASS | focused retry identity test | executor-report.md | attempt/reason preserved |
+| acceptance-test-3 | PASS | unknown/help attribution test | executor-report.md | non-metrics invocations recorded |
+| acceptance-test-4 | PASS | failure attribution and relative log tests | executor-report.md | original exit code preserved |
+| acceptance-test-5 | PASS | Git metrics scope tests | executor-report.md | forbidden precedence retained |
+| acceptance-test-6 | PASS | full regression and task validation | executor-result.json | current committed evidence |
+
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| - | 任务单创建 | 未开始 | - | validate、提交契约、创建唯一 worktree |
+| 1 | 任务单创建与契约冻结 | PASS | `3b152cc` | 唯一 repair worktree 已核对 |
+| 2 | executor implementation + regression | PASS | `executor-report.md`, `executor-result.json` | 156 tests OK |
+| 3 | reviewer finding: POSIX absolute path | PASS | `review-report.md` | fixed in current repair commit |
+| 4 | lifecycle gates | PASS | `executor-result.json` | preflight/freeze/result/freshness rerun |
+
 
 ### 设计变更与延续任务索引
 
@@ -275,10 +280,10 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
+- 状态：修复完成，待独立审查最终确认
+- 执行子代理：PASS，`a34d69e`
+- 独立审查子代理：Round 1 BLOCKED；POSIX absolute-path finding fixed in current commit
+- 主代理最终检查：PASS，当前 commit gates verified
 - 合并提交：-
 - 合并后复验：未开始
-- 遗留项：-
+- 遗留项：独立 reviewer/final-check 仍需按 workflow 生成；未修改父任务历史。
