@@ -1181,7 +1181,7 @@ def _task_sheet_text(task: dict[str, Any], plan: dict[str, Any], requirements_sh
         "forbidden_paths": ["implement-plan.md", "IDEA.md", ".pipeline/** existing history"],
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
-        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), "resources": item.get("resources", []), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
+        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), **({"resources": item.get("resources", [])} if "resources" in item else {}), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
         "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
         "acceptance_tests": tests,
         "dependencies": task.get("depends_on", []),
