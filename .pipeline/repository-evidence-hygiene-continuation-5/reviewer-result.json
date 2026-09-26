@@ -3,8 +3,7 @@
   "task_id":"repository-evidence-hygiene-continuation-5",
   "role":"reviewer",
   "status":"blocked",
-  "identity":{"head":"837c9f54b897ed6c6abcc0ee095bcbabbf87d554","product_head":"ba1ac15","contract":"cd79ce7","worktree":"D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene","branch":"repository-evidence-hygiene","evidence_only":true},
-  "round":3,
+  "identity":{"head":"1bac3c6633fabbfd51de2d7653913e38266ebdc1","product_head":"ba1ac15","contract":"cd79ce7","worktree":"D:/Projects/Skills/pipeline/.worktrees/repository-evidence-hygiene","branch":"repository-evidence-hygiene","evidence_only":true},
   "acceptance":[
     {"id":"acceptance-test-untracked-metrics","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/review-report.md"]},
     {"id":"acceptance-test-task-sheets-validate","status":"pass","exit_code":0,"evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/review-report.md"]},
@@ -15,6 +14,6 @@
   ],
   "evidence_refs":[".pipeline/repository-evidence-hygiene-continuation-5/review-report.md",".pipeline/repository-evidence-hygiene-continuation-5/executor-report.md"],
   "unverified":["final-check","merge readiness"],
-  "blockers":["missing final-check.md","contract commit cd79ce7 unavailable to task preflight/freeze-check"],
+  "blockers":["missing final-check.md"],
   "recommendation":"blocked"
 }
