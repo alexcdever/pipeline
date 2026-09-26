@@ -256,7 +256,7 @@
 | 2026-09-26 / 1 | Executor implementation and acceptance run | PASS | commit `c72e859`; `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | Submit product/tests before review |
 | 2026-09-26 / 1 | Independent review | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/review-report.md` | Run final check and gates |
 | 2026-09-26 / 1 | Main final check | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/final-check.md` | Ready for merge after finalization |
-| 2026-09-26 / 1 | Evidence finalization | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/finalization.json` | Preserve reports and marker only |
+| 2026-09-26 / 2 | Evidence finalization and finalized verify | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/finalization.json`; `evidence verify --phase finalized` exit 0 | Preserve reports and marker only; raw blocker artifact excluded from retained references |
 
 ### 设计变更与延续任务索引
 
