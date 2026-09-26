@@ -214,6 +214,7 @@
 - 基线 HEAD：`1e31e13a021d4c89c6eb9bb59d9d0c409bd7a14a`
 - 契约提交：`1e31e13a021d4c89c6eb9bb59d9d0c409bd7a14a`
 - 当前验证 HEAD：`38428d709f26f28b17a5640fc980e75d340d46aa`
+- 合并后主工作树 HEAD：`12125a49cb02cf33aecea47c4c29d25a2d9ffa74`
 - 执行分支：`pipeline-tools-v1-current-identity-revalidation-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-current-identity-revalidation-continuation-1`
 
@@ -243,7 +244,7 @@
 - 状态：PASS（当前回归与证据闭环通过）
 - 执行子代理：PASS，round 2 当前身份证据已生成
 - 独立审查子代理：PASS，focused/full 独立复验通过
-- 主代理最终检查：PASS，等待合并后主工作树复验
-- 合并提交：待执行
-- 合并后复验：待执行
+- 主代理最终检查：PASS，合并后主工作树复验通过
+- 合并提交：`12125a49cb02cf33aecea47c4c29d25a2d9ffa74`
+- 合并后复验：focused PASS；full 157 tests PASS；task validate/runtime/scope/diff PASS
 - 遗留项：metrics 按用户要求忽略；旧 branch/worktree 身份漂移保留为历史事实
