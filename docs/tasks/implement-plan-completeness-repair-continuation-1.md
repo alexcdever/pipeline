@@ -139,7 +139,7 @@
 - 依赖任务：`implement-plan-coverage-repair-continuation-2`（仅消费其已完成契约，不改写其历史）
 - 用户结果或系统能力：规划、CLI、dispatch、持久化/回读和恢复链路始终绑定当前 implement-plan target；`decision_blockers` 的 `blocking` 未解决状态阻断，`resolved` 与 `non_blocking` 不阻断，未知状态 fail-closed；single 与 batch resource operations 显式建模并分别覆盖。
 - 执行 worktree 约定：`<仓库根目录>/.worktrees/implement-plan-completeness-repair-continuation-1`，由主代理在契约提交后用 `git worktree add` 创建；本任务单创建阶段不创建 worktree
-- 状态：未开始
+- 状态：已完成，证据闭环并已合并后复验
 
 ## 依赖与范围
 
@@ -305,29 +305,31 @@
 
 ### 任务锚点
 
-- 基线 HEAD：-
-- 契约提交：-
-- 执行分支：-
-- 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/implement-plan-completeness-repair-continuation-1`（待契约提交后核对）
+- 基线 HEAD：413ef362e0a0df3c4a8257e05ee6e5e0ae028ead
+- 契约提交：413ef362e0a0df3c4a8257e05ee6e5e0ae028ead
+- 执行分支：`implement-plan-completeness-repair-continuation-1`
+- 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/implement-plan-completeness-repair-continuation-1`
 - 依赖任务：`docs/tasks/implement-plan-coverage-repair-continuation-2.md`（只读依赖，历史不改写）
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-1 | 未开始 | - | - | current target 与历史输入隔离 |
-| acceptance-test-2 | 未开始 | - | - | CLI target identity 隔离 |
-| acceptance-test-3 | 未开始 | - | - | blocker 状态 fail-closed 语义 |
-| acceptance-test-4 | 未开始 | - | - | blocker gate 七段链路 |
-| acceptance-test-5 | 未开始 | - | - | single resource operation 独立覆盖 |
-| acceptance-test-6 | 未开始 | - | - | batch resource operation 独立覆盖 |
-| acceptance-test-7 | 未开始 | - | - | 完整 unittest 回归 |
+| acceptance-test-1 | 完成 | fresh reviewer focused unittest | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | current target 与历史输入隔离 |
+| acceptance-test-2 | 完成 | fresh reviewer focused unittest | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | CLI target identity 隔离 |
+| acceptance-test-3 | 完成 | fresh reviewer focused unittest | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | blocker 状态 fail-closed 语义 |
+| acceptance-test-4 | 完成 | fresh reviewer focused unittest | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | blocker gate 七段链路 |
+| acceptance-test-5 | 完成 | fresh reviewer focused unittest | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | single resource operation 独立覆盖 |
+| acceptance-test-6 | 完成 | fresh reviewer focused unittest | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | batch resource operation 独立覆盖 |
+| acceptance-test-7 | 完成 | fresh full `python -m unittest discover -s tests -v` (168 tests) | `.pipeline/implement-plan-completeness-repair-continuation-1/final-check.md` | 完整 unittest 回归 |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| - | 任务单创建 | 未开始 | - | 任务单验证、提交契约后再派发 |
+| round 1 | executor implementation | PASS | `.pipeline/implement-plan-completeness-repair-continuation-1/executor-report.md` | independent review |
+| round 2 | reviewer repair continuation | PASS | `.pipeline/implement-plan-completeness-repair-continuation-1/review-report.md` | main final check and merge |
+| round 2 | main final check, pre-merge gate, merge | PASS | `.pipeline/implement-plan-completeness-repair-continuation-1/final-check.md` | post-merge revalidation |
 
 ### 设计变更与延续任务索引
 
@@ -336,10 +338,10 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
-- 合并提交：-
-- 合并后复验：未开始
-- 遗留项：-
+- 状态：已完成并已合并
+- 执行子代理：PASS；`.pipeline/implement-plan-completeness-repair-continuation-1/executor-result.json`
+- 独立审查子代理：PASS（round 2）；`.pipeline/implement-plan-completeness-repair-continuation-1/reviewer-result.json`
+- 主代理最终检查：PASS；`.pipeline/implement-plan-completeness-repair-continuation-1/final-check.md`
+- 合并提交：主树 merge commit（`git merge --no-ff implement-plan-completeness-repair-continuation-1`）
+- 合并后复验：PASS；主树重新执行全量 `python -m unittest discover -s tests -v`、scope、evidence verify/readiness、gate
+- 遗留项：无；`.pipeline/metrics/**` 仅作为项目生成的 workflow metadata 允许进入 scope，不参与验收结论
