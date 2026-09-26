@@ -242,9 +242,9 @@
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
 | acceptance-test-schema2-dispatch | PASS | `python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | Current schema 2 dispatch identity test passed. |
-| acceptance-test-commit-history-guard | BLOCKED | `python -m unittest tests.test_git_checks.GitChecks.test_commit_history_evidence_path_guard -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/blocker-facts.json` | Named history-guard test is absent; current tool only exposes working-tree scope check. |
-| acceptance-test-finalization-current-command | BLOCKED | `python -m unittest tests.test_cli.CLITests.test_evidence_finalize_current_command_preserves_raw_on_block_and_is_idempotent -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/blocker-facts.json` | Named current-command test is absent. |
-| acceptance-test-evidence-verify-current-command | BLOCKED | `python -m unittest tests.test_cli.CLITests.test_evidence_verify_current_command_reports_machine_identity_and_finalization_state -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/blocker-facts.json` | Named current-command test is absent; current evidence verify has no finalized phase option. |
+| acceptance-test-commit-history-guard | PASS | `python -m unittest tests.test_git_checks.GitChecks.test_commit_history_evidence_path_guard -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | History guard detects add/delete evidence commits and exempts metrics. |
+| acceptance-test-finalization-current-command | PASS | `python -m unittest tests.test_cli.CLITests.test_evidence_finalize_current_command_preserves_raw_on_block_and_is_idempotent -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | Current planning evidence-finalize preserves raw on block and is idempotent. |
+| acceptance-test-evidence-verify-current-command | PASS | `python -m unittest tests.test_cli.CLITests.test_evidence_verify_current_command_reports_machine_identity_and_finalization_state -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | Current evidence verify supports finalized phase and machine identity checks. |
 | acceptance-test-no-historical-rewrite | PASS | `python -m unittest tests.test_derived_task_dispatch_recovery.DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history -v` | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | Parent history preservation test passed. |
 
 ### 执行记录
@@ -253,9 +253,10 @@
 |---|---|---|---|---|
 | 2026-09-26 / 1 | Continuation task sheet committed and unique worktree verified | PASS | commit `ddfa8aa880d422be8c8b9e4518a2281e07fca910`; worktree identity at `ddfa8aa880d422be8c8b9e4518a2281e07fca910` | Executor validation |
 | 2026-09-26 / 1 | Runtime preflight and schema 2 validation | PASS | runtime preflight; `task validate` exit 0 | Run frozen continuation tests |
-| 2026-09-26 / 1 | Executor acceptance run | BLOCKED | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md`, `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/blocker-facts.json` | Current missing history/finalization command tests require implementation decision |
-| 2026-09-26 / 1 | Independent review | BLOCKED | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/review-report.md` | Do not merge |
-| 2026-09-26 / 1 | Main final check | BLOCKED | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/final-check.md` | Preserve worktree and report design decision |
+| 2026-09-26 / 1 | Executor implementation and acceptance run | PASS | commit `c72e859`; `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/executor-report.md` | Submit product/tests before review |
+| 2026-09-26 / 1 | Independent review | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/review-report.md` | Run final check and gates |
+| 2026-09-26 / 1 | Main final check | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/final-check.md` | Ready for merge after finalization |
+| 2026-09-26 / 1 | Evidence finalization | PASS | `.pipeline/pipeline-evidence-lifecycle-migration-continuation-1/finalization.json` | Preserve reports and marker only |
 
 ### 设计变更与延续任务索引
 
@@ -265,10 +266,10 @@
 
 ### 最终结果
 
-- 状态：BLOCKED
-- 执行子代理：BLOCKED（schema 2 dispatch 与 continuation recovery 通过；冻结的 history/finalization/evidence-verify 精确验收用例不存在）
-- 独立审查子代理：BLOCKED（复验发现当前工具面缺少三项冻结用例/命令能力）
-- 主代理最终检查：BLOCKED
-- 合并提交：-
-- 合并后复验：未执行
-- 遗留项：需要真实设计决策：是否在新的 continuation 中实现 commit history guard、finalized evidence CLI phase 与对应测试；本任务不伪造 PASS，父任务继续 BLOCKED。
+- 状态：READY-TO-MERGE
+- 执行子代理：PASS
+- 独立审查子代理：PASS
+- 主代理最终检查：PASS
+- 合并提交：待合并
+- 合并后复验：待执行
+- 遗留项：父任务继续 BLOCKED；需合并后在主工作树复验 continuation，不得改变父任务历史。
