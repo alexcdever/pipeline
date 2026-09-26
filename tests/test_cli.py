@@ -1,5 +1,10 @@
+import contextlib
+import io
 import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from unittest import mock
+
+from pipeline_tools.__main__ import main
 
 from pipeline_tools.layout import metrics_dirs
 
@@ -303,6 +308,9 @@ class CLITests(unittest.TestCase):
             self.assertEqual(values[0]['task_id'], 'demo')
             self.assertEqual(values[0]['evidence_ref'], '.pipeline/demo/test.log')
 
+    def test_automatic_retry_preserves_attempt_and_reason_for_first_retry(self):
+        self.test_automatic_retry_records_first_retry_attempt()
+
     def test_automatic_retry_records_first_retry_attempt(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -332,6 +340,25 @@ class CLITests(unittest.TestCase):
             values = [json.loads(path.read_text(encoding='utf-8')) for path in metrics_dirs(root)[-1].glob('*.json')]
             self.assertEqual(len(values), 1)
             self.assertEqual(values[0]['event'], 'cli_parse_error')
+
+    def test_unknown_top_level_and_help_invocations_record_automatic_metrics(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for argv, expected in ((['not-a-command'], 'cli_parse_error'), (['task', 'validate', '--help'], 'cli_help')):
+                p = run_cli(argv, cwd=root, env={'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '0', 'PYTHONPATH': str(ROOT)})
+                self.assertIn(p.returncode, (0, 2))
+                values = [json.loads(path.read_text(encoding='utf-8')) for path in metrics_dirs(root)[-1].glob('*.json')]
+                self.assertEqual(values[-1]['event'], expected)
+
+    def test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            stderr = io.StringIO()
+            argv = ['command', 'run', '--cwd', str(root), '--log', 'test.log', '--', PY, '-c', 'import sys; sys.exit(1)']
+            with mock.patch('pipeline_tools.__main__.metric_event', side_effect=OSError('read-only')), contextlib.redirect_stderr(stderr):
+                result = main(argv)
+            self.assertEqual(result, 1)
+            self.assertIn('automatic_metrics_not_collected', stderr.getvalue())
 
     def test_subcommand_help_records_a_help_metric(self):
         with tempfile.TemporaryDirectory() as d:

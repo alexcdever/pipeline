@@ -15,6 +15,7 @@
     "pipeline_tools/core.py",
     "tests/test_cli.py",
     "tests/test_metrics.py",
+    "tests/test_git_checks.py",
     ".gitignore",
     ".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/**"
   ],
@@ -86,8 +87,8 @@
     {
       "id": "acceptance-test-4",
       "evidence_level": 1,
-      "test_ref": "tests/test_cli.py: test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity",
-      "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity"
+      "test_ref": "tests/test_cli.py: test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity; test_automatic_command_uses_task_id_from_workflow_log_path",
+      "command_ref": "python -m unittest tests.test_cli.CLITests.test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity tests.test_cli.CLITests.test_automatic_command_uses_task_id_from_workflow_log_path"
     },
     {
       "id": "acceptance-test-5",
@@ -118,6 +119,10 @@
 
 ## 依赖与范围
 
+### 前置条件
+
+- 父任务及其 review reports 已读取；本 continuation 只修复明确列出的缺口。
+
 ### 已读取的父任务缺口分类
 
 - 已由当前测试覆盖、无需重复修复：已识别 malformed recognized-group 记录、top-level parse error、retry attempt=1、runtime/lifecycle evidence identity、relative command log evidence reference、scope forbidden precedence、extended sensitive path checks（见父任务当前 `tests/test_cli.py` 与 `tests/test_git_checks.py`）。这些只作为回归保留。
@@ -137,6 +142,22 @@
 - 不改产品接口的退出码语义；自动采集失败不得替换原命令退出码。
 - 不记录 prompt、完整日志、凭据、token 或业务数据；不新增依赖；不联网。
 
+## 事实、假设与待决
+
+### 已确认事实
+
+- 父任务 `pipeline-tools-v1-continuation-1` 的 review/re-review/final review 均保留在原目录，且结论为 BLOCKED；本任务不把历史报告升级为 PASS。
+- 当前主工作树已有针对部分 P1/P2 的测试覆盖；未覆盖项在上方分类中列明。
+
+### 未验证事实
+
+- 本 repair 代码修改及独立 review 尚未完成。
+- pnpm 版本环境不属于本 Python repair 的验收前置，历史 reviewer 阻塞仍未改变。
+
+### 禁止猜测
+
+- 不以历史 full-test 日志替代本任务的当前证据；不将测试数量或旧报告结论当作修复证明。
+
 ## 设计与行为契约
 
 任意非 `metrics` CLI 调用（包括 argparse 错误与 help）
@@ -144,6 +165,68 @@
 → 写入脱敏 observed/derived 事件，写入失败只追加 bounded diagnostic/not-collected signal且不递归
 → 原命令退出码、task/run/terminal/evidence 身份保持权威
 → 指标边界拒绝/归一化 credential-looking identifiers、绝对路径形状和敏感 evidence components。
+
+## 验收测试
+
+### 验收测试1：指标边界统一脱敏
+
+- 触发：写入包含 authorization/passwd/bearer/cvc 或绝对路径形状的 metric event。
+- 断言：task_id/reason 归一为 unknown，敏感 evidence_ref 归一为 null，绝对路径不落盘。
+- 测试：`tests/test_metrics.py: test_metric_event_redacts_full_sensitive_vocabulary_and_absolute_path_identifiers`
+- 命令：`python -m unittest tests.test_metrics.MetricsTests.test_metric_event_redacts_full_sensitive_vocabulary_and_absolute_path_identifiers`
+- 验收模式：单元
+- 证据等级：1
+- 结果要求：退出码 0，单测在 180 秒内完成。
+
+### 验收测试2：重试身份保持
+
+- 触发：以 `--attempt 1` 执行 command run。
+- 断言：observed 与 derived retry 事件均保留 `attempt=1` 和 `reason=attempt_1`。
+- 测试：`tests/test_cli.py: test_automatic_retry_records_first_retry_attempt`
+- 命令：`python -m unittest tests.test_cli.CLITests.test_automatic_retry_records_first_retry_attempt`
+- 验收模式：集成
+- 证据等级：1
+- 结果要求：退出码 0，临时项目隔离且 180 秒内完成。
+
+### 验收测试3：未知与 help 调用归因
+
+- 触发：调用未知顶层命令与非 metrics help。
+- 断言：原始 argparse 退出码保持不变，并生成 cli_parse_error/cli_help 自动事件。
+- 测试：`tests/test_cli.py: test_top_level_parse_error_records_a_failure_metric; test_subcommand_help_records_a_help_metric`
+- 命令：`python -m unittest tests.test_cli.CLITests.test_top_level_parse_error_records_a_failure_metric tests.test_cli.CLITests.test_subcommand_help_records_a_help_metric`
+- 验收模式：集成
+- 证据等级：1
+- 结果要求：退出码与断言匹配，180 秒内完成。
+
+### 验收测试4：失败保护与相对日志身份
+
+- 触发：自动 metric 归因/写入异常及 cwd 外执行相对 log。
+- 断言：原始 command exit code 不被替换；task/evidence identity 从 `--cwd` 正确解析。
+- 测试：`tests/test_cli.py: test_automatic_command_uses_task_id_from_workflow_log_path; test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity`
+- 命令：`python -m unittest tests.test_cli.CLITests.test_automatic_command_uses_task_id_from_workflow_log_path tests.test_cli.CLITests.test_automatic_metric_failures_preserve_original_exit_code_and_relative_log_identity`
+- 验收模式：集成
+- 证据等级：1
+- 结果要求：退出码 0，故障诊断有界且 180 秒内完成。
+
+### 验收测试5：Git metrics policy scope
+
+- 触发：scope check 遇 metrics 生成/跟踪/禁止 pattern。
+- 断言：允许的 metrics workflow metadata 不产生 drift，显式 forbidden 仍优先；export 文件保持 ignored。
+- 测试：`tests/test_git_checks.py: test_forbidden_metrics_pattern_still_wins; test_tracked_metrics_are_workflow_metadata`
+- 命令：`python -m unittest tests.test_git_checks.GitChecks.test_forbidden_metrics_pattern_still_wins tests.test_git_checks.GitChecks.test_tracked_metrics_are_workflow_metadata`
+- 验收模式：集成
+- 证据等级：2
+- 结果要求：退出码 0，180 秒内完成。
+
+### 验收测试6：完整回归与任务单结构
+
+- 触发：执行全量测试并验证本 schema2 task sheet。
+- 断言：全部测试通过，任务单结构校验通过；失败保留原始日志，不宣称 PASS。
+- 测试：`tests/: complete regression suite; pipeline_tools task validate`
+- 命令：`python -m unittest discover -s tests -v && python -m pipeline_tools --format json task validate docs/tasks/pipeline-tools-v1-continuation-1-repair-continuation-1.md`
+- 验收模式：集成
+- 证据等级：1
+- 结果要求：整套命令累计不超过 300 秒，退出码 0。
 
 ## 环境前置
 
@@ -163,27 +246,32 @@
 
 ### 任务锚点
 
-- 基线 HEAD：-
-- 契约提交：-
-- 执行分支：-
+- 基线 HEAD：`3b152cca1e8d9912f02dadef95ed3ae12d0be9c7` (`3b152cc`)
+- 契约提交：`3b152cca1e8d9912f02dadef95ed3ae12d0be9c7` (`3b152cc`)
+- 执行分支：`pipeline-tools-v1-continuation-1-repair-continuation-1`
 - 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1`
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-1 | 未开始 | - | - | - |
-| acceptance-test-2 | 未开始 | - | - | - |
-| acceptance-test-3 | 未开始 | - | - | - |
-| acceptance-test-4 | 未开始 | - | - | - |
-| acceptance-test-5 | 未开始 | - | - | - |
-| acceptance-test-6 | 未开始 | - | - | - |
+| acceptance-test-1 | PASS | focused metric boundary test | executor-report.md | POSIX and credential identifiers normalized |
+| acceptance-test-2 | PASS | focused retry identity test | executor-report.md | attempt/reason preserved |
+| acceptance-test-3 | PASS | unknown/help attribution test | executor-report.md | non-metrics invocations recorded |
+| acceptance-test-4 | PASS | failure attribution and relative log tests | executor-report.md | original exit code preserved |
+| acceptance-test-5 | PASS | Git metrics scope tests | executor-report.md | forbidden precedence retained |
+| acceptance-test-6 | PASS | full regression and task validation | executor-result.json | current committed evidence |
+
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| - | 任务单创建 | 未开始 | - | validate、提交契约、创建唯一 worktree |
+| 1 | 任务单创建与契约冻结 | PASS | `3b152cc` | 唯一 repair worktree 已核对 |
+| 2 | executor implementation + regression | PASS | `executor-report.md`, `executor-result.json` | 156 tests OK |
+| 3 | reviewer finding: POSIX absolute path | PASS | `review-report.md` | fixed in current repair commit |
+| 4 | lifecycle gates | PASS | `executor-result.json` | preflight/freeze/result/freshness rerun |
+
 
 ### 设计变更与延续任务索引
 
@@ -192,10 +280,10 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
+- 状态：修复完成，待独立审查最终确认
+- 执行子代理：PASS，`a34d69e`
+- 独立审查子代理：Round 1 BLOCKED；POSIX absolute-path finding fixed in current commit
+- 主代理最终检查：PASS，当前 commit gates verified
 - 合并提交：-
 - 合并后复验：未开始
-- 遗留项：-
+- 遗留项：独立 reviewer/final-check 仍需按 workflow 生成；未修改父任务历史。

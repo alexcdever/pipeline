@@ -73,6 +73,33 @@ class MetricsTests(unittest.TestCase):
             self.assertEqual(value['source'], 'unknown')
             self.assertIsNone(value['evidence_ref'])
 
+    def test_metric_event_redacts_full_sensitive_vocabulary_and_absolute_path_identifiers(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = metric_event(Path(d), {
+                'event': 'test', 'confidence': 'observed',
+                'task_id': 'C:\\\\Users\\\\alice',
+                'reason': 'authorization=abc passwd=def bearer xyz cvc=123',
+                'source': 'ok', 'result': 'pass',
+                'evidence_ref': 'reports/passwd.log',
+            })
+            value = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(value['task_id'], 'unknown')
+            self.assertEqual(value['reason'], 'unknown')
+            self.assertIsNone(value['evidence_ref'])
+
+    def test_metric_event_redacts_posix_absolute_path_identifiers(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = metric_event(Path(d), {
+                'event': 'test', 'confidence': 'observed',
+                'task_id': '/tmp/private/task',
+                'reason': '/var/lib/private/result',
+                'source': 'ok', 'result': 'pass',
+                'evidence_ref': 'reports/private.log',
+            })
+            value = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(value['task_id'], 'unknown')
+            self.assertEqual(value['reason'], 'unknown')
+
     def test_feedback_events_are_aggregated_without_treating_unknown_as_failure(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

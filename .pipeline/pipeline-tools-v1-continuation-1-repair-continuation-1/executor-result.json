@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "task_id": "pipeline-tools-v1-continuation-1-repair-continuation-1",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "0ab72a89bf374ef1935b37df8f42fe5af3845e93",
+    "contract_commit": "3b152cca1e8d9912f02dadef95ed3ae12d0be9c7",
+    "branch": "pipeline-tools-v1-continuation-1-repair-continuation-1",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/pipeline-tools-v1-continuation-1-repair-continuation-1"
+  },
+  "acceptance": [
+    {"id": "acceptance-test-1", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md"]},
+    {"id": "acceptance-test-2", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md"]},
+    {"id": "acceptance-test-3", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md"]},
+    {"id": "acceptance-test-4", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md"]},
+    {"id": "acceptance-test-5", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md"]},
+    {"id": "acceptance-test-6", "status": "pass", "exit_code": 0, "evidence_refs": [".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md"]}
+  ],
+  "unverified": ["independent reviewer final PASS", "main worktree post-merge revalidation"]
+}
