@@ -53,6 +53,23 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
         }
         return project, requirements, plan
 
+    def test_planning_to_dispatch_preserves_complete_facts_envelope_and_blocks_conflicts_end_to_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, head = self.make_repo(directory)
+            project, requirements, plan = self.inputs()
+            project.update({"assumptions": [{"id": "assumption-1", "source": "project-source"}], "unknowns": [], "conflicts": [], "non_goals": [{"id": "non-goal-1", "source": "project-source"}], "decision_blockers": []})
+            ready = planning_to_dispatch(root, "envelope-run", project, requirements, plan, task_id="integration-task", branch="integration-task-branch", baseline=head, approved=True)
+            self.assertEqual(ready["status"], "dispatch-ready", ready)
+            gate = ready["stages"][1]
+            for field in ("assumptions", "unknowns", "conflicts", "non_goals", "decision_blockers"):
+                self.assertEqual(gate[field], project[field])
+
+            blocked_project = dict(project, conflicts=[{"id": "blocking-conflict", "status": "blocking"}], decision_blockers=[])
+            blocked = planning_to_dispatch(root, "blocked-envelope-run", blocked_project, requirements, plan, task_id="integration-task", branch="blocked-branch", baseline=head, approved=True)
+            self.assertNotEqual(blocked["status"], "dispatch-ready")
+            self.assertEqual(blocked["stages"][-1]["name"], "facts-gate")
+            self.assertFalse(any(stage["name"] in {"task-generation", "freeze", "dispatch"} for stage in blocked["stages"]))
+
     def test_valid_planning_run_reaches_identity_verified_dispatch(self):
         with tempfile.TemporaryDirectory() as directory:
             root, head = self.make_repo(directory)

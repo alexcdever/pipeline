@@ -176,6 +176,37 @@ class PlanningTests(unittest.TestCase):
         derived['tasks'] = [dict(plan['tasks'][0], type='derived', parent_task_id='missing')]
         self.assertTrue(any('derived' in error or 'parent' in error for error in validate_task_plan(derived)))
 
+    def test_task_plan_rejects_missing_top_level_acceptance_records(self):
+        plan = {
+            'schema': 1, 'requirements': ['r1'], 'resources': ['src/app.py'],
+            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        errors = validate_task_plan(plan)
+        self.assertTrue(any('top-level' in error and 'acceptance' in error for error in errors))
+
+    def test_task_plan_requires_complete_top_level_acceptance_records(self):
+        base = {
+            'schema': 1, 'requirements': ['r1'], 'resources': ['src/app.py'],
+            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 1,
+                                  'test_ref': 'tests/test_planning.py',
+                                  'command_ref': 'python -m unittest'}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        for bad in (
+            dict(base, acceptance_tests=[]),
+            dict(base, acceptance_tests=[{'id': 'acceptance-test-1'}]),
+            dict(base, acceptance_tests=[base['acceptance_tests'][0], dict(base['acceptance_tests'][0])]),
+            dict(base, acceptance_tests=[dict(base['acceptance_tests'][0], id='acceptance-test-2')]),
+        ):
+            self.assertTrue(validate_task_plan(bad), bad)
+        self.assertEqual(validate_task_plan(base), [])
+
     def test_project_facts_validation(self):
         valid = {
             'schema': 1,

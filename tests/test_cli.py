@@ -360,6 +360,39 @@ class CLITests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn('automatic_metrics_not_collected', stderr.getvalue())
 
+    def test_automatic_metrics_wrapper_preserves_outer_test_command_exit_code(self):
+        command = [PY, '-m', 'pipeline_tools', 'command', 'run', '--cwd', str(ROOT),
+                   '--log', str(Path(tempfile.gettempdir()) / 'pipeline-wrapper-test.log'),
+                   '--timeout', '30', '--', PY, '-c', 'raise SystemExit(7)']
+        for enabled in ('0', '1'):
+            with self.subTest(automatic_metrics=enabled):
+                env = dict(os.environ, PIPELINE_TOOLS_DISABLE_AUTO_METRICS=enabled,
+                           PYTHONPATH=str(ROOT))
+                completed = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
+                self.assertEqual(completed.returncode, 1, (enabled, completed.stdout, completed.stderr))
+                self.assertIn('"exit_code": 7', completed.stdout.replace("'", '"'))
+
+    def test_planning_to_dispatch_cli_blocks_when_facts_envelope_has_conflicts(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, head = make_repo(d)
+            (root / 'implement-plan.md').write_text('stable planning requirements\n', encoding='utf-8')
+            chain_value = {name: ['ok.txt'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
+            acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 1, 'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest'}]
+            project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'ok.txt'}], 'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain_value, 'facts': [], 'assumptions': [], 'unknowns': [], 'conflicts': [{'id': 'blocking', 'status': 'blocking'}], 'non_goals': [], 'decision_blockers': []}
+            requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
+            plan = {'schema': 1, 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-dispatch-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['op'], 'depends_on': []}]}
+            paths = []
+            for name, value in (('project.json', project), ('requirements.json', requirements), ('plan.json', plan)):
+                path = root / name; path.write_text(json.dumps(value), encoding='utf-8'); paths.append(path)
+            command = ['--format', 'json', 'planning', 'to-dispatch', str(root), '--run-id', 'cli-envelope-run', '--project-facts', str(paths[0]), '--requirement-facts', str(paths[1]), '--task-plan', str(paths[2]), '--task-id', 'cli-dispatch-task', '--baseline', head]
+            completed = subprocess.run([PY, '-m', 'pipeline_tools', *command], cwd=str(root), capture_output=True, text=True,
+                                       env=dict(os.environ, PIPELINE_TOOLS_DISABLE_AUTO_METRICS='1', PYTHONPATH=str(ROOT)), timeout=60)
+            self.assertNotEqual(completed.returncode, 0, (completed.stdout, completed.stderr))
+            value = json.loads(completed.stdout)
+            self.assertEqual(value['status'], 'blocked')
+            self.assertEqual(value['stages'][-1]['name'], 'facts-gate')
+            self.assertFalse((root / '.worktrees' / 'cli-dispatch-task').exists())
+
     def test_subcommand_help_records_a_help_metric(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
