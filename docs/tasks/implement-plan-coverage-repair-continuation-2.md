@@ -300,29 +300,29 @@
 
 ### 任务锚点
 
-- 基线 HEAD：-
-- 契约提交：-
-- 执行分支：-
-- 执行 worktree：`<仓库根目录>/.worktrees/implement-plan-coverage-repair-continuation-2`（核对后的绝对路径）
+- 基线 HEAD：`9a94c7a489e9bb19e0a8dfec662c04b0cadba472`
+- 契约提交：`9a94c7a489e9bb19e0a8dfec662c04b0cadba472`
+- 执行分支：`implement-plan-coverage-repair-continuation-2`
+- 执行 worktree：`D:/Projects/Skills/pipeline/.worktrees/implement-plan-coverage-repair-continuation-2`（核对后的绝对路径）
 - 父任务：`docs/tasks/implement-plan-coverage-repair-continuation-1.md`（BLOCKED 历史保留）
 
 ### 验收台账
 
 | 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |
 |---|---|---|---|---|
-| acceptance-test-1 | 未开始 | - | - | - |
-| acceptance-test-2 | 未开始 | - | - | - |
-| acceptance-test-3 | 未开始 | - | - | - |
-| acceptance-test-4 | 未开始 | - | - | - |
-| acceptance-test-5 | 未开始 | - | - | - |
-| acceptance-test-6 | 未开始 | - | - | - |
-| acceptance-test-7 | 未开始 | - | - | - |
+| acceptance-test-1 | PASS | `tests/test_planning.py` | `executor-report.md`, `review-report.md` | top-level acceptance 缺失 fail-closed |
+| acceptance-test-2 | PASS | `tests/test_planning.py` | `executor-report.md`, `review-report.md` | records 完整性、重复及未知引用拒绝 |
+| acceptance-test-3 | PASS | `tests/test_planning_dispatch_integration.py` | `executor-report.md`, `review-report.md` | facts envelope 传播及冲突阻断 |
+| acceptance-test-4 | PASS | `tests/test_cli.py` | `executor-report.md`, `review-report.md` | CLI facts-gate fail-closed |
+| acceptance-test-5 | PASS | `tests/test_cli.py` | `executor-report.md`, `review-report.md` | metrics 异常不覆盖业务退出码 |
+| acceptance-test-6 | PASS | `tests/test_cli.py` | `executor-report.md`, `review-report.md` | 外层 subprocess returncode 保持 |
+| acceptance-test-7 | PASS | `python -m unittest discover -s tests -v` | `executor-report.md`, `review-report.md`, `final-check.md` | 162 tests passed |
 
 ### 执行记录
 
 | 时间/轮次 | 事件 | 结果 | 证据 | 后续 |
 |---|---|---|---|---|
-| - | 任务单创建 | 未开始 | - | validate 后提交契约；之后按 pipeline 创建唯一 worktree |
+| 2026-09-26 / continuation-2 | 契约、实现与证据闭环 | 已完成 | `4ded06b` executor；`32b1a98` review/final | 已通过聚焦验收、全量回归及 scope；继续执行 preflight/freeze、result/freshness/readiness/verify/gate |
 
 ### 设计变更与延续任务索引
 
@@ -331,11 +331,11 @@
 
 ### 最终结果
 
-- 状态：未开始
-- 执行子代理：未开始
-- 独立审查子代理：未开始
-- 主代理最终检查：未开始
-- 合并提交：-
-- 合并后复验：未开始
-- 遗留项：-
-- 未提交：契约提交后，产品/测试实现仍由后续 executor 按本任务执行；本创建阶段不创建 worktree
+- 状态：已完成
+- 执行子代理：PASS，提交 `4ded06be486acb638040a8dd91c19b9ea555fda4`
+- 独立审查子代理：PASS，证据已更新并复核
+- 主代理最终检查：进行中，等待机械 gates 完成
+- 合并提交：`32b1a9888b02a5c3515a56b21d67f16880b29608`
+- 合并后复验：未执行（本 continuation 尚未合并主工作树）
+- 遗留项：无产品遗留；需完成 preflight/freeze/result/freshness/readiness/verify/gate 机械证据
+- 未提交：本任务状态段更新待提交；契约区未修改
