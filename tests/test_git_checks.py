@@ -1,6 +1,6 @@
 import subprocess, tempfile, unittest
 from pathlib import Path
-from pipeline_tools.core import freeze_check, scope_check
+from pipeline_tools.core import commit_history_check, freeze_check, scope_check
 
 class GitChecks(unittest.TestCase):
     def test_untracked_forbidden_is_detected(self):
@@ -100,6 +100,23 @@ class GitChecks(unittest.TestCase):
             subprocess.run(['git','commit','-m','metrics'],cwd=p,check=True,capture_output=True)
             event.write_text('{"changed":true}')
             self.assertEqual(scope_check(p,['src/**'],[]),[])
+
+    def test_commit_history_evidence_path_guard(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d); subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'src').mkdir(); (p / 'src' / 'app.py').write_text('x')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'base'], cwd=p, check=True)
+            evidence = p / '.pipeline' / 'demo'; evidence.mkdir(parents=True)
+            (evidence / 'raw.log').write_text('raw')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'bad evidence'], cwd=p, check=True)
+            (evidence / 'raw.log').unlink(); subprocess.run(['git', 'add', '-A'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'delete evidence'], cwd=p, check=True)
+            metrics = p / '.pipeline' / 'metrics'; metrics.mkdir(parents=True); (metrics / 'event.json').write_text('{}')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'metrics'], cwd=p, check=True)
+            violations = commit_history_check(p, '.pipeline/demo')
+            self.assertEqual(len(violations), 2)
+            self.assertTrue(all('demo' in value for value in violations))
 
     def test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt(self):
         with tempfile.TemporaryDirectory() as d:

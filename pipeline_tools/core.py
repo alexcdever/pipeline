@@ -213,6 +213,30 @@ def _status_paths(output: str) -> list[str]:
     return sorted(paths)
 
 
+def commit_history_check(root: Path, evidence_root: str, *, metrics_root: str = ".pipeline/metrics") -> list[str]:
+    """Reject historical commits that touched active evidence, except metrics."""
+    rc, output = git(root, "log", "--all", "--format=%H", "--name-status", redact_output=False)
+    if rc:
+        return [output or "unable to inspect commit history"]
+    violations: list[str] = []
+    current_commit = ""
+    for line in output.splitlines():
+        if re.fullmatch(r"[0-9a-fA-F]{40}", line.strip()):
+            current_commit = line.strip()
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status, paths = parts[0], parts[1:]
+        for path in paths:
+            normalized = _normalize_path(path)
+            in_evidence = normalized == evidence_root or normalized.startswith(evidence_root.rstrip("/") + "/")
+            in_metrics = normalized == metrics_root or normalized.startswith(metrics_root.rstrip("/") + "/")
+            if in_evidence and not in_metrics:
+                violations.append(f"{current_commit}: {status} {normalized}")
+    return violations
+
+
 def scope_check(root: Path, allowed: list[str], forbidden: list[str]) -> list[str]:
     """Return changed paths outside the allow-list or inside the deny-list."""
     rc, output = git(root, "status", "--porcelain=v1", "--untracked-files=all")
