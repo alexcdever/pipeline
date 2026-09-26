@@ -215,6 +215,8 @@ def _status_paths(output: str) -> list[str]:
 
 def commit_history_check(root: Path, evidence_root: str, *, metrics_root: str = ".pipeline/metrics") -> list[str]:
     """Reject historical commits that touched active evidence, except metrics."""
+    evidence_root = _normalize_path(evidence_root)
+    metrics_root = _normalize_path(metrics_root)
     rc, output = git(root, "log", "--all", "--format=%H", "--name-status", redact_output=False)
     if rc:
         return [output or "unable to inspect commit history"]
