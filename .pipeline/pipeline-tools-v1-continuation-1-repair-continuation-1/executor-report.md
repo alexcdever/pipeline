@@ -66,7 +66,10 @@ Generated `.pipeline/metrics/*.json` files remain untracked local artifacts and 
     "parent history and forbidden files were not modified",
     "new local metrics files were not staged"
   ],
-  "evidence_refs": ["executor-report.md"],
+  "evidence_refs": [
+    ".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-report.md",
+    ".pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/executor-result.json"
+  ],
   "unverified": ["independent reviewer evidence", "main-worktree post-merge revalidation"]
 }
 ```
