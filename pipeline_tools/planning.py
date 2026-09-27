@@ -36,6 +36,8 @@ from .layout import (
 CHAIN = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 ROLES = {"executor", "reviewer", "main"}
 TASK_TYPES = {"vertical-feature", "prerequisite", "repair", "derived"}
+GOAL_DOCUMENT_NAME = "goal.md"
+LEGACY_PLAN_DOCUMENT_NAME = "implement-plan.md"
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ACCEPTANCE_ID_RE = re.compile(r"acceptance-test-[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
@@ -53,6 +55,36 @@ CONCEPTUAL_PLAN_TOKENS = {"task-id", "planning-run-id"}
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def sync_goal_document(root: Path) -> tuple[Path, str | None]:
+    """Resolve the authoritative requirements document.
+
+    ``goal.md`` is authoritative. When only the legacy ``implement-plan.md``
+    exists it is mechanically copied into ``goal.md`` with a source header, so
+    the conversion is a byte-faithful move rather than a semantic rewrite. When
+    neither file exists the caller must ask a human to create ``goal.md``.
+    """
+    root = Path(root)
+    goal = root / GOAL_DOCUMENT_NAME
+    legacy = root / LEGACY_PLAN_DOCUMENT_NAME
+    if goal.is_file():
+        return goal, None
+    if not legacy.is_file():
+        return goal, f"{GOAL_DOCUMENT_NAME} missing and no {LEGACY_PLAN_DOCUMENT_NAME} to convert"
+    try:
+        content = legacy.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return goal, f"{LEGACY_PLAN_DOCUMENT_NAME} is unreadable"
+    header = (
+        f"<!-- Generated from {LEGACY_PLAN_DOCUMENT_NAME} by pipeline_tools goal-sync. "
+        f"{GOAL_DOCUMENT_NAME} is the authoritative requirements document; edit it directly from now on. -->\n"
+    )
+    try:
+        goal.write_text(header + content, encoding="utf-8")
+    except OSError:
+        return goal, f"unable to write {GOAL_DOCUMENT_NAME}"
+    return goal, None
 
 
 def _normalise_text(value: Any) -> str:
@@ -240,6 +272,26 @@ def _write_preflight_failure(root: Path, value: dict[str, Any]) -> list[str]:
         return []
 
 
+def _clear_stale_preflight_failure(root: Path) -> None:
+    """Drop the diagnostic left by an earlier failed preflight.
+
+    A preflight without a run id files its failure at
+    ``.pipeline/planning/preflight-result.json``.  Nothing removed it, so a
+    single failure kept ``.pipeline/planning/`` alive forever.  A later
+    successful check clears it, which makes the record mean "the last
+    preflight failed" instead of "a preflight failed once".
+    """
+    try:
+        output = root / PIPELINE_DIR_NAME / "planning" / "preflight-result.json"
+        if output.is_file():
+            output.unlink()
+        directory = output.parent
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
+    except OSError:
+        return
+
+
 def _sheet_committed(root: Path, task_id: str) -> bool:
     """Return whether docs/tasks/<task_id>.md exists in the current HEAD commit."""
     relative = f"docs/tasks/{task_id}.md"
@@ -335,7 +387,7 @@ def planning_preflight(
     errors: list[str] = []
     warnings: list[str] = []
     blockers: list[dict[str, str]] = []
-    plan = root / "implement-plan.md"
+    plan = root / GOAL_DOCUMENT_NAME
     requirements_hash: str | None = None
     if not root.is_dir():
         errors.append("project root is unavailable")
@@ -353,20 +405,22 @@ def planning_preflight(
         else:
             warnings.append("legacy .workflow migrated to .pipeline")
 
-    if not plan.is_file():
-        errors.append("implement-plan.md missing")
-    else:
-        try:
-            content = plan.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
-            content = ""
-            errors.append("implement-plan.md is unreadable")
-        if not content.strip():
-            errors.append("implement-plan.md is empty")
-        elif PLACEHOLDER_RE.search(content):
-            errors.append("implement-plan.md contains placeholders")
+    if root.is_dir():
+        plan, sync_error = sync_goal_document(root)
+        if sync_error:
+            errors.append(sync_error)
         else:
-            requirements_hash = _sha256(plan)
+            try:
+                content = plan.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                content = ""
+                errors.append(f"{GOAL_DOCUMENT_NAME} is unreadable")
+            if not content.strip():
+                errors.append(f"{GOAL_DOCUMENT_NAME} is empty")
+            elif PLACEHOLDER_RE.search(content):
+                errors.append(f"{GOAL_DOCUMENT_NAME} contains placeholders")
+            else:
+                requirements_hash = _sha256(plan)
 
     if not tool_available:
         errors.append("pipeline tool unavailable")
@@ -438,7 +492,7 @@ def planning_preflight(
     if expected_branch and worktree.get("branch") != expected_branch:
         errors.append("branch does not match expected branch")
     if expected_requirements_sha256 and requirements_hash != expected_requirements_sha256:
-        errors.append("implement-plan.md hash changed")
+        errors.append(f"{GOAL_DOCUMENT_NAME} hash changed")
 
     task_scenes: dict[str, list[str]] = {"sheets_without_worktree": [], "worktrees_without_sheet": [], "uncommitted_sheets": [], "leftover_evidence": []}
     if root.is_dir():
@@ -468,6 +522,8 @@ def planning_preflight(
     }
     if errors and root.is_dir():
         result["artifacts"] = _write_preflight_failure(root, result)
+    else:
+        _clear_stale_preflight_failure(root)
     return result
 
 
@@ -1151,7 +1207,7 @@ def compare_task_plan_contract(
             "kind": item.get("kind", "execute"),
             "scope": item.get("scope", "task"),
         }
-        if contract.get("schema") == 3:
+        if contract.get("schema") in {3, 4}:
             resources = _operation_resources(item, task)
             record["resources"] = resources
             record["resource_mode"] = "single" if len(resources) == 1 else "batch"
@@ -1171,7 +1227,7 @@ def compare_task_plan_contract(
             "acceptance_tests": expected_tests,
             "allowed_paths": _task_allowed_paths(task),
         }
-        if contract.get("schema") == 3:
+        if contract.get("schema") in {3, 4}:
             expected["non_goals"] = [
                 item for item in task_plan.get("non_goals", [])
                 if isinstance(item, str) and item.strip()
@@ -1186,27 +1242,29 @@ def compare_task_plan_contract(
             errors.append({"field": field, "reason": f"{field} differs between task-plan and task sheet", "source": "task-plan/task-sheet", "expected": expected[field], "actual": actual[field]})
 
     expected_schema = contract.get("schema")
-    if expected_schema not in {2, 3}:
-        errors.append({"field": "schema", "reason": "task sheet contract schema must be 2 or 3", "source": "task-sheet"})
+    if expected_schema not in {2, 3, 4}:
+        errors.append({"field": "schema", "reason": "task sheet contract schema must be 2, 3 or 4", "source": "task-sheet"})
 
-    implement_plan = contract.get("implement_plan")
-    if not isinstance(implement_plan, dict):
-        errors.append({"field": "implement_plan", "reason": "implement_plan must be an object", "source": "task-sheet"})
+    doc_field = "goal" if expected_schema == 4 else "implement_plan"
+    default_doc = GOAL_DOCUMENT_NAME if expected_schema == 4 else LEGACY_PLAN_DOCUMENT_NAME
+    requirements_doc = contract.get(doc_field)
+    if not isinstance(requirements_doc, dict):
+        errors.append({"field": doc_field, "reason": f"{doc_field} must be an object", "source": "task-sheet"})
     else:
         plan_root = Path(root) if root is not None else Path(task_sheet).resolve().parent.parent.parent
-        plan_path = plan_root / str(implement_plan.get("path", "implement-plan.md"))
+        plan_path = plan_root / str(requirements_doc.get("path", default_doc))
         try:
             plan_path.read_text(encoding="utf-8")
             live_hash = _sha256(plan_path)
         except (OSError, UnicodeError):
             live_hash = None
-            errors.append({"field": "implement_plan.path", "reason": "implement-plan is missing or unreadable", "source": "implement-plan/task-sheet"})
-        if expected_requirements_sha256 is not None and implement_plan.get("sha256") != expected_requirements_sha256:
-            errors.append({"field": "implement_plan.sha256", "reason": "implement-plan hash differs from expected hash", "source": "task-sheet"})
-        if live_hash is not None and implement_plan.get("sha256") != live_hash:
-            errors.append({"field": "implement_plan.sha256", "reason": "implement-plan hash drift", "source": "implement-plan/task-sheet"})
-        if expected_run_id is not None and implement_plan.get("planning_run_id") != expected_run_id:
-            errors.append({"field": "implement_plan.planning_run_id", "reason": "planning run id differs from expected run id", "source": "task-sheet"})
+            errors.append({"field": f"{doc_field}.path", "reason": f"{default_doc} is missing or unreadable", "source": f"{default_doc}/task-sheet"})
+        if expected_requirements_sha256 is not None and requirements_doc.get("sha256") != expected_requirements_sha256:
+            errors.append({"field": f"{doc_field}.sha256", "reason": f"{default_doc} hash differs from expected hash", "source": "task-sheet"})
+        if live_hash is not None and requirements_doc.get("sha256") != live_hash:
+            errors.append({"field": f"{doc_field}.sha256", "reason": f"{default_doc} hash drift", "source": f"{default_doc}/task-sheet"})
+        if expected_run_id is not None and requirements_doc.get("planning_run_id") != expected_run_id:
+            errors.append({"field": f"{doc_field}.planning_run_id", "reason": "planning run id differs from expected run id", "source": "task-sheet"})
     status = "pass" if not errors else "fail"
     return {"schema": 1, "status": status, "task_id": task_id, "conflicts": errors,
             "errors": [item["reason"] for item in errors], "next_actions": [] if status == "pass" else ["do not freeze or dispatch"]}
@@ -1231,9 +1289,9 @@ _PLANNING_TERMINAL = {"finalized", "failed", "blocked", "interrupted", "conflict
 
 def _planning_identity(root: Path, run_id: str) -> dict[str, Any]:
     root = Path(root).resolve()
-    plan = root / "implement-plan.md"
+    plan, sync_error = sync_goal_document(root)
     facts, errors = _worktree_facts(root)
-    if errors or not plan.is_file():
+    if errors or sync_error or not plan.is_file():
         raise ValueError("planning run identity unavailable")
     return {
         "run_id": run_id,
@@ -1513,15 +1571,15 @@ def _task_sheet_text(
             f"task {task_id} has no non_goals; declare explicit non-goal sentences in the task plan"
         )
     contract = {
-        "schema": 3,
+        "schema": 4,
         "task_id": task_id,
         "task_type": task_type,
-        "implement_plan": {"path": "implement-plan.md", "sha256": requirements_sha256, "planning_run_id": run_id},
+        "goal": {"path": GOAL_DOCUMENT_NAME, "sha256": requirements_sha256, "planning_run_id": run_id},
         "risk": plan.get("risk", "medium"),
         "project_type": plan.get("project_type", DEFAULT_PROJECT_TYPE),
         "non_goals": non_goals,
         "allowed_paths": _task_allowed_paths(task),
-        "forbidden_paths": ["implement-plan.md", "IDEA.md", ".pipeline/** existing history"],
+        "forbidden_paths": [GOAL_DOCUMENT_NAME, LEGACY_PLAN_DOCUMENT_NAME, "IDEA.md", ".pipeline/** existing history"],
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
         "operations": [
@@ -1549,9 +1607,9 @@ def _task_sheet_text(
                 f"task {task_id} is prerequisite but declares no non_user_completion_reason in the task plan"
             )
         contract["non_user_completion_reason"] = reason
-    lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- implement-plan SHA-256：`{requirements_sha256}`", "- 状态：未开始", "", "## 依赖与范围", "", "### 允许修改", ""]
+    lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- goal SHA-256：`{requirements_sha256}`", "- 状态：未开始", "", "## 依赖与范围", "", "### 允许修改", ""]
     lines.extend(f"- `{item}`" for item in contract["allowed_paths"])
-    lines.extend(["", "### 明确不改", "", "- `implement-plan.md`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
+    lines.extend(["", "### 明确不改", "", f"- `{GOAL_DOCUMENT_NAME}`", f"- `{LEGACY_PLAN_DOCUMENT_NAME}`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
     for index, test in enumerate(tests, 1):
         lines.extend([f"### 验收测试{index}：{test.get('id')}", "", f"- 测试：`{test.get('test_ref')}`", f"- 命令：`{test.get('command_ref')}`", f"- 证据等级：{test.get('evidence_level')}", ""])
     return "\n".join(lines) + "\n"
@@ -1575,7 +1633,7 @@ def generate_task_sheets(
     try:
         preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256)
         errors = list(preflight.get("errors", []))
-        plan_path = root / "implement-plan.md"
+        plan_path = root / GOAL_DOCUMENT_NAME
         requirements_sha256 = preflight.get("requirements_sha256")
         errors.extend(f"project-facts: {error}" for error in validate_project_facts(project_facts, root))
         errors.extend(f"requirement-facts: {error}" for error in validate_requirement_facts(requirement_facts, root))
@@ -1585,7 +1643,7 @@ def generate_task_sheets(
         if len(task_ids) != len(set(task_ids)):
             errors.append("task ids must be unique")
         if requirements_sha256 is None or not plan_path.is_file():
-            errors.append("implement-plan.md hash unavailable")
+            errors.append(f"{GOAL_DOCUMENT_NAME} hash unavailable")
         if errors:
             result["errors"] = errors
             result["next_actions"] = ["fix planning inputs and rerun"]

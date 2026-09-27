@@ -112,6 +112,23 @@ class PlanningTests(unittest.TestCase):
             self.assertFalse((root / '.pipeline' / 'planning').exists())
             self.assertEqual((root / '.pipeline' / 'sentinel').read_text(encoding='utf-8'), 'keep')
 
+    def test_planning_preflight_clears_stale_failure_record_on_success(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+            (root / 'goal.md').write_text('real requirements', encoding='utf-8')
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+            recorded = root / '.pipeline' / 'planning' / 'preflight-result.json'
+            blocked = planning_preflight(root, expected_requirements_sha256='0' * 64)
+            self.assertEqual(blocked['status'], 'blocked')
+            self.assertTrue(recorded.is_file())
+            result = planning_preflight(root)
+            self.assertEqual(result['status'], 'pass', result)
+            self.assertFalse((root / '.pipeline' / 'planning').exists())
+
     def test_planning_preflight_rejects_unstable_plan_placeholder(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -625,7 +642,7 @@ class PlanningTests(unittest.TestCase):
             subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
             result = planning_preflight(root, expected_requirements_sha256="0" * 64)
             self.assertEqual(result["status"], "blocked")
-            self.assertTrue(any("implement-plan.md hash changed" in error for error in result["errors"]), result["errors"])
+            self.assertTrue(any("goal.md hash changed" in error for error in result["errors"]), result["errors"])
 
     def test_planning_preflight_blocks_on_uncommitted_task_sheet(self):
         with tempfile.TemporaryDirectory() as directory:
