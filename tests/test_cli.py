@@ -81,7 +81,7 @@ class CLITests(unittest.TestCase):
                 'schema': 1,
                 'sources': [{'id': 'source', 'path': 'implement-plan.md'}],
                 'resources': [{'id': 'resource', 'path': 'src/app.py'}],
-                'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}],
+                'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
                 'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 1, 'test_ref': 'tests/test_x.py', 'command_ref': 'python -m unittest'}],
                 'chain': {'entry': ['cli.py'], 'interaction': ['cli.py'], 'application': ['app.py'], 'domain': ['domain.py'], 'persistence': ['db.py'], 'readback': ['app.py'], 'recovery': ['app.py']},
             }), encoding='utf-8')
@@ -106,9 +106,9 @@ class CLITests(unittest.TestCase):
             (root / 'src' / 'app.py').write_text('app\n', encoding='utf-8')
             chain = {name: ['src/app.py'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
             acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_cli.py: test_planning_generate_task_sheets_cli_lifecycle', 'command_ref': 'python -m unittest tests.test_cli -v'}]
-            project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'src/app.py'}], 'operations': [{'id': 'operate', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain}
-            requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'operate', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
-            plan = {'schema': 1, 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'operate', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['operate'], 'depends_on': []}]}
+            project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'src/app.py'}], 'operations': [{'id': 'operate', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain}
+            requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'operate', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
+            plan = {'schema': 1, 'non_goals': ['本任务不扩展用户可见范围'], 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'operate', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['operate'], 'depends_on': [], 'non_user_completion_reason': 'produces the enabling artifact consumed by later user-facing work'}]}
             paths = []
             for name, value in [('project.json', project), ('requirements.json', requirements), ('plan.json', plan)]:
                 path = root / name
@@ -194,6 +194,53 @@ class CLITests(unittest.TestCase):
             p = run_cli(['command', 'run', '--cwd', str(ROOT), '--log', str(Path(d) / 'x.log'),
                          '--timeout', '5', '--'])
             self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
+
+    def test_gate_cli_surfaces_unverified_on_text_and_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('observed', encoding='utf-8')
+            for role in ('executor', 'reviewer', 'main-final'):
+                self._write_machine_report(directory, role)
+            for name, role in (
+                ('executor-result.json', 'executor'),
+                ('reviewer-result.json', 'reviewer'),
+                ('final-result.json', 'main-final'),
+            ):
+                (directory / name).write_text(json.dumps({
+                    'schema': 1, 'task_id': 'demo', 'role': role, 'status': 'pass',
+                    'acceptance': [{
+                        'id': 'acceptance-test-1', 'status': 'pass', 'exit_code': 0,
+                        'evidence_refs': ['.pipeline/demo/test.log'],
+                    }],
+                    'unverified': [],
+                }), encoding='utf-8')
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            (root / 'implement-plan.md').write_text('plan\n', encoding='utf-8')
+            contract = {
+                'schema': 2, 'task_id': 'demo', 'task_type': 'repair',
+                'implement_plan': {'path': 'implement-plan.md'},
+                'allowed_paths': ['src/**'], 'forbidden_paths': [],
+                'operations': [{'id': 'op', 'kind': 'validate', 'scope': 'task', 'acceptance_tests': ['acceptance-test-1']}],
+                'chain': {name: ['src/app.py'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')},
+                'dependencies': [],
+                'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest'}],
+                'required_evidence_levels': [2],
+            }
+            (root / 'docs' / 'tasks' / 'demo.md').write_text(
+                '<!-- Task ID: demo -->\n```pipeline-contract\n' + json.dumps(contract) + '\n```\n',
+                encoding='utf-8',
+            )
+            text = run_cli(['gate', 'pre-merge', str(directory), '--task-id', 'demo', '--branch', 'feature/demo'])
+            self.assertEqual(text.returncode, 0, (text.stdout, text.stderr))
+            self.assertIn('UNVERIFIED', text.stdout)
+            self.assertIn('unrecorded', text.stdout)
+            value = run_cli(['--format', 'json', 'gate', 'pre-merge', str(directory), '--task-id', 'demo', '--branch', 'feature/demo'])
+            self.assertEqual(value.returncode, 0, (value.stdout, value.stderr))
+            payload = json.loads(value.stdout)
+            self.assertEqual(payload['status'], 'pass')
+            self.assertTrue(any('unrecorded' in item for item in payload['unverified']), payload)
 
     def test_worktree_dispatch_cli_lifecycle_and_blocked_identity(self):
         with tempfile.TemporaryDirectory() as d:
@@ -355,7 +402,11 @@ class CLITests(unittest.TestCase):
             root = Path(d)
             stderr = io.StringIO()
             argv = ['command', 'run', '--cwd', str(root), '--log', 'test.log', '--', PY, '-c', 'import sys; sys.exit(1)']
-            with mock.patch('pipeline_tools.__main__.metric_event', side_effect=OSError('read-only')), contextlib.redirect_stderr(stderr):
+            # Collection must actually be enabled for this fail-soft scenario; the
+            # ambient test environment disables it to avoid mutating this checkout.
+            with mock.patch.dict(os.environ, {'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '0'}), \
+                    mock.patch('pipeline_tools.__main__.metric_event', side_effect=OSError('read-only')), \
+                    contextlib.redirect_stderr(stderr):
                 result = main(argv)
             self.assertEqual(result, 1)
             self.assertIn('automatic_metrics_not_collected', stderr.getvalue())
@@ -387,9 +438,9 @@ class CLITests(unittest.TestCase):
             (root / 'implement-plan.md').write_text('stable planning requirements\n', encoding='utf-8')
             chain_value = {name: ['ok.txt'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
             acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 1, 'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest'}]
-            project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'ok.txt'}], 'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain_value, 'facts': [], 'assumptions': [], 'unknowns': [], 'conflicts': [{'id': 'blocking', 'status': 'blocking'}], 'non_goals': [], 'decision_blockers': []}
-            requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
-            plan = {'schema': 1, 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'op', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-dispatch-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['op'], 'depends_on': []}]}
+            project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'ok.txt'}], 'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain_value, 'facts': [], 'assumptions': [], 'unknowns': [], 'conflicts': [{'id': 'blocking', 'status': 'blocking'}], 'non_goals': ['本项目没有用户可见扩展'], 'decision_blockers': []}
+            requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
+            plan = {'schema': 1, 'non_goals': ['本项目没有用户可见扩展'], 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-dispatch-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['op'], 'depends_on': []}]}
             paths = []
             for name, value in (('project.json', project), ('requirements.json', requirements), ('plan.json', plan)):
                 path = root / name; path.write_text(json.dumps(value), encoding='utf-8'); paths.append(path)
@@ -601,7 +652,11 @@ class CLITests(unittest.TestCase):
             self.assertIn('artifacts', value)
             repeat = run_cli(['--format', 'json', 'planning', 'run', 'finalize', str(root), '--run-id', 'cli-lifecycle', '--success'])
             self.assertEqual(repeat.returncode, 0, (repeat.stdout, repeat.stderr))
-            self.assertEqual(json.loads(repeat.stdout), value)
+            repeated = json.loads(repeat.stdout)
+            self.assertEqual(repeated['status'], 'finalized')
+            self.assertEqual(repeated['run_id'], value['run_id'])
+            self.assertEqual(repeated['artifacts'], [])
+            self.assertFalse((root / '.pipeline' / 'planning' / 'cli-lifecycle').exists())
             self.assertFalse((root / '.pipeline' / 'metrics').exists())
 
     def test_lifecycle_status_is_structured_and_starts_with_executor(self):
@@ -639,6 +694,26 @@ class CLITests(unittest.TestCase):
             }), encoding='utf-8')
             p = run_cli(['result', 'verify', str(result), '--task-id', 'demo', '--role', 'reviewer'])
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
+            (root / 'implement-plan.md').write_text('frozen plan\n', encoding='utf-8')
+            digest = __import__('hashlib').sha256((root / 'implement-plan.md').read_bytes()).hexdigest()
+            (root / '.pipeline' / 'demo' / 'implement-plan.json').write_text(
+                json.dumps({'schema': 1, 'task_id': 'demo', 'sha256': digest}), encoding='utf-8',
+            )
+            sheet = root / 'docs' / 'tasks' / 'demo.md'
+            sheet.parent.mkdir(parents=True, exist_ok=True)
+            sheet.write_text(
+                '<!-- Task ID: demo -->\n```pipeline-contract\n'
+                + json.dumps({
+                    'schema': 1, 'task_id': 'demo',
+                    'allowed_paths': ['src/**'], 'forbidden_paths': [],
+                    'acceptance_tests': [{
+                        'id': 'AT1', 'evidence_level': 1,
+                        'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest',
+                    }],
+                })
+                + '\n```\n',
+                encoding='utf-8',
+            )
             p = run_cli(['--format', 'json', 'freshness', str(root), str(root / '.pipeline' / 'demo'), '--result', str(result)])
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
             self.assertEqual(json.loads(p.stdout)['status'], 'pass')
@@ -649,9 +724,9 @@ class CLITests(unittest.TestCase):
             (root / "implement-plan.md").write_text("stable plan\n", encoding="utf-8")
             (root / "src").mkdir()
             (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
-            project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "operate", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_cli.py", "command_ref": "python -m unittest"}], "chain": {name: ["src/app.py"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}}
-            requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": project["acceptance_tests"]}
-            plan = {"schema": 1, "requirements": ["requirement"], "resources": ["resource"], "operations": [{"id": "operate", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "cli-integration-task", "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource"], "operations": ["operate"], "depends_on": []}]}
+            project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_cli.py", "command_ref": "python -m unittest"}], "chain": {name: ["src/app.py"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}, "non_goals": ["本项目没有用户可见扩展"]}
+            requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": project["acceptance_tests"]}
+            plan = {"schema": 1, "non_goals": ["本任务不扩展用户可见范围"], "requirements": ["requirement"], "resources": ["resource"], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "cli-integration-task", "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "produces the enabling artifact consumed by later user-facing work"}]}
             paths = []
             for name, value in (("project.json", project), ("requirements.json", requirements), ("plan.json", plan)):
                 path = root / name
@@ -668,7 +743,9 @@ class CLITests(unittest.TestCase):
             self.assertEqual(value["run_id"], "cli-integration-run")
             self.assertEqual(value["identity"]["task_id"], "cli-integration-task")
             self.assertIn("stages", value)
-            self.assertIn("dispatch.json", " ".join(value["artifacts"]))
+            self.assertEqual(value["artifacts"], [])
+            self.assertFalse((root / ".pipeline" / "planning" / "cli-integration-run").exists())
+            self.assertTrue((root / ".worktrees" / "cli-integration-task").is_dir())
             replay = run_cli(args, cwd=root, env={"PYTHONPATH": str(ROOT)})
             self.assertEqual(replay.returncode, 3, (replay.stdout, replay.stderr))
             blocked = json.loads(replay.stdout)
@@ -685,14 +762,93 @@ class CLITests(unittest.TestCase):
             digest = __import__('hashlib').sha256(implement_plan.read_bytes()).hexdigest()
             chain = {name: ['not-applicable'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
             acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest'}]
-            operation = {'id': 'op', 'kind': 'validate', 'scope': 'task', 'acceptance_tests': ['acceptance-test-1']}
-            value = {'schema': 1, 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': [operation], 'acceptance_tests': acceptance, 'tasks': [{'id': 'demo', 'type': 'prerequisite', 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': ['op'], 'chain': chain, 'depends_on': []}]}
+            operation = {'id': 'op', 'kind': 'validate', 'scope': 'task', 'resources': ['pipeline_tools/planning.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}
+            value = {'schema': 1, 'non_goals': ['本任务不扩展范围'], 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': [operation], 'acceptance_tests': acceptance, 'tasks': [{'id': 'demo', 'type': 'prerequisite', 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': ['op'], 'chain': chain, 'depends_on': []}]}
             plan.write_text(json.dumps(value), encoding='utf-8')
-            contract = {'schema': 2, 'task_id': 'demo', 'task_type': 'prerequisite', 'implement_plan': {'path': 'implement-plan.md', 'sha256': digest, 'planning_run_id': 'run-1'}, 'allowed_paths': ['pipeline_tools/planning.py'], 'forbidden_paths': ['implement-plan.md'], 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': [operation], 'chain': chain, 'acceptance_tests': acceptance, 'dependencies': [], 'required_evidence_levels': [2]}
+            contract = {'schema': 2, 'task_id': 'demo', 'task_type': 'prerequisite', 'implement_plan': {'path': 'implement-plan.md', 'sha256': digest, 'planning_run_id': 'run-1'}, 'allowed_paths': ['pipeline_tools/planning.py'], 'forbidden_paths': ['implement-plan.md'], 'requirements': ['req'], 'resources': ['pipeline_tools/planning.py'], 'operations': [{key: value for key, value in operation.items() if key != 'resource_mode'}], 'chain': chain, 'acceptance_tests': acceptance, 'dependencies': [], 'required_evidence_levels': [2]}
             sheet.write_text('<!-- Task ID: demo -->\n```pipeline-contract\n' + json.dumps(contract) + '\n```\n', encoding='utf-8')
             result = run_cli(['--format', 'json', 'planning', 'task-plan-contract-consistency', str(plan), str(sheet), '--root', str(root), '--expected-requirements-sha256', digest, '--expected-run-id', 'run-1'])
             self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
             self.assertEqual(json.loads(result.stdout)['status'], 'pass')
+
+
+    def _dispatch_inputs(self, root, head):
+        (root / 'implement-plan.md').write_text('stable planning requirements\n', encoding='utf-8')
+        chain_value = {name: ['ok.txt'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')}
+        acceptance = [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_cli.py', 'command_ref': 'python -m unittest'}]
+        project = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'resources': [{'id': 'resource', 'path': 'ok.txt'}], 'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'chain': chain_value, 'facts': [], 'assumptions': [], 'unknowns': [], 'conflicts': [], 'non_goals': ['本项目没有用户可见扩展'], 'decision_blockers': []}
+        requirements = {'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}], 'requirements': [{'id': 'requirement', 'source_refs': ['source']}], 'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance}
+        plan = {'schema': 1, 'non_goals': ['本项目没有用户可见扩展'], 'requirements': ['requirement'], 'resources': ['resource'], 'operations': [{'id': 'op', 'resources': ['resource'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}], 'acceptance_tests': acceptance, 'tasks': [{'id': 'cli-approval-task', 'type': 'prerequisite', 'requirements': ['requirement'], 'resources': ['resource'], 'operations': ['op'], 'depends_on': [], 'non_user_completion_reason': 'produces the enabling artifact consumed by later user-facing work'}]}
+        subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'approval inputs'], cwd=root, check=True)
+        head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+        paths = []
+        for name, value in (('project.json', project), ('requirements.json', requirements), ('plan.json', plan)):
+            path = root / name
+            path.write_text(json.dumps(value), encoding='utf-8')
+            paths.append(path)
+        return paths, head
+
+    def _to_dispatch(self, root, paths, head, run_id, *extra):
+        command = ['--format', 'json', 'planning', 'to-dispatch', str(root), '--run-id', run_id,
+                   '--project-facts', str(paths[0]), '--requirement-facts', str(paths[1]),
+                   '--task-plan', str(paths[2]), '--task-id', 'cli-approval-task',
+                   '--branch', f'{run_id}-branch', '--baseline', head, *extra]
+        return run_cli(command, cwd=root, env={'PYTHONPATH': str(ROOT)})
+
+    def test_planning_run_start_cli_defaults_from_project_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, _ = make_repo(d)
+            (root / 'implement-plan.md').write_text('stable requirements\n', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'plan'], check=True)
+            config = root / '.pipeline' / 'config.json'
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text(json.dumps({'approval_mode': 'manual'}), encoding='utf-8')
+            started = run_cli(['--format', 'json', 'planning', 'run', 'start', str(root), '--run-id', 'cli-project-manual'])
+            self.assertEqual(started.returncode, 0, (started.stdout, started.stderr))
+            state = json.loads((root / '.pipeline' / 'planning' / 'cli-project-manual' / 'lifecycle.json').read_text(encoding='utf-8'))
+            self.assertEqual(state['approval_mode'], 'manual')
+            explicit = run_cli(['--format', 'json', 'planning', 'run', 'start', str(root), '--run-id', 'cli-explicit-automatic', '--approval-mode', 'automatic'])
+            self.assertEqual(explicit.returncode, 0, (explicit.stdout, explicit.stderr))
+            explicit_state = json.loads((root / '.pipeline' / 'planning' / 'cli-explicit-automatic' / 'lifecycle.json').read_text(encoding='utf-8'))
+            self.assertEqual(explicit_state['approval_mode'], 'automatic')
+
+    def test_planning_to_dispatch_cli_resolves_recorded_then_project_then_explicit(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, _ = make_repo(d)
+            config = root / '.pipeline' / 'config.json'
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text(json.dumps({'approval_mode': 'manual'}), encoding='utf-8')
+            paths, head = self._dispatch_inputs(root, None)
+            started = run_cli(['--format', 'json', 'planning', 'run', 'start', str(root), '--run-id', 'cli-recorded', '--approval-mode', 'automatic'])
+            self.assertEqual(started.returncode, 0, (started.stdout, started.stderr))
+            recorded = self._to_dispatch(root, paths, head, 'cli-recorded')
+            self.assertEqual(recorded.returncode, 0, (recorded.stdout, recorded.stderr))
+            self.assertEqual(json.loads(recorded.stdout)['status'], 'dispatch-ready')
+
+        with tempfile.TemporaryDirectory() as d:
+            root, _ = make_repo(d)
+            config = root / '.pipeline' / 'config.json'
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text(json.dumps({'approval_mode': 'manual'}), encoding='utf-8')
+            paths, head = self._dispatch_inputs(root, None)
+            blocked = self._to_dispatch(root, paths, head, 'cli-project')
+            self.assertEqual(blocked.returncode, 3, (blocked.stdout, blocked.stderr))
+            value = json.loads(blocked.stdout)
+            self.assertEqual(value['status'], 'blocked')
+            self.assertEqual(value['stages'][-1]['name'], 'approval')
+            self.assertFalse((root / '.worktrees' / 'cli-approval-task').exists())
+
+        with tempfile.TemporaryDirectory() as d:
+            root, _ = make_repo(d)
+            config = root / '.pipeline' / 'config.json'
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text(json.dumps({'approval_mode': 'manual'}), encoding='utf-8')
+            paths, head = self._dispatch_inputs(root, None)
+            explicit = self._to_dispatch(root, paths, head, 'cli-explicit', '--approval-mode', 'automatic')
+            self.assertEqual(explicit.returncode, 0, (explicit.stdout, explicit.stderr))
+            self.assertEqual(json.loads(explicit.stdout)['status'], 'dispatch-ready')
 
 
 if __name__ == '__main__':

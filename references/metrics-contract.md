@@ -89,8 +89,6 @@
 | `environment_block` | runtime、Node/pnpm、native ABI 或测试能力不可用 |
 | `permission_block` | OpenCode 工具/代理权限阻止了所需操作 |
 | `main_agent_product_edit` | 主代理未获授权修改产品代码 |
-| `user_continue_nudge` | 用户要求继续推进已开始的任务 |
-| `user_process_correction` | 用户纠正停滞、角色或流程行为 |
 | `recovery_path_miss` | 恢复阶段读取了不存在或错误路径 |
 | `scope_drift` | 机械范围检查发现越界或禁止路径 |
 
@@ -103,6 +101,17 @@
 - reported 排除数量、token 已知/未知数量、阻塞类型计数、用户流程纠正、主代理产品修改和事件计数。
 
 支持按 `task_id`、`run_id`、`terminal_only`、`include_derived` 过滤。聚合文件可以删除后重建。
+
+## 进度日志不进入 Git
+
+角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl`（`<role>` ∈ `executor` / `reviewer` / `main`）是过程记录，**不进入 Git**，与同样位于 `.pipeline/` 下但必须提交的指标事件相区分：
+
+- 项目根目录 `.gitignore` 含规则 `.pipeline/*/*-progress.jsonl`，把进度日志排除在版本控制之外。
+- `commit_history_check` 按名拒绝：历史提交里出现任何 `-progress.jsonl` 都会记一条 `progress log must not enter Git`。
+- `scope_check` 对它们豁免：进度日志不计入范围漂移，不会因为工具自动写入而让冻结任务的 `scope check` 失败。
+- `.pipeline/metrics/` 的规则相反——指标文件是可审查的流水线历史，应纳入 Git（见本文件开头和「反馈边界」）。
+
+两者不要混：把进度日志提交进 Git 是违规，把 `.pipeline/metrics/` 加进 `.gitignore` 同样是违规。
 
 ## 反馈边界
 

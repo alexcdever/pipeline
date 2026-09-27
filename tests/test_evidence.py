@@ -68,11 +68,15 @@ class EvidenceTests(unittest.TestCase):
             directory = root / '.pipeline' / 'demo'
             directory.mkdir(parents=True)
             (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            # Freshness must be able to read a frozen contract, otherwise the
+            # missing requirements source is a blocker rather than a pass.
+            self._task_with_plan_hash(root)
             result_path = self._write_result(root, directory, product_head)
             subprocess.run(['git', '-C', str(root), 'add', '.pipeline'], check=True)
             subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'evidence'], check=True)
             value = evidence_freshness(root, directory, result_path)
-            self.assertEqual(value['status'], 'pass')
+            self.assertEqual(value['status'], 'pass', value)
+            self.assertEqual(value['unverified'], [])
             self.assertTrue(any(item.get('fact') == 'evidence_only' and item.get('value') for item in value['observed']))
 
     def test_freshness_blocks_product_drift_from_product_head(self):
@@ -226,6 +230,138 @@ class EvidenceTests(unittest.TestCase):
             (p / 'final-check.md').write_text(report('main-final', status='READY-TO-MERGE'), encoding='utf-8')
             errors = gate_check(p, 'demo', 'feature/demo', 'pre-merge')
             self.assertTrue(any('review-report.md' in error for error in errors))
+
+    def _task_with_plan_hash(self, root, task_id='demo'):
+        import hashlib
+
+        root = Path(root)
+        plan = root / 'implement-plan.md'
+        plan.write_text('frozen plan\n', encoding='utf-8')
+        digest = hashlib.sha256(plan.read_bytes()).hexdigest()
+        directory = root / '.pipeline' / task_id
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / 'implement-plan.json').write_text(
+            json.dumps({'schema': 1, 'task_id': task_id, 'sha256': digest}), encoding='utf-8',
+        )
+        contract = {
+            'schema': 1, 'task_id': task_id,
+            'allowed_paths': ['src/**'], 'forbidden_paths': [],
+            'acceptance_tests': [{
+                'id': 'AT1', 'evidence_level': 1,
+                'test_ref': 'tests/test_evidence.py', 'command_ref': 'python -m unittest',
+            }],
+        }
+        sheet = root / 'docs' / 'tasks' / f'{task_id}.md'
+        sheet.parent.mkdir(parents=True)
+        sheet.write_text(
+            f'<!-- Task ID: {task_id} -->\n```pipeline-contract\n' + json.dumps(contract) + '\n```\n',
+            encoding='utf-8',
+        )
+        return plan
+
+    def test_gate_pre_merge_blocks_implement_plan_drift_after_dispatch(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            plan = self._task_with_plan_hash(root)
+            plan.write_text('mutated plan\n', encoding='utf-8')
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertTrue(any('drift' in error for error in errors), errors)
+
+    def test_schema2_task_with_recorded_hash_detects_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            plan = self._task_with_plan_hash(root)
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertEqual([error for error in errors if 'implement-plan' in error], [])
+            plan.write_text('mutated plan\n', encoding='utf-8')
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertTrue(any('drift' in error for error in errors), errors)
+
+
+    def _task_without_recorded_hash(self, root, task_id='demo'):
+        root = Path(root)
+        (root / 'implement-plan.md').write_text('frozen plan\n', encoding='utf-8')
+        contract = {
+            'schema': 2, 'task_id': task_id, 'task_type': 'repair',
+            'implement_plan': {'path': 'implement-plan.md'},
+            'allowed_paths': ['src/**'], 'forbidden_paths': [],
+            'operations': [{
+                'id': 'op', 'kind': 'validate', 'scope': 'task',
+                'acceptance_tests': ['acceptance-test-1'],
+            }],
+            'chain': {
+                name: ['src/app.py']
+                for name in ('entry', 'interaction', 'application', 'domain',
+                             'persistence', 'readback', 'recovery')
+            },
+            'dependencies': [],
+            'acceptance_tests': [{
+                'id': 'acceptance-test-1', 'evidence_level': 2,
+                'test_ref': 'tests/test_evidence.py', 'command_ref': 'python -m unittest',
+            }],
+            'required_evidence_levels': [2],
+        }
+        sheet = root / 'docs' / 'tasks' / f'{task_id}.md'
+        sheet.parent.mkdir(parents=True, exist_ok=True)
+        sheet.write_text(
+            f'<!-- Task ID: {task_id} -->\n```pipeline-contract\n' + json.dumps(contract) + '\n```\n',
+            encoding='utf-8',
+        )
+
+    def test_schema2_task_without_recorded_hash_passes_gate_and_reports_unverified(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            self._task_without_recorded_hash(root)
+            self.assertFalse((root / '.pipeline' / 'demo' / 'implement-plan.json').exists())
+            unverified = []
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge', unverified=unverified)
+            self.assertEqual([error for error in errors if 'implement-plan' in error], [], errors)
+            self.assertTrue(any('unrecorded' in item for item in unverified), unverified)
+
+    def test_freshness_contract_missing_is_a_blocker_never_a_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            result_path = directory / 'executor-result.json'
+            result_path.write_text(json.dumps({
+                'schema': 1, 'task_id': 'demo', 'role': 'executor', 'status': 'pass',
+                'identity': {}, 'acceptance': [], 'unverified': [],
+            }), encoding='utf-8')
+            self.assertFalse((root / 'docs' / 'tasks' / 'demo.md').exists())
+            value = evidence_freshness(root, directory, result_path)
+            self.assertEqual(value['status'], 'blocked')
+            self.assertTrue(value['unverified'], value)
+            self.assertTrue(any('contract' in error for error in value['errors']), value)
+
+    def test_gate_and_freshness_agree_on_missing_contract(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            result_path = directory / 'executor-result.json'
+            result_path.write_text(json.dumps({
+                'schema': 1, 'task_id': 'demo', 'role': 'executor', 'status': 'pass',
+                'identity': {}, 'acceptance': [], 'unverified': [],
+            }), encoding='utf-8')
+            gate_unverified = []
+            gate_errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge', unverified=gate_unverified)
+            freshness = evidence_freshness(root, directory, result_path)
+            self.assertTrue(any('contract' in error for error in gate_errors), gate_errors)
+            self.assertEqual(freshness['status'], 'blocked')
+            self.assertTrue(any('contract' in error for error in freshness['errors']), freshness)
+            self.assertTrue(freshness['unverified'])
+
+    def test_gate_unverified_is_empty_when_recorded_hash_matches(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            self._task_with_plan_hash(root)
+            unverified = []
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge', unverified=unverified)
+            self.assertEqual([error for error in errors if 'implement-plan' in error], [], errors)
+            self.assertEqual(unverified, [])
 
 
 if __name__ == '__main__':

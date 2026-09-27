@@ -17,7 +17,21 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
-from .contract import load_contract, validate_task
+from .contract import (
+    DEFAULT_PROJECT_TYPE,
+    PROJECT_TYPES,
+    RISK_LEVELS,
+    evidence_floor,
+    load_contract,
+    validate_task,
+)
+from .layout import (
+    LEGACY_PIPELINE_DIR_NAME,
+    PIPELINE_DIR_NAME,
+    LegacyPipelineLayoutError,
+    active_pipeline_dir,
+    migrate_layout,
+)
 
 CHAIN = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 ROLES = {"executor", "reviewer", "main"}
@@ -184,9 +198,12 @@ def _worktree_facts(root: Path) -> tuple[dict[str, Any], list[str]]:
     else:
         facts["registered"] = True
         facts["worktree"] = matching[0]
-    # A directory under .worktrees which is not in `git worktree list` is an
-    # orphan, even if a copied .git file happens to make Git commands work.
-    if ".worktrees" in root.resolve().parts and not facts["registered"]:
+    # A checkout which resolves to the repository root but is not listed by
+    # `git worktree list` is an orphan, even if a copied .git file happens to
+    # make Git commands work.  This is decided from Git facts, not from a path
+    # fragment, so a project that merely lives in a directory named
+    # `.worktrees` is not misreported.
+    if actual_root == root.resolve() and not facts["registered"]:
         errors.append("isolated worktree is orphaned")
     common_rc, common, _ = _run_checked(["git", "-C", str(root), "rev-parse", "--git-common-dir"], root)
     if common_rc == 0:
@@ -210,6 +227,7 @@ def _write_preflight_failure(root: Path, value: dict[str, Any]) -> list[str]:
     try:
         if pipeline.is_symlink():
             return []
+        active_pipeline_dir(root)
         output = pipeline / "planning" / "preflight-result.json"
         if not _safe_rel(root, output.relative_to(root).as_posix()):
             return []
@@ -220,6 +238,83 @@ def _write_preflight_failure(root: Path, value: dict[str, Any]) -> list[str]:
         return [str(output)]
     except (OSError, ValueError, RuntimeError):
         return []
+
+
+def _sheet_committed(root: Path, task_id: str) -> bool:
+    """Return whether docs/tasks/<task_id>.md exists in the current HEAD commit."""
+    relative = f"docs/tasks/{task_id}.md"
+    rc, _output, _error = _run_checked(["git", "cat-file", "-e", f"HEAD:{relative}"], root)
+    return rc == 0
+
+
+def _task_scene_facts(root: Path) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    """Report pre-existing task scenes without judging their product meaning.
+
+    A task worktree without a frozen task sheet violates the recorded invariant
+    that no task worktree may exist without its committed sheet, and a sheet
+    that is present on disk but absent from HEAD is not frozen either; a sheet
+    without a worktree and leftover task evidence are reported as warnings so an
+    interrupted earlier run is visible before a new one starts.
+    """
+    warnings: list[str] = []
+    errors: list[str] = []
+    scenes: dict[str, list[str]] = {
+        "sheets_without_worktree": [],
+        "worktrees_without_sheet": [],
+        "uncommitted_sheets": [],
+        "leftover_evidence": [],
+    }
+    sheets: dict[str, Path] = {}
+    tasks_directory = root / "docs" / "tasks"
+    try:
+        if tasks_directory.is_dir():
+            for path in sorted(tasks_directory.glob("*.md")):
+                if path.is_file():
+                    sheets[path.stem] = path
+    except OSError:
+        warnings.append("task sheet directory is unreadable")
+    worktrees: dict[str, Path] = {}
+    worktree_directory = root / ".worktrees"
+    try:
+        if worktree_directory.is_dir():
+            for path in sorted(worktree_directory.iterdir()):
+                if path.is_dir() and not path.is_symlink():
+                    worktrees[path.name] = path
+    except OSError:
+        warnings.append(".worktrees directory is unreadable")
+    evidence: dict[str, Path] = {}
+    try:
+        pipeline_directory = active_pipeline_dir(root)
+    except (LegacyPipelineLayoutError, OSError):
+        pipeline_directory = root / PIPELINE_DIR_NAME
+    try:
+        if pipeline_directory.is_dir():
+            for path in sorted(pipeline_directory.iterdir()):
+                if path.is_dir() and path.name not in {"planning", "metrics"}:
+                    evidence[path.name] = path
+    except OSError:
+        warnings.append(".pipeline directory is unreadable")
+
+    for task_id in sorted(set(sheets) - set(worktrees)):
+        scenes["sheets_without_worktree"].append(task_id)
+    for task_id in sorted(set(worktrees) - set(sheets)):
+        scenes["worktrees_without_sheet"].append(task_id)
+        errors.append(f"task worktree has no committed task sheet: {task_id}")
+    for task_id in sorted(set(worktrees) & set(sheets)):
+        if not _sheet_committed(root, task_id):
+            scenes["uncommitted_sheets"].append(task_id)
+            errors.append(f"task sheet is not committed in HEAD: {task_id}")
+    for task_id in sorted(set(evidence) - set(sheets)):
+        scenes["leftover_evidence"].append(task_id)
+    if scenes["sheets_without_worktree"]:
+        warnings.append(
+            "task sheets without worktrees: " + ", ".join(scenes["sheets_without_worktree"])
+        )
+    if scenes["leftover_evidence"]:
+        warnings.append(
+            "leftover task evidence directories: " + ", ".join(scenes["leftover_evidence"])
+        )
+    return warnings, errors, scenes
 
 
 def planning_preflight(
@@ -244,12 +339,19 @@ def planning_preflight(
     requirements_hash: str | None = None
     if not root.is_dir():
         errors.append("project root is unavailable")
-    workflow = root / ".workflow"
-    pipeline = root / ".pipeline"
-    if workflow.exists() and pipeline.exists():
+    legacy = root / LEGACY_PIPELINE_DIR_NAME
+    pipeline = root / PIPELINE_DIR_NAME
+    if legacy.exists() and pipeline.exists():
         errors.append(".workflow and .pipeline both exist")
-    elif workflow.exists():
-        warnings.append("legacy .workflow layout requires explicit migration")
+    elif legacy.exists():
+        # A lone legacy tree is migrated in place; only the canonical path is
+        # used for every later planning decision.
+        try:
+            migrate_layout(root)
+        except (LegacyPipelineLayoutError, OSError) as error:
+            errors.append(f"legacy .workflow migration failed: {error}")
+        else:
+            warnings.append("legacy .workflow migrated to .pipeline")
 
     if not plan.is_file():
         errors.append("implement-plan.md missing")
@@ -338,8 +440,19 @@ def planning_preflight(
     if expected_requirements_sha256 and requirements_hash != expected_requirements_sha256:
         errors.append("implement-plan.md hash changed")
 
+    task_scenes: dict[str, list[str]] = {"sheets_without_worktree": [], "worktrees_without_sheet": [], "uncommitted_sheets": [], "leftover_evidence": []}
+    if root.is_dir():
+        scene_warnings, scene_errors, task_scenes = _task_scene_facts(root)
+        warnings.extend(scene_warnings)
+        errors.extend(scene_errors)
+
     for error in errors:
         blockers.append({"class": "environment" if "command" in error or "Git" in error or "worktree" in error else "contract", "reason": error})
+    next_actions: list[str] = []
+    if any(task_scenes.values()):
+        next_actions.append("reconcile existing task scenes before planning")
+    if errors:
+        next_actions.append("fix preflight blockers and rerun")
     result: dict[str, Any] = {
         "schema": 1,
         "status": "pass" if not errors else "blocked",
@@ -348,7 +461,9 @@ def planning_preflight(
         "warnings": warnings,
         "requirements_sha256": requirements_hash,
         "worktree": worktree,
+        "task_scenes": task_scenes,
         "artifacts": [],
+        "next_actions": next_actions,
         "unverified": [] if not errors else ["planning dispatch", "task generation"],
     }
     if errors and root.is_dir():
@@ -575,7 +690,7 @@ def _validate_refs(
     return used
 
 
-FACT_CATEGORIES = {"requirement", "project", "assumption", "unknown"}
+FACT_CATEGORIES = {"requirement", "project"}
 FACT_SOURCE_FIELDS = ("source_id", "source_ref", "source")
 FACT_STATUS = {"open", "resolved", "accepted", "rejected", "blocking", "non_blocking"}
 DECISION_BLOCKER_STATUS = {"blocking", "resolved", "non_blocking"}
@@ -620,8 +735,13 @@ def validate_facts_model(value: Any, root: Path | None = None) -> list[str]:
     run_id = model.get("planning_run_id")
     if run_id is not None and not _safe_identifier(run_id):
         errors.append("planning_run_id must be a safe identifier")
+    non_goals = model.get("non_goals")
+    if not isinstance(non_goals, list) or not non_goals:
+        errors.append("non_goals must be a non-empty array")
+    elif any(not isinstance(item, str) or not item.strip() for item in non_goals):
+        errors.append("non_goals must contain only non-empty strings")
     seen: set[str] = set()
-    for field in ("facts", "assumptions", "unknowns", "conflicts", "non_goals", "decision_blockers"):
+    for field in ("facts", "assumptions", "unknowns", "conflicts", "decision_blockers"):
         records = model.get(field)
         if not isinstance(records, list):
             errors.append(f"{field} must be an array")
@@ -637,7 +757,7 @@ def validate_facts_model(value: Any, root: Path | None = None) -> list[str]:
                 errors.append(f"duplicate fact id: {identifier}")
             else:
                 seen.add(identifier)
-            if field == "facts" and record.get("category") not in {"requirement", "project"}:
+            if field == "facts" and record.get("category") not in FACT_CATEGORIES:
                 errors.append(f"facts[{index}] category must be requirement or project")
             if field == "assumptions" and record.get("status", "open") not in FACT_STATUS:
                 errors.append(f"assumptions[{index}] has invalid status")
@@ -795,6 +915,11 @@ def validate_task_plan(
     for field in ("requirements", "resources", "operations", "tasks"):
         if not isinstance(plan.get(field), list) or not plan[field]:
             errors.append(f"{field} must be a non-empty array")
+    non_goals = plan.get("non_goals")
+    if not isinstance(non_goals, list) or not non_goals:
+        errors.append("non_goals must be a non-empty array")
+    elif any(not isinstance(item, str) or not item.strip() for item in non_goals):
+        errors.append("non_goals must contain only non-empty strings")
     if project_facts is not None:
         errors.extend(f"project-facts: {error}" for error in validate_project_facts(project_facts))
     if requirement_facts is not None:
@@ -830,18 +955,40 @@ def validate_task_plan(
             continue
         if not any(_acceptance_id(item) in complete_ids for item in tests):
             errors.append(f"operation {operation_id} has no complete acceptance test")
-        kind = operation.get("kind")
-        if kind in {"single-resource-operation", "batch-resource-operation"}:
-            resources = operation.get("resources")
-            if not isinstance(resources, list) or not resources:
-                errors.append(f"operation {operation_id} must declare resources")
-            elif kind == "batch-resource-operation" and len(resources) < 2:
-                errors.append(f"operation {operation_id} batch must include multiple resources")
-            elif kind == "single-resource-operation" and len(resources) != 1:
-                errors.append(f"operation {operation_id} single must include exactly one resource")
-            else:
-                _validate_refs(resources, resource_known, f"operation {operation_id}.resources", errors, resource_aliases)
+        resources = operation.get("resources")
+        if not isinstance(resources, list) or not resources:
+            errors.append(f"operation {operation_id} must declare resources")
+        else:
+            mode = "single" if len(resources) == 1 else "batch"
+            declared_mode = operation.get("resource_mode")
+            if declared_mode is None:
+                errors.append(
+                    f"operation {operation_id} must declare resource_mode "
+                    f"single or batch ({len(resources)} resource(s); expected {mode})"
+                )
+            elif declared_mode != mode:
+                errors.append(
+                    f"operation {operation_id} resource_mode {declared_mode} does not match "
+                    f"{len(resources)} resource(s); expected {mode}"
+                )
+            _validate_refs(resources, resource_known, f"operation {operation_id}.resources", errors, resource_aliases)
 
+    plan_risk = plan.get("risk", "medium")
+    if plan_risk not in RISK_LEVELS:
+        errors.append(
+            f"plan risk must be one of {', '.join(RISK_LEVELS)}; got {plan_risk!r}"
+        )
+    plan_project_type = plan.get("project_type", DEFAULT_PROJECT_TYPE)
+    if plan_project_type not in PROJECT_TYPES:
+        errors.append(
+            f"plan project_type must be one of {', '.join(PROJECT_TYPES)}; "
+            f"got {plan_project_type!r}"
+        )
+    acceptance_levels: dict[str, Any] = {
+        item.get("id"): item.get("evidence_level")
+        for item in plan.get("acceptance_tests", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
     tasks = plan.get("tasks") if isinstance(plan.get("tasks"), list) else []
     task_ids: list[str] = []
     task_map: dict[str, dict[str, Any]] = {}
@@ -861,6 +1008,22 @@ def validate_task_plan(
         task_type = task.get("type")
         if task_type not in TASK_TYPES:
             errors.append(f"task {identifier} has invalid task type")
+        floor = evidence_floor(plan_risk, plan_project_type, task_type)
+        if floor is not None:
+            declared = {
+                test_id
+                for operation_id in task.get("operations", [])
+                for test_id in operation_records.get(operation_id, {}).get("acceptance_tests", [])
+            }
+            for test_id in sorted(declared):
+                level = acceptance_levels.get(test_id)
+                if isinstance(level, bool) or not isinstance(level, int):
+                    continue
+                if level < floor:
+                    errors.append(
+                        f"task {identifier} acceptance test {test_id} evidence_level "
+                        f"{level} is below the required floor {floor}"
+                    )
         for field in ("requirements", "resources", "operations"):
             if not isinstance(task.get(field), list):
                 errors.append(f"task {identifier} missing {field}")
@@ -981,19 +1144,50 @@ def compare_task_plan_contract(
     task_operation_ids = task.get("operations", [])
     operations = [item for item in task_plan.get("operations", []) if isinstance(item, dict) and item.get("id") in task_operation_ids]
     expected_tests = [plan_acceptance[test_id] for operation in operations for test_id in operation.get("acceptance_tests", []) if test_id in plan_acceptance]
-    expected = {
-        "task_type": task.get("type"),
-        "requirements": task.get("requirements", []),
-        "resources": task.get("resources", []),
-        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), **({"resources": item.get("resources", [])} if "resources" in item else {}), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
-        "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
-        "dependencies": task.get("depends_on", []),
-        "acceptance_tests": expected_tests,
-    }
+
+    def expected_operation(item: dict[str, Any]) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "id": item.get("id"),
+            "kind": item.get("kind", "execute"),
+            "scope": item.get("scope", "task"),
+        }
+        if contract.get("schema") == 3:
+            resources = _operation_resources(item, task)
+            record["resources"] = resources
+            record["resource_mode"] = "single" if len(resources) == 1 else "batch"
+        elif "resources" in item:
+            record["resources"] = item.get("resources", [])
+        record["acceptance_tests"] = item.get("acceptance_tests", [])
+        return record
+
+    try:
+        expected = {
+            "task_type": task.get("type"),
+            "requirements": task.get("requirements", []),
+            "resources": task.get("resources", []),
+            "operations": [expected_operation(item) for item in operations],
+            "chain": _planning_chain(task.get("chain")),
+            "dependencies": task.get("depends_on", []),
+            "acceptance_tests": expected_tests,
+            "allowed_paths": _task_allowed_paths(task),
+        }
+        if contract.get("schema") == 3:
+            expected["non_goals"] = [
+                item for item in task_plan.get("non_goals", [])
+                if isinstance(item, str) and item.strip()
+            ]
+    except ValueError as error:
+        errors.append({"field": "operations", "reason": str(error), "source": "task-plan"})
+        return {"schema": 1, "status": "fail", "task_id": task_id, "conflicts": errors,
+                "errors": [item["reason"] for item in errors], "next_actions": ["do not freeze or dispatch"]}
     actual = {key: contract.get(key) for key in expected}
     for field in expected:
         if _canonical(actual[field]) != _canonical(expected[field]):
             errors.append({"field": field, "reason": f"{field} differs between task-plan and task sheet", "source": "task-plan/task-sheet", "expected": expected[field], "actual": actual[field]})
+
+    expected_schema = contract.get("schema")
+    if expected_schema not in {2, 3}:
+        errors.append({"field": "schema", "reason": "task sheet contract schema must be 2 or 3", "source": "task-sheet"})
 
     implement_plan = contract.get("implement_plan")
     if not isinstance(implement_plan, dict):
@@ -1059,6 +1253,28 @@ def _write_planning_json(path: Path, value: dict[str, Any], *, create_only: bool
     os.replace(temporary, path)
 
 
+def _project_approval_mode(root: Path) -> str:
+    """Read the project-level approval default without creating anything."""
+    path = Path(root) / ".pipeline" / "config.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return "automatic"
+    if isinstance(value, dict) and value.get("approval_mode") in {"automatic", "manual"}:
+        return value["approval_mode"]
+    return "automatic"
+
+
+def _recorded_approval_mode(root: Path, run_id: str) -> str | None:
+    """Return the approval mode recorded in a run's lifecycle state, if any."""
+    try:
+        _directory, state = _read_planning_state(Path(root), run_id)
+    except (OSError, ValueError):
+        return None
+    value = state.get("approval_mode")
+    return value if value in {"automatic", "manual"} else None
+
+
 def _read_planning_state(root: Path, run_id: str) -> tuple[Path, dict[str, Any]]:
     directory = _planning_run_directory(Path(root), run_id)
     path = directory / "lifecycle.json"
@@ -1079,8 +1295,19 @@ def _planning_identity_matches(root: Path, state: dict[str, Any]) -> list[str]:
     return [field for field in ("root", "head", "branch", "requirements_sha256") if state.get(field) != live.get(field)]
 
 
-def planning_run_start(root: Path, run_id: str | None = None, *, approval_mode: str = "automatic") -> dict[str, Any]:
+def planning_run_start(root: Path, run_id: str | None = None, *, approval_mode: str | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
+    if run_id is not None:
+        try:
+            recorded = _recorded_approval_mode(root, run_id)
+        except (OSError, ValueError):
+            recorded = None
+        if recorded is not None:
+            # An already recorded run keeps its own approval policy; a missing
+            # or unreadable record silently falls back to the project default.
+            approval_mode = approval_mode or recorded
+    if approval_mode is None:
+        approval_mode = _project_approval_mode(root)
     if approval_mode not in {"automatic", "manual"}:
         return {"status": "blocked", "errors": ["invalid approval_mode"], "artifacts": [], "next_actions": []}
     if run_id is None:
@@ -1088,6 +1315,8 @@ def planning_run_start(root: Path, run_id: str | None = None, *, approval_mode: 
     try:
         identity = _planning_identity(root, run_id)
         directory = _planning_run_directory(root, run_id)
+        # The lifecycle state is a process record, not a planning product: it is
+        # retained for interruption, conflict and failure recovery.
         state = {"schema": 1, **identity, "approval_mode": approval_mode, "phase": "started", "status": "active", "history": [{"phase": "started", "status": "active"}], "artifacts": [], "errors": [], "next_actions": ["preflight"]}
         _write_planning_json(directory / "lifecycle.json", state, create_only=True)
         return {"status": "pass", "run_id": run_id, "phase": "started", "identity": identity, "artifacts": [str(directory / "lifecycle.json")], "errors": [], "next_actions": ["preflight"]}
@@ -1123,6 +1352,14 @@ def planning_run_transition(root: Path, run_id: str, phase: str, *, status: str 
 
 def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: bool = False) -> dict[str, Any]:
     try:
+        candidate = _planning_run_directory(Path(root), run_id)
+    except (OSError, ValueError) as error:
+        return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["recover"]}
+    if success and not candidate.is_dir():
+        # A successful run leaves only the frozen task sheets, so a repeated
+        # finalize is idempotent without any retained lifecycle state.
+        return {"schema": 1, "run_id": run_id, "status": "finalized", "requirements_sha256": None, "artifacts": [], "errors": [], "next_actions": [], "phase": "finalized"}
+    try:
         directory, state = _read_planning_state(root, run_id)
         drift = _planning_identity_matches(root, state)
         if drift:
@@ -1136,15 +1373,38 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
                         return existing
                 except (OSError, UnicodeError, json.JSONDecodeError):
                     pass
-            return {"status": "finalized", "run_id": run_id, "phase": "finalized", "artifacts": ["lifecycle.json"], "errors": [], "next_actions": []}
+            return {"schema": 1, "run_id": run_id, "status": "finalized", "requirements_sha256": state.get("requirements_sha256"), "artifacts": [], "errors": [], "next_actions": [], "phase": "finalized"}
         if success and state.get("phase") != "generated":
             return {"status": "blocked", "run_id": run_id, "phase": state.get("phase"), "errors": ["successful finalization requires generated phase"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["transition to generated before finalizing"]}
         if success and state.get("approval_mode") == "manual" and not approval:
             return {"status": "blocked", "run_id": run_id, "errors": ["manual approval required"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["approve then finalize"]}
-        state.update({"phase": "finalized" if success else "failed", "status": "finalized" if success else "failed", "result": "pass" if success else "fail", "next_actions": []})
-        state.setdefault("history", []).append({"phase": state["phase"], "status": state["status"]})
+        phase = "finalized" if success else "failed"
+        result = {
+            "schema": 1,
+            "run_id": run_id,
+            "status": "finalized" if success else "failed",
+            "requirements_sha256": state["requirements_sha256"],
+            "artifacts": [],
+            "errors": [],
+            "next_actions": [],
+            "phase": phase,
+        }
+        if success:
+            # A successful planning run leaves only the frozen task sheets.  The
+            # lifecycle, stage and dispatch records are process artifacts and are
+            # removed here; failures keep the full audit trail below.
+            shutil.rmtree(directory, ignore_errors=True)
+            planning_root = directory.parent
+            try:
+                if planning_root.is_dir() and not any(planning_root.iterdir()):
+                    planning_root.rmdir()
+            except OSError:
+                pass
+            return result
+        state.update({"phase": phase, "status": phase, "result": "fail", "next_actions": []})
+        state.setdefault("history", []).append({"phase": phase, "status": phase})
         _write_planning_json(directory / "lifecycle.json", state)
-        result = {"schema": 1, "run_id": run_id, "status": state["status"], "requirements_sha256": state["requirements_sha256"], "artifacts": ["lifecycle.json"], "errors": [], "next_actions": [], "phase": state["phase"]}
+        result["artifacts"] = ["lifecycle.json"]
         _write_planning_json(directory / "result.json", result)
         return result
     except (OSError, ValueError) as error:
@@ -1152,6 +1412,14 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
 
 
 def planning_run_recover(root: Path, run_id: str) -> dict[str, Any]:
+    try:
+        directory = _planning_run_directory(Path(root), run_id)
+    except (OSError, ValueError) as error:
+        return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["inspect retained failure evidence"]}
+    if not directory.is_dir():
+        # A successful planning run leaves only the frozen task sheets; there is
+        # no lifecycle state left to recover.
+        return {"status": "finalized", "run_id": run_id, "phase": "finalized", "identity": {}, "artifacts": [], "errors": [], "next_actions": []}
     try:
         directory, state = _read_planning_state(root, run_id)
         drift = _planning_identity_matches(root, state)
@@ -1162,31 +1430,114 @@ def planning_run_recover(root: Path, run_id: str) -> dict[str, Any]:
         return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["inspect retained failure evidence"]}
 
 
-def _task_sheet_text(task: dict[str, Any], plan: dict[str, Any], requirements_sha256: str, run_id: str) -> str:
+def _planning_chain(chain: Any) -> dict[str, Any]:
+    if isinstance(chain, dict) and any(chain.get(name) for name in CHAIN):
+        return chain
+    return {
+        name: {
+            "not_applicable": True,
+            "reason": "this task declares no chain reference for this phase",
+        }
+        for name in CHAIN
+    }
+
+
+def _not_applicable_chain() -> dict[str, Any]:
+    return _planning_chain(None)
+
+
+def _operation_resources(operation: dict[str, Any], task: dict[str, Any]) -> list[str]:
+    resources = operation.get("resources")
+    if resources is None:
+        resources = task.get("resources")
+    if not isinstance(resources, list) or not resources:
+        raise ValueError(
+            f"operation {operation.get('id')} declares no resources; "
+            "declare resources on the operation or its task"
+        )
+    resolved = [item for item in resources if isinstance(item, str) and item.strip()]
+    if not resolved:
+        raise ValueError(
+            f"operation {operation.get('id')} declares no usable resources; "
+            "declare non-empty resource ids on the operation or its task"
+        )
+    return resolved
+
+
+def _task_allowed_paths(task: dict[str, Any]) -> list[str]:
+    resources = task.get("resources")
+    if not isinstance(resources, list) or not resources:
+        raise ValueError(
+            f"task {task.get('id')} declares no resources; allowed_paths cannot be derived"
+        )
+    paths = [str(item).replace("\\", "/") for item in resources if isinstance(item, str) and item.strip()]
+    if not paths:
+        raise ValueError(
+            f"task {task.get('id')} declares no usable resources; allowed_paths cannot be derived"
+        )
+    return paths
+
+
+def _task_sheet_text(
+    task: dict[str, Any],
+    plan: dict[str, Any],
+    requirements_sha256: str,
+    run_id: str,
+    *,
+    assumptions: list[Any] | None = None,
+    unknowns: list[Any] | None = None,
+) -> str:
     task_id = task["id"]
     task_type = task["type"]
     operations = [item for item in plan.get("operations", []) if isinstance(item, dict) and item.get("id") in task.get("operations", [])]
     operation_ids = {item.get("id") for item in operations}
     tests = [item for item in plan.get("acceptance_tests", []) if isinstance(item, dict) and any(item.get("id") in op.get("acceptance_tests", []) for op in operations)]
     if not tests:
-        tests = [item for item in plan.get("acceptance_tests", []) if isinstance(item, dict)]
+        raise ValueError(
+            f"task {task_id} has no bound acceptance test; every operation must reference a declared acceptance test"
+        )
+    non_goals = [item for item in plan.get("non_goals", []) if isinstance(item, str) and item.strip()]
+    if not non_goals:
+        raise ValueError(
+            f"task {task_id} has no non_goals; declare explicit non-goal sentences in the task plan"
+        )
     contract = {
-        "schema": 2,
+        "schema": 3,
         "task_id": task_id,
         "task_type": task_type,
         "implement_plan": {"path": "implement-plan.md", "sha256": requirements_sha256, "planning_run_id": run_id},
-        "requirements": task.get("requirements", []),
-        "resources": task.get("resources", []),
-        "allowed_paths": [str(item).replace("\\\\", "/") for item in task.get("resources", [])] or ["pipeline_tools/**"],
+        "risk": plan.get("risk", "medium"),
+        "project_type": plan.get("project_type", DEFAULT_PROJECT_TYPE),
+        "non_goals": non_goals,
+        "allowed_paths": _task_allowed_paths(task),
         "forbidden_paths": ["implement-plan.md", "IDEA.md", ".pipeline/** existing history"],
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
-        "operations": [{"id": item.get("id"), "kind": item.get("kind", "execute"), "scope": item.get("scope", "task"), **({"resources": item.get("resources", [])} if "resources" in item else {}), "acceptance_tests": item.get("acceptance_tests", [])} for item in operations],
-        "chain": task.get("chain") or {name: ["not-applicable"] for name in CHAIN},
+        "operations": [
+            {
+                "id": item.get("id"),
+                "kind": item.get("kind", "execute"),
+                "scope": item.get("scope", "task"),
+                "resources": _operation_resources(item, task),
+                "resource_mode": "single" if len(_operation_resources(item, task)) == 1 else "batch",
+                "acceptance_tests": item.get("acceptance_tests", []),
+            }
+            for item in operations
+        ],
+        "chain": _planning_chain(task.get("chain")),
         "acceptance_tests": tests,
         "dependencies": task.get("depends_on", []),
         "required_evidence_levels": sorted({item.get("evidence_level") for item in tests if isinstance(item.get("evidence_level"), int)}) or [1],
+        "assumptions": list(assumptions or []),
+        "unknowns": list(unknowns or []),
     }
+    if task_type == "prerequisite":
+        reason = task.get("non_user_completion_reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                f"task {task_id} is prerequisite but declares no non_user_completion_reason in the task plan"
+            )
+        contract["non_user_completion_reason"] = reason
     lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- implement-plan SHA-256：`{requirements_sha256}`", "- 状态：未开始", "", "## 依赖与范围", "", "### 允许修改", ""]
     lines.extend(f"- `{item}`" for item in contract["allowed_paths"])
     lines.extend(["", "### 明确不改", "", "- `implement-plan.md`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
@@ -1203,6 +1554,8 @@ def generate_task_sheets(
     task_plan: dict[str, Any],
     *,
     expected_requirements_sha256: str | None = None,
+    assumptions: list[Any] | None = None,
+    unknowns: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Generate all task sheets atomically after mechanical planning checks."""
     root = Path(root).resolve()
@@ -1240,7 +1593,17 @@ def generate_task_sheets(
             audit.mkdir(parents=True, exist_ok=True)
             (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
             return result
-        contents = [_task_sheet_text(task, task_plan, str(requirements_sha256), planning_run_id) for task in tasks]
+        contents = [
+            _task_sheet_text(
+                task,
+                task_plan,
+                str(requirements_sha256),
+                planning_run_id,
+                assumptions=assumptions,
+                unknowns=unknowns,
+            )
+            for task in tasks
+        ]
         validation_errors: list[str] = []
         temporary: list[Path] = []
         for destination, content in zip(destinations, contents):
@@ -1293,19 +1656,28 @@ def planning_to_dispatch(
     task_id: str | None = None,
     branch: str | None = None,
     baseline: str | None = None,
-    approval_mode: str = "automatic",
+    approval_mode: str | None = None,
     approved: bool = False,
     role: str = "executor",
     auto_freeze: bool = True,
+    expected_requirements_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Run the fail-closed planning-to-dispatch orchestration.
 
     The function is intentionally an orchestration boundary: it records every
-    stage, stops at the first blocked stage, and never starts an executor.
+    stage, stops at the first blocked stage, and never starts an executor.  On
+    success it writes no planning product: the stage records and the dispatch
+    payload live only in the returned value, and only the frozen task sheet is
+    persisted.  Failure, interruption and conflict keep the full audit trail
+    under ``.pipeline/planning/<run-id>/``.
     """
-    from .core import create_worktree_dispatch, git, write_dispatch
+    from .core import create_worktree_dispatch, git
 
     root = Path(root).resolve()
+    if approval_mode is None:
+        approval_mode = _recorded_approval_mode(root, run_id)
+    if approval_mode is None:
+        approval_mode = _project_approval_mode(root)
     audit = _planning_run_directory(root, run_id)
     result: dict[str, Any] = {
         "schema": 1, "command": "planning.to-dispatch", "status": "blocked",
@@ -1313,27 +1685,41 @@ def planning_to_dispatch(
         "artifacts": [], "errors": [], "blockers": [],
         "next_actions": [], "unverified": ["executor", "reviewer", "executor evidence"],
     }
-    audit.mkdir(parents=True, exist_ok=True)
+    records: list[dict[str, Any]] = []
+
+    def flush_stages() -> None:
+        audit.mkdir(parents=True, exist_ok=True)
+        for index, record in enumerate(records, 1):
+            path = audit / f"{index:02d}-{record['name']}.json"
+            _write_planning_json(path, record)
+            result["artifacts"].append(str(path))
 
     def stage(name: str, status: str, value: dict[str, Any]) -> bool:
         record = {"name": name, "status": status, "run_id": run_id,
                   "task_id": result.get("task_id"), **value}
+        records.append(record)
         result["stages"].append(record)
-        path = audit / f"{len(result['stages']):02d}-{name}.json"
-        _write_planning_json(path, record)
-        result["artifacts"].append(str(path))
         if status != "pass":
             result["status"] = status
             result["errors"].extend(value.get("errors", []))
             result["blockers"].extend(value.get("blockers", []))
             result["next_actions"] = value.get("next_actions", ["recover"])
+            flush_stages()
             return False
         return True
 
     if approval_mode not in {"automatic", "manual"}:
         stage("preflight", "blocked", {"errors": ["invalid approval_mode"], "next_actions": ["fix approval policy"]})
         return result
-    preflight = planning_preflight(root)
+    if expected_requirements_sha256 is None:
+        try:
+            _directory, _state = _read_planning_state(root, run_id)
+            recorded_hash = _state.get("requirements_sha256")
+            if isinstance(recorded_hash, str) and recorded_hash:
+                expected_requirements_sha256 = recorded_hash
+        except (OSError, ValueError):
+            pass
+    preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256)
     if not stage("preflight", preflight.get("status", "blocked"), preflight):
         return result
     gate_input = {"schema": 1, "planning_run_id": run_id}
@@ -1347,7 +1733,16 @@ def planning_to_dispatch(
     gate = gate_facts_for_planning(gate_input, planning_run_id=run_id)
     if not stage("facts-gate", gate.get("status", "blocked"), gate):
         return result
-    generated = generate_task_sheets(root, run_id, project_facts, requirement_facts, task_plan, expected_requirements_sha256=preflight.get("requirements_sha256"))
+    generated = generate_task_sheets(
+        root,
+        run_id,
+        project_facts,
+        requirement_facts,
+        task_plan,
+        expected_requirements_sha256=preflight.get("requirements_sha256"),
+        assumptions=project_facts.get("assumptions") if isinstance(project_facts, dict) else None,
+        unknowns=project_facts.get("unknowns") if isinstance(project_facts, dict) else None,
+    )
     if generated.get("status") != "pass":
         generation_artifact = audit / "generation-result.json"
         if generation_artifact.is_file():
@@ -1406,16 +1801,11 @@ def planning_to_dispatch(
                 "branch": branch, "evidence_dir": str(root / ".pipeline" / selected),
                 "permissions": {"write_workflow": True, "write_product": role == "executor"},
                 "output": "dispatch-ready", "run_id": run_id}
-    dispatch_path = audit / "dispatch.json"
-    try:
-        write_dispatch(root, dispatch, dispatch_path)
-    except (OSError, ValueError) as error:
-        stage("dispatch", "blocked", {"errors": [f"{type(error).__name__}: {error}"], "next_actions": ["recover dispatch artifact"]})
-        return result
-    stage("dispatch", "pass", {"dispatch": dispatch, "artifacts": [str(dispatch_path)], "next_actions": ["start executor separately"]})
+    stage("dispatch", "pass", {"dispatch": dispatch, "next_actions": ["start executor separately"]})
+    result["dispatch"] = dispatch
     result["status"] = "dispatch-ready"
     result["next_actions"] = ["start executor separately; do not infer executor success"]
-    result["artifacts"].append(str(dispatch_path))
+    result["artifacts"] = []
     return result
 
 

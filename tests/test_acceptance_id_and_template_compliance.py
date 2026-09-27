@@ -1,12 +1,17 @@
 import json
 import re
+import sys
 import unittest
 from pathlib import Path
 
-from pipeline_tools.contract import validate_task
-
-
 ROOT = Path(__file__).parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pipeline_tools.contract import validate_task
+from scripts.validate_task_sheet import validate as validate_structure
+
+
 TASKS = (
     ROOT / "docs/tasks/pipeline-tools-v1.md",
     ROOT / "docs/tasks/pipeline-evidence-lifecycle-migration.md",
@@ -94,6 +99,83 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertNotIn("<task-id>", contract.group(1))
             self.assertNotIn("<complete command>", contract.group(1))
             self.assertTrue("UNVERIFIED" in text or "未开始" in text or "已合并" in text, path)
+
+    def _schema3_sheet(self, suffix):
+        return (
+            "# Task\n<!-- Task ID: demo -->\n```pipeline-contract\n"
+            '{"schema":3,"task_id":"demo","task_type":"repair","project_type":"service",'
+            '"risk":"medium","implement_plan":{"path":"implement-plan.md"},'
+            '"allowed_paths":["src/**"],"forbidden_paths":[],'
+            '"non_goals":["must not rewrite task history"],'
+            '"operations":[{"id":"op","kind":"validate","scope":"project",'
+            '"resources":["src/app.py"],"resource_mode":"single",'
+            '"acceptance_tests":["acceptance-test-1"]}],'
+            '"chain":{"entry":["src/app.py"],"interaction":["src/app.py"],'
+            '"application":["src/app.py"],"domain":["src/app.py"],'
+            '"persistence":["src/app.py"],"readback":["src/app.py"],'
+            '"recovery":["src/app.py"]},'
+            '"acceptance_tests":[{"id":"acceptance-test-1","evidence_level":2,'
+            '"test_ref":"tests/test_x.py: test_x","command_ref":"python -m unittest"}],'
+            '"dependencies":[],"required_evidence_levels":[2]}'
+            "\n```\n" + suffix
+        )
+
+    def _write_temp(self, text):
+        path = ROOT / "tests" / ".tmp-schema3-compliance.md"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_schema3_sheet_rejects_process_record_heading(self):
+        path = self._write_temp(self._schema3_sheet("## 任务级进度\n\n### 执行记录\n\n| a | b |\n"))
+        try:
+            errors = validate_structure(path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertTrue(any("执行记录" in error for error in errors), errors)
+        self.assertTrue(any("任务级进度" in error for error in errors), errors)
+
+    def test_schema3_sheet_rejects_abbreviated_acceptance_id(self):
+        text = self._schema3_sheet("## 验收测试\n\n### 验收测试1：demo\n").replace(
+            '"id":"acceptance-test-1"', '"id":"AT1"'
+        )
+        path = self._write_temp(text)
+        try:
+            errors = validate_task(path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertTrue(any("id" in error for error in errors), errors)
+
+    def test_schema3_sheet_rejects_evidence_level_below_floor(self):
+        text = self._schema3_sheet("## 验收测试\n\n### 验收测试1：demo\n").replace(
+            '"evidence_level":2', '"evidence_level":1'
+        )
+        path = self._write_temp(text)
+        try:
+            errors = validate_task(path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertTrue(any("floor" in error for error in errors), errors)
+
+    def test_schema1_and_schema2_sheets_keep_today_outcome(self):
+        for name in (
+            "pipeline-tools-v1.md",
+            "pipeline-evidence-lifecycle-migration.md",
+            "acceptance-id-and-template-compliance.md",
+            "task-worktree-dispatch-identity.md",
+        ):
+            path = ROOT / "docs/tasks" / name
+            before = path.read_bytes()
+            self.assertEqual(validate_task(path), [], name)
+            self.assertEqual(validate_structure(path), [], name)
+            self.assertEqual(path.read_bytes(), before, name)
+
+    def test_template_emits_schema3_without_process_record_sections(self):
+        text = (ROOT / "templates/task-sheet.md").read_text(encoding="utf-8")
+        self.assertIn('"schema": 3', text)
+        self.assertIn('"non_goals"', text)
+        self.assertIn('"resource_mode"', text)
+        for heading in ("## 任务级进度", "### 任务锚点", "### 验收台账", "### 执行记录", "### 最终结果"):
+            self.assertNotIn(heading, text, heading)
 
 
 if __name__ == "__main__":

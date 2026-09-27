@@ -62,6 +62,23 @@ class WorktreeDispatchIdentityTests(unittest.TestCase):
             self.assertEqual(result["blockers"][0]["category"], "freeze")
             self.assertFalse((root / ".worktrees" / "dispatch-task").exists())
 
+    def test_worktree_add_failure_deletes_orphan_branch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, sheet, head = self._repo(directory)
+            # `git worktree add -b` creates the branch first and the worktree
+            # directory second. A regular file at the worktree root path makes
+            # directory creation fail, so git exits non-zero with the branch
+            # already present.
+            (root / ".worktrees").write_text("occupied\n", encoding="utf-8")
+            result = create_worktree_dispatch(root, sheet, "dispatch-task", "failed-dispatch-branch", head)
+            self.assertEqual(result["status"], "blocked", result)
+            branch = subprocess.run(
+                ["git", "rev-parse", "--verify", "refs/heads/failed-dispatch-branch"],
+                cwd=root, capture_output=True, text=True,
+            )
+            self.assertNotEqual(branch.returncode, 0, branch.stdout)
+            self.assertFalse((root / ".worktrees" / "dispatch-task").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

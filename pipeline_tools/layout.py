@@ -18,6 +18,7 @@ def migrate_layout(root: Path) -> tuple[int, str]:
     """Move a legacy .workflow tree to .pipeline without overwriting files."""
     import hashlib
     import os
+    import shutil
 
     legacy = root / LEGACY_PIPELINE_DIR_NAME
     canonical = root / PIPELINE_DIR_NAME
@@ -37,7 +38,18 @@ def migrate_layout(root: Path) -> tuple[int, str]:
         }
 
     before = manifest(legacy)
-    os.rename(legacy, canonical)
+    try:
+        os.rename(legacy, canonical)
+    except OSError:
+        # A rename across filesystems (or a locked directory) is retried as a
+        # copy-and-delete move; the manifest comparison below still proves the
+        # contents survived and no canonical tree was overwritten.
+        if canonical.exists():
+            raise LegacyPipelineLayoutError("both .workflow and .pipeline exist; reconcile before migration")
+        try:
+            shutil.move(str(legacy), str(canonical))
+        except OSError as error:
+            raise LegacyPipelineLayoutError(f"migration failed: {error}") from error
     after = manifest(canonical)
     if before != after:
         raise LegacyPipelineLayoutError("migration changed file contents")

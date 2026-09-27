@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Validate the static structure of a generic programming task sheet.
+"""Validate the Markdown structure of a generic programming task sheet.
 
-This checks structure and identity only. It does not decide whether the
-acceptance tests are substantively correct; that remains the main agent's
-responsibility.
+This is a Markdown-structure check only: it verifies the human-readable
+sections of a task sheet and delegates every ``pipeline-contract`` concern to
+``pipeline_tools.contract.load_contract``. The real machine gate is
+``pipeline-tools task validate``.
+
+For schema 3, process records no longer belong in the task sheet: task
+anchors, the acceptance ledger, the execution log and the final result live
+in the task's ``.pipeline/<task-id>/`` progress logs and stage reports, and
+their headings are rejected by this checker. Schema 1 and 2 sheets stay
+read-only compatible: for them those same headings and the merge-commit
+field are still required, exactly as before.
 """
 
 from __future__ import annotations
@@ -11,6 +19,12 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pipeline_tools.contract import CONTRACT_RE, load_contract
 
 REQUIRED_HEADINGS = (
     "## 任务身份",
@@ -20,6 +34,15 @@ REQUIRED_HEADINGS = (
     "## 环境前置",
     "## 验收测试",
     "## 决策点",
+    "## 任务级进度",
+    "### 任务锚点",
+    "### 验收台账",
+    "### 执行记录",
+    "### 最终结果",
+)
+
+# Schema 3 moved process records out of the task sheet entirely.
+FORBIDDEN_SCHEMA3_HEADINGS = (
     "## 任务级进度",
     "### 任务锚点",
     "### 验收台账",
@@ -44,7 +67,14 @@ REQUIRED_ACCEPTANCE_FIELDS = (
     "- 结果要求：",
 )
 
-CONTRACT_RE = re.compile(r"```pipeline-contract\s*\n(.*?)\n```", flags=re.DOTALL)
+CONTRACT_PLACEHOLDERS = (
+    "<task-id>",
+    "<repo-relative",
+    "<path-pattern>",
+    "<file>",
+    "<exact test name>",
+    "<complete command>",
+)
 
 
 def validate(path: Path) -> list[str]:
@@ -55,14 +85,31 @@ def validate(path: Path) -> list[str]:
         errors.append("first line must be a Markdown title")
     if not re.search(r"<!--\s*Task ID:\s*[A-Za-z0-9][A-Za-z0-9._-]*\s*-->", text):
         errors.append("missing valid Task ID comment")
+
+    contract, contract_errors = load_contract(path)
+    errors.extend(contract_errors)
+
     blocks = CONTRACT_RE.findall(text)
-    if len(blocks) != 1:
-        errors.append("task sheet must contain exactly one pipeline-contract block")
-    elif any(token in blocks[0] for token in ("<task-id>", "<repo-relative", "<path-pattern>", "<file>", "<exact test name>", "<complete command>")):
+    if len(blocks) == 1 and any(token in blocks[0] for token in CONTRACT_PLACEHOLDERS):
         errors.append("pipeline-contract contains unfilled placeholders")
-    for heading in REQUIRED_HEADINGS:
-        if heading not in text:
-            errors.append(f"missing heading: {heading}")
+
+    schema = contract.get("schema") if isinstance(contract, dict) else None
+
+    if schema == 3:
+        for heading in FORBIDDEN_SCHEMA3_HEADINGS:
+            if heading in text:
+                errors.append(f"schema 3 task sheet must not contain heading: {heading}")
+    else:
+        for heading in REQUIRED_HEADINGS:
+            if heading not in text:
+                errors.append(f"missing heading: {heading}")
+        for field in REQUIRED_ANCHOR_FIELDS:
+            if field not in text:
+                errors.append(f"missing task anchor field: {field}")
+        if "| 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |" not in text:
+            errors.append("acceptance-test ledger header is missing")
+        if not re.search(r"^- 合并提交：.*$", text, re.MULTILINE):
+            errors.append("final result must contain the merge-commit field")
 
     acceptance_matches = list(
         re.finditer(r"^### 验收测试\d+[：:].*$", text, flags=re.MULTILINE)
@@ -87,13 +134,6 @@ def validate(path: Path) -> list[str]:
                     f"acceptance test {index} must declare an evidence level (1-5)"
                 )
 
-    for field in REQUIRED_ANCHOR_FIELDS:
-        if field not in text:
-            errors.append(f"missing task anchor field: {field}")
-    if "| 验收测试 | 状态 | 当前测试/命令 | 最新证据 | 备注 |" not in text:
-        errors.append("acceptance-test ledger header is missing")
-    if not re.search(r"^- 合并提交：.*$", text, re.MULTILINE):
-        errors.append("final result must contain the merge-commit field")
     return errors
 
 

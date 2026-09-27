@@ -16,8 +16,20 @@
 - 项目级统计：`.pipeline/metrics/`（由工具自动生成并纳入 Git 追踪）
 - 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
 - 任务契约提交后冻结
-- 每个任务的进度、裁决和最终结果只维护在该任务文档内，不需要项目级状态文档
+- 任务单只承载冻结契约与人类可读的契约说明；过程记录（任务锚点、验收台账、执行记录、最终结果）写入 `.pipeline/<task-id>/` 的角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 和三份阶段报告（`executor-report.md`、`review-report.md`、`final-check.md`），不另行维护项目级状态文档
 - 合并前需要执行、独立审查和主代理终检；合并后在主工作树复验
+- 审批策略：`.pipeline/config.json` 的 `approval_mode`（`automatic` | `manual`）是项目级默认，解析顺序为显式参数 → 运行记录 → 项目配置 → 默认 `automatic`；该文件需手工创建，没有命令会写入它
+
+## 任务类型与命名
+
+契约里的任务类型 token 只有四个（`pipeline_tools/contract.py` 的 `TASK_TYPES`）：`vertical-feature`、`prerequisite`、`repair`、`derived`。选择依据是任务与用户功能的关系，不是工作量：
+
+- `vertical-feature`：交付一条完整用户链路（入口 → 交互 → 应用处理 → 领域事实 → 持久化 → 回读 → 恢复），有真实外部入口和可观察的用户结果。链路段不允许豁免，证据下限至少 2。
+- `repair`：修复已有用户功能链路上的缺陷；按 `vertical-feature` 的标准覆盖完整链路，链路段同样不允许豁免。
+- `prerequisite`：只产出被后续任务消费的底座（schema、协议、算法、持久化、构建或环境能力）。契约必须写明 `non_user_completion_reason`；链路段允许结构化豁免。
+- `derived`：从一个父任务的明确提交派生出的新任务，重新生成独立任务单，不复用父任务的证据。包含设计变更后按裁决重开的那一类。
+
+**命名统一**：任务类型字段写 `derived`，机器 id 和路径前缀保留 `continuation`——两者指同一件事，必须成对出现。`create_derived_dispatch(..., continuation=True)` 要求子任务 id 含 `continuation`。`derived` 子契约逐字段复制父契约、只覆盖 `task_id`/`task_type`/`dependencies`/`derived_from`，因此它不继承父类型的链路段强制、`vertical-feature` 证据下限加成和 `prerequisite` 的 `non_user_completion_reason` 要求；详见 `references/task-design.md` 的「`derived` 子任务继承什么、不继承什么」。
 
 创建实现 worktree 时，从仓库根目录执行：
 
@@ -77,7 +89,11 @@ python -m pipeline_tools --format json evidence readiness .pipeline/<task-id> --
 
 自动事件和 `metrics record` 事件都逐文件原子写入 `.pipeline/metrics/`。只有 `observed` 和 `derived` 进入核心聚合；`reported` 只留作追溯。新版本工具第一次访问已有 `.workflow/` 项目时会自动把整个目录原样迁移到 `.pipeline/`，核对文件哈希并更新路径引用；若 `.pipeline/` 已存在则停止并报告冲突，不会覆盖或双写。详见 `references/metrics-contract.md`。
 
-`metrics import-opencode-session` 只从 OpenCode Desktop 的结构化导出中提取可验证的工具错误、子代理错误和用户流程纠正信号；不会把自然语言 PASS 当作验收事实。`runtime preflight` 应在派发 executor/reviewer 前执行，`runtime role-scope` 用于阻止未授权的主代理产品代码修改。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
+`metrics import-opencode-session` 只从 OpenCode Desktop 的结构化导出中提取可验证的工具错误、子代理错误和用户流程纠正信号；不会把自然语言 PASS 当作验收事实。`runtime preflight` 应在派发 executor/reviewer 前执行，`runtime role-scope` 用于阻止未授权的主代理产品代码修改。
+
+`runtime handshake` 是可选的能力检查，写入 `<workflow>/capability-handshake.json`，记录仓库可读、workflow 可写、产品代码写权限与 runtime 状态；它**不是** v0.11.0 移除的那个「每个任务必须写握手 JSON」的强制要求，那一项已被模板化环境检查列表取代，见 `SKILL.md` 的版本升级与兼容性一节。新任务不依赖该命令也能完成闭环。
+
+角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；`.pipeline/metrics/` 的指标事件则相反，应纳入 Git。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
 
 结构化命令使用统一响应外壳：`schema`、`command`、`status`、`exit_code`、`observed`、`errors`、`blockers`、`artifacts`、`next_actions` 和 `unverified`。JSON 文件是流程编排输入，终端摘要只用于人类查看。
 

@@ -105,16 +105,25 @@ def _task_contract_for_preflight(args: argparse.Namespace) -> list[str]:
 
 
 def _run_task_lifecycle(args: argparse.Namespace) -> int:
+    unverified: list[str] = []
     errors = freeze_check(
         args.root,
         args.contract,
         expected_head=args.expected_head,
         expected_branch=args.expected_branch,
         expected_worktree=args.expected_worktree,
+        task_sheet=getattr(args, "task_sheet", None),
+        unverified=unverified,
     )
     if getattr(args, "action", None) == "preflight":
         errors.extend(_task_contract_for_preflight(args))
-    _print_errors(errors)
+    status = "pass" if not errors else "drift"
+    if getattr(args, "format", None) == "json":
+        _emit(_envelope(f"task.{args.action}", status, errors=errors, unverified=unverified), args)
+    else:
+        _print_errors(errors)
+        for item in unverified:
+            print(f"UNVERIFIED: {item}")
     return PASS if not errors else DRIFT
 
 
@@ -158,12 +167,12 @@ def _build_parser() -> argparse.ArgumentParser:
     orchestrate.add_argument("--task-id")
     orchestrate.add_argument("--branch")
     orchestrate.add_argument("--baseline")
-    orchestrate.add_argument("--approval-mode", choices=("automatic", "manual"), default="automatic")
+    orchestrate.add_argument("--approval-mode", choices=("automatic", "manual"), default=None)
     orchestrate.add_argument("--approve", action="store_true")
     orchestrate.add_argument("--no-auto-freeze", action="store_true")
     run = planning_sub.add_parser("run")
     run_sub = run.add_subparsers(dest="run_action", required=True)
-    start = run_sub.add_parser("start"); start.add_argument("root", type=Path); start.add_argument("--run-id"); start.add_argument("--approval-mode", choices=("automatic", "manual"), default="automatic")
+    start = run_sub.add_parser("start"); start.add_argument("root", type=Path); start.add_argument("--run-id"); start.add_argument("--approval-mode", choices=("automatic", "manual"), default=None)
     transition = run_sub.add_parser("transition"); transition.add_argument("root", type=Path); transition.add_argument("--run-id", required=True); transition.add_argument("--phase", required=True); transition.add_argument("--status", default="active"); transition.add_argument("--error")
     finish = run_sub.add_parser("finalize"); finish.add_argument("root", type=Path); finish.add_argument("--run-id", required=True); finish.add_argument("--success", action="store_true"); finish.add_argument("--approve", action="store_true")
     recover = run_sub.add_parser("recover"); recover.add_argument("root", type=Path); recover.add_argument("--run-id", required=True)
@@ -1036,14 +1045,22 @@ def _main(argv: list[str] | None = None) -> int:
             _print_errors(errors)
             return PASS if not errors else BLOCKED
         if args.group == "gate":
-            errors = gate_check(args.directory, args.task_id, args.branch, args.action)
+            unverified: list[str] = []
+            errors = gate_check(args.directory, args.task_id, args.branch, args.action, unverified=unverified)
             if args.result:
                 role = args.role or ("reviewer" if "reviewer" in args.result.name else "executor")
                 errors.extend(verify_structured_result(args.result, args.task_id, role))
                 freshness = evidence_freshness(args.directory.parent.parent, args.directory, args.result)
                 if freshness["status"] != "pass":
                     errors.extend(freshness["errors"])
-            _print_errors(errors)
+                unverified.extend(freshness.get("unverified", []))
+            status = "pass" if not errors else "blocked"
+            if args.format == "json":
+                _emit(_envelope(f"gate.{args.action}", status, task_id=args.task_id, errors=errors, unverified=unverified), args)
+            else:
+                _print_errors(errors)
+                for item in unverified:
+                    print(f"UNVERIFIED: {item}")
             return PASS if not errors else BLOCKED
         if args.group == "metrics":
             if args.action == "migrate":

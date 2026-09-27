@@ -20,7 +20,7 @@ class PlanningFactsConflictTests(unittest.TestCase):
             "assumptions": [{"id": "assume-1", "source_id": "plan", "status": "open"}],
             "unknowns": [{"id": "unknown-1", "source_id": "plan", "status": "resolved"}],
             "conflicts": [],
-            "non_goals": [{"id": "no-product", "not_applicable": True, "reason": "prerequisite only"}],
+            "non_goals": ["本任务不扩展用户可见功能"],
             "decision_blockers": [],
         }
 
@@ -70,6 +70,23 @@ class PlanningFactsConflictTests(unittest.TestCase):
             completed = subprocess.run([sys.executable, "-m", "pipeline_tools", "planning", "facts-gate-planning", str(path)], capture_output=True, text=True)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn('"planning_allowed": false', completed.stdout)
+
+    def test_non_goals_must_be_recorded_as_explicit_sentences(self):
+        missing = self.valid_model()
+        del missing["non_goals"]
+        self.assertTrue(any("non_goals" in error for error in validate_facts_model(missing)))
+        self.assertEqual(gate_facts_for_planning(missing)["status"], "blocked")
+
+        empty = dict(self.valid_model(), non_goals=[])
+        self.assertTrue(any("non_goals" in error for error in validate_facts_model(empty)))
+        self.assertFalse(gate_facts_for_planning(empty)["planning_allowed"])
+
+        blank = dict(self.valid_model(), non_goals=["   "])
+        self.assertTrue(any("non_goals" in error for error in validate_facts_model(blank)))
+
+        explicit = dict(self.valid_model(), non_goals=["本项目没有非目标；范围仅限已记录需求"])
+        self.assertEqual(validate_facts_model(explicit), [])
+        self.assertEqual(gate_facts_for_planning(explicit)["status"], "pass")
 
 
 if __name__ == "__main__":

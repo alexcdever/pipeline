@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from .layout import active_pipeline_dir, canonical_evidence_dir, evidence_root, is_metrics_path, metrics_dirs
-from .contract import load_contract
+from .contract import load_contract, validate_task
 
 PASS, FAIL, CONFIG, BLOCKED, DRIFT = 0, 1, 2, 3, 4
 REPORT_NAMES = ("executor-report.md", "review-report.md", "final-check.md")
+MACHINE_RESULT_NAMES = ("executor-result.json", "reviewer-result.json", "final-result.json")
 CONFIDENCES = {"observed", "derived", "reported"}
 METRIC_RESULTS = {"pass", "passed", "fail", "failed", "blocked", "flaky", "unknown"}
 BLOCKER_CLASSES = {"product", "environment", "permission", "evidence", "dependency", "workflow", None}
@@ -235,7 +236,9 @@ def commit_history_check(root: Path, evidence_root: str, *, metrics_root: str = 
             in_evidence = normalized == evidence_root or normalized.startswith(evidence_root.rstrip("/") + "/")
             in_metrics = normalized == metrics_root or normalized.startswith(metrics_root.rstrip("/") + "/")
             retained = {"executor-report.md", "review-report.md", "final-check.md", "executor-result.json", "reviewer-result.json", "final-result.json", "finalization.json"}
-            if in_evidence and not in_metrics and Path(normalized).name not in retained:
+            if is_progress_log_path(normalized):
+                violations.append(f"{current_commit}: {status} {normalized} (progress log must not enter Git)")
+            elif in_evidence and not in_metrics and Path(normalized).name not in retained:
                 violations.append(f"{current_commit}: {status} {normalized}")
     return violations
 
@@ -258,7 +261,7 @@ def scope_check(root: Path, allowed: list[str], forbidden: list[str]) -> list[st
             normalized = normalized.replace(".workflow/", ".pipeline/", 1)
         forbidden_match = any(_matches(path, pattern, root) for pattern in forbidden)
         allowed_match = any(_matches(path, pattern, root) for pattern in allowed)
-        if is_metrics_path(normalized) and not forbidden_match:
+        if (is_metrics_path(normalized) or is_progress_log_path(normalized)) and not forbidden_match:
             continue
         if forbidden_match or not allowed_match:
             bad.append(path)
@@ -429,6 +432,18 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
             errors.append(f"{name} unverified must be an array")
 
     return errors
+
+
+def is_progress_log_path(path: str) -> bool:
+    """Return whether a normalized project-relative path is a role progress log."""
+    normalized = _normalize_path(path)
+    parts = normalized.split("/")
+    return (
+        len(parts) == 3
+        and parts[0] in {".pipeline", ".workflow"}
+        and bool(parts[1])
+        and parts[2].endswith("-progress.jsonl")
+    )
 
 
 def _metrics_dir(root: Path) -> Path:
@@ -858,6 +873,135 @@ def _file_sha256(path: Path) -> str | None:
         return None
 
 
+def _planning_requirements_sha256(root: Path, task_id: str | None) -> str | None:
+    """Return the implement-plan hash recorded for a task at planning time."""
+    planning = active_pipeline_dir(Path(root)) / "planning"
+    if not planning.is_dir():
+        return None
+    for name in ("dispatch.json", "lifecycle.json", "result.json"):
+        for path in sorted(planning.glob(f"*/{name}")):
+            value = _json_file(path)
+            if not isinstance(value, dict):
+                continue
+            if value.get("task_id") not in (None, task_id):
+                continue
+            candidates = [value.get("requirements_sha256")]
+            identity = value.get("identity")
+            if isinstance(identity, dict):
+                candidates.append(identity.get("requirements_sha256"))
+            for digest in candidates:
+                if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                    return digest
+    return None
+
+
+def _recorded_implement_plan_sha256(root: Path, task_id: str | None) -> str | None:
+    """Return the implement-plan hash persisted in the task evidence directory."""
+    if not task_id:
+        return None
+    value = _json_file(active_pipeline_dir(Path(root)) / task_id / "implement-plan.json")
+    if not isinstance(value, dict):
+        return None
+    if value.get("task_id") not in (None, task_id):
+        return None
+    digest = value.get("sha256")
+    if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        return digest
+    return None
+
+
+def implement_plan_status(
+    root: Path, contract: dict[str, Any], task_id: str | None = None
+) -> tuple[list[str], str | None, str | None, list[str]]:
+    """Compare the recorded and live implement-plan hashes for a frozen contract.
+
+    Returns ``(errors, recorded, observed, unverified)``.  The recorded value
+    comes from the contract, else from the planning record, else from the task
+    evidence directory; a drift error instructs re-planning.  A task with no
+    recorded hash is reported as unverified instead of silently passing.
+    """
+    root = Path(root)
+    relative = "implement-plan.md"
+    recorded: str | None = None
+    implement_plan = contract.get("implement_plan")
+    if isinstance(implement_plan, dict):
+        path_value = implement_plan.get("path")
+        if isinstance(path_value, str) and path_value.strip():
+            relative = path_value.strip()
+        digest = implement_plan.get("sha256")
+        if isinstance(digest, str) and digest.strip():
+            recorded = digest.strip()
+    if not _validate_evidence_ref(relative):
+        return [f"implement-plan path is not project-relative: {relative}"], recorded, None, []
+    if recorded is None and task_id:
+        recorded = _planning_requirements_sha256(root, task_id)
+    if recorded is None and task_id:
+        recorded = _recorded_implement_plan_sha256(root, task_id)
+    observed = _file_sha256(root / relative)
+    if observed is None:
+        if recorded:
+            return [f"implement-plan is missing or unreadable: {relative}"], recorded, None, []
+        return [], None, None, [f"implement-plan hash unrecorded and plan unreadable: {relative}"]
+    if recorded and recorded != observed:
+        return [
+            "implement-plan hash drift: recorded "
+            f"{recorded} but observed {observed}; requirements changed after planning, re-plan before continuing"
+        ], recorded, observed, []
+    if recorded is None:
+        return [], None, observed, [f"implement-plan hash unrecorded: {relative}"]
+    return [], recorded, observed, []
+
+
+def _recorded_task_sheet_sha256(root: Path, task_id: str | None) -> str | None:
+    """Return the task-sheet hash persisted next to the implement-plan hash."""
+    if not task_id:
+        return None
+    value = _json_file(active_pipeline_dir(Path(root)) / task_id / "implement-plan.json")
+    if not isinstance(value, dict):
+        return None
+    if value.get("task_id") not in (None, task_id):
+        return None
+    digest = value.get("task_sheet_sha256")
+    if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        return digest
+    return None
+
+
+def _record_implement_plan_hash(
+    root: Path,
+    task_id: str,
+    observed: str | None,
+    task_sheet_sha256: str | None = None,
+) -> None:
+    """Persist observed freeze hashes so later stages can enforce them."""
+    if not observed and not task_sheet_sha256:
+        return
+    directory = active_pipeline_dir(Path(root)) / task_id
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    existing = _json_file(directory / "implement-plan.json")
+    value: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+    value["schema"] = 1
+    value["task_id"] = task_id
+    if observed:
+        value["sha256"] = observed
+    if task_sheet_sha256:
+        value["task_sheet_sha256"] = task_sheet_sha256
+    _write_log(directory / "implement-plan.json", json.dumps(value, ensure_ascii=True, sort_keys=True))
+
+
+def _task_sheet_contract(root: Path, task_id: str | None) -> dict[str, Any] | None:
+    if not task_id:
+        return None
+    sheet = Path(root) / "docs" / "tasks" / f"{task_id}.md"
+    if not sheet.is_file():
+        return None
+    contract, errors = load_contract(sheet)
+    return None if errors or not isinstance(contract, dict) else contract
+
+
 def write_dispatch(root: Path, dispatch: dict[str, Any], output: Path) -> Path:
     """Validate and atomically write a structured executor/reviewer dispatch."""
     required = ("schema", "task_id", "role", "round", "root", "worktree", "branch", "evidence_dir", "permissions", "output")
@@ -947,6 +1091,23 @@ def create_derived_dispatch(
         result["blockers"].append({"class": "workflow", "category": category, "reason": reason})
         return result
 
+    def rollback(reason: str, category: str = "freeze") -> dict[str, Any]:
+        outcome = blocked(reason, category)
+        if target.exists():
+            rc, output = git(root, "worktree", "remove", "--force", str(target), redact_output=False, timeout=60)
+            if rc:
+                detail = next((line.strip() for line in output.splitlines() if line.strip()), "git worktree remove failed")
+                outcome["errors"].append(f"child worktree rollback failed: {detail}")
+                outcome["blockers"].append({"class": "workflow", "category": "git", "reason": "child worktree rollback failed"})
+        branch_rc, _ = git(root, "rev-parse", "--verify", f"refs/heads/{child_branch}", redact_output=False)
+        if branch_rc == 0:
+            rc, output = git(root, "branch", "-D", child_branch, redact_output=False)
+            if rc:
+                detail = next((line.strip() for line in output.splitlines() if line.strip()), "git branch -D failed")
+                outcome["errors"].append(f"child branch rollback failed: {detail}")
+                outcome["blockers"].append({"class": "workflow", "category": "git", "reason": "child branch rollback failed"})
+        return outcome
+
     if not parent_task_id or not child_task_id or parent_task_id == child_task_id:
         return blocked("parent and child task ids must be distinct", "contract")
     if not parent_branch or not child_branch or parent_branch == child_branch:
@@ -973,6 +1134,9 @@ def create_derived_dispatch(
         relative_sheet = parent_task_sheet.relative_to(root).as_posix()
     except ValueError:
         return blocked("parent task sheet is outside repository root", "path")
+    parent_task_type = contract.get("task_type")
+    if not isinstance(parent_task_type, str) or not parent_task_type.strip():
+        return blocked("parent task sheet is missing task_type; derived_from.parent_task_type cannot be resolved", "contract")
     rc, _ = git(root, "ls-files", "--error-unmatch", relative_sheet)
     if rc:
         return blocked("parent task sheet is not committed", "freeze")
@@ -996,27 +1160,45 @@ def create_derived_dispatch(
     try:
         rc, output = git(root, "worktree", "add", "-b", child_branch, str(target), parent_commit, redact_output=False, timeout=60)
         if rc:
-            return blocked("child worktree creation failed", "git")
+            return rollback("child worktree creation failed", "git")
         child_contract = dict(contract)
         child_contract["task_id"] = child_task_id
         child_contract["task_type"] = "derived"
         child_contract["dependencies"] = list(child_contract.get("dependencies", [])) + [parent_task_id]
-        child_contract["derived_from"] = {"task_id": parent_task_id, "commit": parent_commit, "branch": parent_branch}
+        child_contract["derived_from"] = {
+            "task_id": parent_task_id,
+            "commit": parent_commit,
+            "branch": parent_branch,
+            "parent_task_type": parent_task_type.strip(),
+        }
         child_sheet.parent.mkdir(parents=True, exist_ok=True)
         child_sheet.write_text(
-            f"# {child_task_id}：派生任务单\\n\\n<!-- Task ID: {child_task_id} -->\\n\\n"
-            "```pipeline-contract\\n" + json.dumps(child_contract, ensure_ascii=True, indent=2) + "\\n```\\n",
+            f"# {child_task_id}：派生任务单\n\n<!-- Task ID: {child_task_id} -->\n\n"
+            "```pipeline-contract\n" + json.dumps(child_contract, ensure_ascii=True, indent=2) + "\n```\n",
             encoding="utf-8",
         )
+        child_errors = validate_task(child_sheet)
+        if child_errors:
+            return rollback("child task sheet is not a valid contract: " + "; ".join(child_errors), "contract")
         evidence.mkdir(parents=True, exist_ok=False)
+        relative_child = f"docs/tasks/{child_task_id}.md"
+        rc, _ = git(target, "add", relative_child, redact_output=False)
+        if rc:
+            return rollback("child task sheet could not be staged", "freeze")
+        rc, _ = git(target, "commit", "-m", f"freeze derived task sheet {child_task_id}", redact_output=False, timeout=60)
+        if rc:
+            return rollback("child task sheet commit failed", "freeze")
+        rc, _ = git(target, "ls-files", "--error-unmatch", relative_child, redact_output=False)
+        if rc:
+            return rollback("child task sheet is not committed", "freeze")
     except (OSError, ValueError) as error:
-        return blocked(f"child dispatch creation failed: {type(error).__name__}", "git")
+        return rollback(f"child dispatch creation failed: {type(error).__name__}", "git")
 
     rc1, actual_root = git(target, "rev-parse", "--show-toplevel", redact_output=False)
     rc2, actual_branch = git(target, "branch", "--show-current", redact_output=False)
-    rc3, actual_head = git(target, "rev-parse", "HEAD", redact_output=False)
-    if rc1 or rc2 or rc3 or Path(actual_root.strip()).resolve() != target or actual_branch.strip() != child_branch or actual_head.strip() != parent_commit:
-        return blocked("child post-create identity verification failed", "identity")
+    rc3, fork_point = git(target, "rev-parse", "HEAD^", redact_output=False)
+    if rc1 or rc2 or rc3 or Path(actual_root.strip()).resolve() != target or actual_branch.strip() != child_branch or fork_point.strip() != parent_commit:
+        return rollback("child post-create identity verification failed", "identity")
     result.update({
         "status": "pass",
         "identity": {"parent_task_id": parent_task_id, "parent_branch": parent_branch,
@@ -1025,7 +1207,13 @@ def create_derived_dispatch(
                      "baseline": parent_commit, "parent_evidence_reused": False},
         "child_task_sheet": str(child_sheet), "evidence_dir": str(evidence),
         "artifacts": [str(child_sheet), str(evidence)],
-        "next_actions": ["commit child task sheet, then dispatch executor"],
+        "derived_from": {
+            "task_id": parent_task_id,
+            "commit": parent_commit,
+            "branch": parent_branch,
+            "parent_task_type": parent_task_type.strip(),
+        },
+        "next_actions": ["dispatch executor"],
     })
     return result
 
@@ -1034,13 +1222,15 @@ def create_worktree_dispatch(root: Path, task_sheet: Path, task_id: str, branch:
     """Create and verify the unique frozen task worktree."""
     root, task_sheet = Path(root).resolve(), Path(task_sheet).resolve()
     target = root / ".worktrees" / task_id
-    result = {"schema": 1, "command": "dispatch.worktree-create", "status": "blocked", "task_id": task_id, "role": role, "root": str(root), "worktree": str(target), "branch": branch, "baseline": baseline, "errors": [], "blockers": [], "artifacts": [], "next_actions": ["reconcile identity"]}
+    result = {"schema": 1, "command": "dispatch.worktree-create", "status": "blocked", "task_id": task_id, "role": role, "root": str(root), "worktree": str(target), "branch": branch, "baseline": baseline, "errors": [], "blockers": [], "artifacts": [], "unverified": [], "next_actions": ["reconcile identity"]}
     def blocked(reason: str, category: str = "identity") -> dict[str, Any]:
         result["errors"].append(reason); result["blockers"].append({"class": "workflow", "category": category, "reason": reason}); return result
     if role not in {"executor", "reviewer"}: return blocked("invalid dispatch role")
     contract, errors = load_contract(task_sheet)
-    if contract is None or errors or contract.get("schema") != 2: return blocked("task sheet is not a valid frozen schema2 contract: " + "; ".join(errors or ["schema must be 2"]), "freeze")
+    if contract is None or errors or contract.get("schema") not in {2, 3}: return blocked("task sheet is not a valid frozen schema2/schema3 contract: " + "; ".join(errors or ["schema must be 2 or 3"]), "freeze")
     if contract.get("task_id") != task_id: return blocked("task sheet task_id does not match dispatch task_id")
+    plan_errors, _recorded_hash, observed_hash, plan_unverified = implement_plan_status(root, contract, task_id)
+    if plan_errors: return blocked("; ".join(plan_errors), "drift")
     rc, actual = git(root, "rev-parse", "--show-toplevel", redact_output=False)
     if rc or Path(actual.strip()).resolve() != root: return blocked("root is not the Git worktree root", "root")
     rc, actual = git(root, "rev-parse", "HEAD", redact_output=False)
@@ -1058,10 +1248,25 @@ def create_worktree_dispatch(root: Path, task_sheet: Path, task_id: str, branch:
     if rc or branches.strip(): return blocked("branch already exists", "branch")
     if target.exists(): return blocked("worktree target is occupied", "path")
     rc, _ = git(root, "worktree", "add", "-b", branch, str(target), baseline, redact_output=False, timeout=60)
-    if rc: return blocked("worktree creation failed", "git")
+    if rc:
+        outcome = blocked("worktree creation failed", "git")
+        if target.exists():
+            remove_rc, remove_output = git(root, "worktree", "remove", "--force", str(target), redact_output=False, timeout=60)
+            if remove_rc:
+                detail = next((line.strip() for line in remove_output.splitlines() if line.strip()), "git worktree remove failed")
+                outcome["errors"].append(f"worktree rollback failed: {detail}")
+        branch_rc, _ = git(root, "rev-parse", "--verify", f"refs/heads/{branch}", redact_output=False)
+        if branch_rc == 0:
+            delete_rc, delete_output = git(root, "branch", "-D", branch, redact_output=False)
+            if delete_rc:
+                detail = next((line.strip() for line in delete_output.splitlines() if line.strip()), "git branch -D failed")
+                outcome["errors"].append(f"branch rollback failed: {detail}")
+        return outcome
     rc1, actual_root = git(target, "rev-parse", "--show-toplevel", redact_output=False); rc2, actual_branch = git(target, "branch", "--show-current", redact_output=False); rc3, actual_head = git(target, "rev-parse", "HEAD", redact_output=False)
     if rc1 or rc2 or rc3 or Path(actual_root.strip()).resolve() != target.resolve() or actual_branch.strip() != branch or actual_head.strip() != baseline: return blocked("post-create identity verification failed", "identity")
-    result.update({"status": "pass", "identity": {"task_id": task_id, "role": role, "root": str(root), "worktree": str(target.resolve()), "branch": branch, "head": baseline, "task_sheet": str(task_sheet), "contract_schema": 2}, "observed": ["worktree list before and after", "root", "branch", "HEAD", "path"], "artifacts": [str(target)], "next_actions": ["dispatch using this exact worktree"]})
+    result.update({"status": "pass", "identity": {"task_id": task_id, "role": role, "root": str(root), "worktree": str(target.resolve()), "branch": branch, "head": baseline, "task_sheet": str(task_sheet), "contract_schema": contract.get("schema"), "implement_plan_sha256": observed_hash}, "observed": ["worktree list before and after", "root", "branch", "HEAD", "path", "implement-plan hash"], "artifacts": [str(target)], "next_actions": ["dispatch using this exact worktree"]})
+    result["unverified"] = plan_unverified
+    _record_implement_plan_hash(root, task_id, observed_hash)
     return result
 
 
@@ -1075,6 +1280,17 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
     if current_head:
         observed.append({"fact": "head", "value": current_head})
     identity = result.get("identity", {}) if isinstance(result, dict) else {}
+    task_id = result.get("task_id") if isinstance(result, dict) else None
+    contract = _task_sheet_contract(root, task_id)
+    plan_unverified: list[str] = []
+    if contract is None:
+        errors.append(f"implement-plan contract not found for task {task_id}; freshness cannot verify requirements drift")
+        plan_unverified.append("implement-plan requirements drift")
+    else:
+        plan_errors, recorded_hash, observed_hash, plan_unverified = implement_plan_status(root, contract, task_id)
+        observed.append({"fact": "implement_plan_recorded", "value": recorded_hash})
+        observed.append({"fact": "implement_plan_observed", "value": observed_hash})
+        errors.extend(plan_errors)
     product_head = identity.get("product_head") if isinstance(identity, dict) else None
     if result is None:
         errors.append("structured result is missing")
@@ -1124,7 +1340,7 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
         "blockers": [{"class": "evidence", "reason": error} for error in errors],
         "artifacts": [str(evidence_directory / "freshness.json")],
         "next_actions": [] if not errors else ["regenerate_structured_result"],
-        "unverified": [],
+        "unverified": plan_unverified,
         "result_sha256": _file_sha256(result_path) if result_path else None,
     }
 
@@ -1145,24 +1361,16 @@ def role_scope_check(
     return [path for path in _status_paths(output) if any(_matches(path, pattern, root) for pattern in patterns)]
 
 
-def _session_text(session: dict[str, Any], role: str | None = None) -> list[str]:
-    values: list[str] = []
-    for message in session.get("messages", []):
-        if role is not None and message.get("info", {}).get("role") != role:
-            continue
-        for part in message.get("parts", []):
-            if isinstance(part, dict) and isinstance(part.get("text"), str):
-                values.append(part["text"])
-    return values
-
-
 def import_opencode_session(root: Path, session_file: Path, task_id: str = "opencode-session") -> list[Path]:
-    """Convert structured OpenCode export observations into local metric events."""
+    """Convert structured OpenCode export observations into local metric events.
+
+    Only machine signals are counted: tool-call error states.  Prose in the
+    transcript is never interpreted.
+    """
     session = json.loads(session_file.read_text(encoding="utf-8"))
     if not isinstance(session, dict) or not isinstance(session.get("messages"), list):
         raise ValueError("invalid OpenCode session export")
     info = session.get("info", {}) if isinstance(session.get("info"), dict) else {}
-    texts = _session_text(session, role="user")
     output: list[Path] = []
     tool_errors = 0
     task_errors = 0
@@ -1184,19 +1392,6 @@ def import_opencode_session(root: Path, session_file: Path, task_id: str = "open
         record("evidence_gap", "blocked", f"tool_errors_{tool_errors}", "evidence")
     if task_errors:
         record("retry", "blocked", f"subagent_errors_{task_errors}", "workflow")
-    lower = "\n".join(texts).lower()
-    assistant_lower = "\n".join(_session_text(session, role="assistant")).lower()
-    for marker, name, reason in (
-        ("继续", "user_continue_nudge", "user_requested_continue"),
-        ("为什么停", "user_process_correction", "user_questioned_stop"),
-        ("卡住", "user_process_correction", "user_reported_stuck"),
-        ("改代码什么的不该", "user_process_correction", "user_corrected_role_boundary"),
-    ):
-        count = lower.count(marker.lower())
-        for _ in range(count):
-            record(name, "unknown", reason)
-    if "直接修改产品代码" in assistant_lower or "违反了你提供的工作流" in assistant_lower:
-        record("main_agent_product_edit", "fail", "role_boundary_violation", "workflow")
     return output
 
 
@@ -1212,16 +1407,90 @@ def purge_metrics(root: Path) -> int:
     return count
 
 
-def gate_check(directory: Path, task_id: str, branch: str | None, phase: str) -> list[str]:
-    """Run evidence checks and the minimum phase-specific merge gates."""
+def _machine_result_errors(directory: Path, phase: str) -> list[str]:
+    """Require machine results alongside the human-readable Markdown reports.
+
+    ``pre-merge`` requires all three results; ``post-merge`` requires the final
+    result and only validates the other two when they are present.
+    """
+    errors: list[str] = []
+    for name in MACHINE_RESULT_NAMES:
+        path = directory / name
+        if not path.is_file():
+            if phase == "pre-merge" or name == "final-result.json":
+                errors.append(f"missing {name}")
+            continue
+        if _json_file(path) is None:
+            errors.append(f"{name} is not a readable JSON object")
+    return errors
+
+
+def _resolves_to_root(value: Any, root: Path) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    candidate = Path(value.strip())
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        return candidate.resolve() == root.resolve()
+    except (OSError, ValueError):
+        return False
+
+
+def _post_merge_reverified_in_main_worktree(report: dict[str, Any] | None, root: Path) -> bool:
+    """Return whether a passing command ran in the main worktree after merging.
+
+    Command entries carry no ``cwd`` field in the evidence schema, so the
+    closest existing field is used: a per-command ``cwd`` when a producer
+    supplies one, otherwise the report-level ``worktree``.
+    """
+    if not isinstance(report, dict):
+        return False
+    report_worktree = report.get("worktree")
+    commands = report.get("commands")
+    if not isinstance(commands, list):
+        return False
+    for command in commands:
+        if not isinstance(command, dict) or command.get("exit_code") != 0:
+            continue
+        if _resolves_to_root(command.get("cwd", report_worktree), root):
+            return True
+    return False
+
+
+def gate_check(
+    directory: Path,
+    task_id: str,
+    branch: str | None,
+    phase: str,
+    *,
+    unverified: list[str] | None = None,
+) -> list[str]:
+    """Run evidence checks and the minimum phase-specific merge gates.
+
+    ``unverified`` is an optional out-parameter. Reasons that cannot be
+    machine-verified, such as a task that never recorded an implement-plan
+    hash, are appended there instead of being reported as errors; only a
+    genuine hash drift stays a hard error.
+    """
     directory = _canonical_evidence_dir(directory)
     errors = evidence_verify(directory, task_id, branch)
     root = _evidence_root(directory)
+    contract = _task_sheet_contract(root, task_id)
+    if contract is None:
+        errors.append(f"implement-plan contract not found for task {task_id}; gate cannot verify requirements drift")
+    else:
+        plan_errors, _recorded_hash, _observed_hash, plan_unverified = implement_plan_status(root, contract, task_id)
+        errors.extend(plan_errors)
+        if unverified is not None:
+            unverified.extend(plan_unverified)
     reports: dict[str, dict[str, Any]] = {}
     for name in REPORT_NAMES:
         value, parse_errors = _read_machine_evidence(directory / name)
         if not parse_errors and value is not None:
             reports[name] = value
+
+    errors.extend(_machine_result_errors(directory, phase))
 
     # Structural verification and a merge gate are intentionally separate:
     # a report may accurately say BLOCKED, but that must block merging.
@@ -1249,6 +1518,8 @@ def gate_check(directory: Path, task_id: str, branch: str | None, phase: str) ->
             rc, _ = git(root, "rev-parse", "--verify", "HEAD")
             if rc:
                 errors.append("merged HEAD unavailable")
+            if not _post_merge_reverified_in_main_worktree(reports.get("final-check.md"), root):
+                errors.append("post-merge re-verification in the main worktree is missing")
     return errors
 
 
@@ -1259,8 +1530,11 @@ def freeze_check(
     expected_head: str | None = None,
     expected_branch: str | None = None,
     expected_worktree: Path | None = None,
+    task_sheet: Path | None = None,
+    *,
+    unverified: list[str] | None = None,
 ) -> list[str]:
-    """Verify contract ancestry and optional HEAD/branch/worktree identity."""
+    """Verify contract ancestry, optional identity, and implement-plan hash stability."""
     errors: list[str] = []
     rc, _ = git(root, "rev-parse", "--verify", "HEAD")
     if rc:
@@ -1294,4 +1568,22 @@ def freeze_check(
         else:
             if rc or actual_path != expected:
                 errors.append("worktree does not match expected worktree")
+    if task_sheet is not None:
+        task_sheet = Path(task_sheet)
+        sheet_contract, sheet_errors = load_contract(task_sheet)
+        if sheet_contract is None or sheet_errors:
+            errors.append("task sheet is not a valid frozen contract")
+        else:
+            sheet_task_id = sheet_contract.get("task_id")
+            recorded_sheet = _recorded_task_sheet_sha256(root, sheet_task_id)
+            observed_sheet = _file_sha256(task_sheet)
+            if recorded_sheet and observed_sheet and recorded_sheet != observed_sheet:
+                errors.append("task sheet changed after freeze")
+            plan_errors, _recorded_hash, observed_hash, plan_unverified = implement_plan_status(
+                root, sheet_contract, sheet_task_id
+            )
+            _record_implement_plan_hash(root, sheet_task_id, observed_hash, observed_sheet)
+            if unverified is not None:
+                unverified.extend(plan_unverified)
+            errors.extend(plan_errors)
     return errors

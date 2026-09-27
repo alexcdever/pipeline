@@ -18,7 +18,7 @@
   "evidence_refs": [".pipeline/<task-id>/<raw-output>.log"],
   "unverified": [],
   "identity": {
-    "head": "<commit-sha>"
+    "product_head": "<commit-sha>"
   },
   "recommendation": "ready_for_review"
 }

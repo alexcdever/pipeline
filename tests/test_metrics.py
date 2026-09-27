@@ -226,11 +226,13 @@ class MetricsTests(unittest.TestCase):
                 ],
             }), encoding='utf-8')
             imported = import_opencode_session(root, session, 'demo')
-            self.assertGreaterEqual(len(imported), 4)
+            self.assertEqual(len(imported), 2)
             summary = aggregate(root)
-            self.assertGreaterEqual(summary['user_continue_nudges'], 1)
-            self.assertGreaterEqual(summary['user_process_corrections'], 1)
-            self.assertEqual(summary['main_agent_product_edits'], 1)
+            self.assertEqual(summary['event_counts']['evidence_gap'], 1)
+            self.assertEqual(summary['event_counts']['retry'], 1)
+            self.assertEqual(summary['user_continue_nudges'], 0)
+            self.assertEqual(summary['user_process_corrections'], 0)
+            self.assertEqual(summary['main_agent_product_edits'], 0)
 
 
 if __name__ == '__main__':

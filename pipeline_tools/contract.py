@@ -24,9 +24,19 @@ REQUIRED_FIELDS = (
 ACCEPTANCE_FIELDS = ("id", "evidence_level", "test_ref", "command_ref")
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ACCEPTANCE_ID_RE = re.compile(r"acceptance-test-[A-Za-z0-9][A-Za-z0-9._-]*\Z")
-SUPPORTED_SCHEMAS = {1, 2}
+SUPPORTED_SCHEMAS = {1, 2, 3}
 CHAIN_NAMES = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 TASK_TYPES = {"vertical-feature", "prerequisite", "repair", "derived"}
+PROJECT_TYPES = ("library", "cli", "service", "web", "desktop", "multi-process")
+DEFAULT_PROJECT_TYPE = "service"
+RISK_LEVELS = ("low", "medium", "high")
+OPERATION_RESOURCE_MODES = ("single", "batch")
+NOT_APPLICABLE_LITERAL = "not-applicable"
+# Evidence floor table. These numbers are the single source of truth for the
+# schema-3 gate, for planning.py and for the documentation.
+EVIDENCE_FLOOR_BY_RISK = {"low": 1, "medium": 2, "high": 3}
+EVIDENCE_FLOOR_BY_PROJECT_TYPE = {"web": 3, "desktop": 3, "multi-process": 4}
+VERTICAL_FEATURE_EVIDENCE_FLOOR = 2
 
 
 def _nonempty_array(value: Any) -> bool:
@@ -41,19 +51,32 @@ def _validate_full_acceptance_id(value: Any) -> bool:
     return isinstance(value, str) and bool(ACCEPTANCE_ID_RE.fullmatch(value))
 
 
-def _validate_chain(value: Any, errors: list[str], label: str = "chain") -> None:
+def _validate_chain(
+    value: Any,
+    errors: list[str],
+    label: str = "chain",
+    allow_not_applicable: bool = False,
+) -> None:
     if not isinstance(value, dict):
         errors.append(f"{label} must be an object")
         return
     for name in CHAIN_NAMES:
         entries = value.get(name)
-        if not isinstance(entries, list) or not entries:
+        if allow_not_applicable and isinstance(entries, dict):
+            if entries.get("not_applicable") is True and _nonempty_string(entries.get("reason")):
+                continue
+            errors.append(f"{label}.{name} not_applicable requires a non-empty reason")
+        elif not isinstance(entries, list) or not entries:
             errors.append(f"{label}.{name} must be a non-empty array")
         elif any(not _nonempty_string(item) and not isinstance(item, dict) for item in entries):
             errors.append(f"{label}.{name} contains an invalid reference")
 
 
-def _validate_schema2_contract(data: dict[str, Any], errors: list[str]) -> None:
+def _validate_schema2_contract(
+    data: dict[str, Any],
+    errors: list[str],
+    allow_not_applicable_chain: bool = False,
+) -> None:
     if not _nonempty_string(data.get("task_type")) or data.get("task_type") not in TASK_TYPES:
         errors.append("task_type must be one of vertical-feature, prerequisite, repair, derived")
     implement_plan = data.get("implement_plan")
@@ -92,7 +115,7 @@ def _validate_schema2_contract(data: dict[str, Any], errors: list[str]) -> None:
         for ref in refs:
             if ref not in acceptance_ids:
                 errors.append(f"operation {operation_id} references unknown acceptance test: {ref}")
-    _validate_chain(data.get("chain"), errors)
+    _validate_chain(data.get("chain"), errors, allow_not_applicable=allow_not_applicable_chain)
     dependencies = data.get("dependencies")
     if not isinstance(dependencies, list):
         errors.append("dependencies must be an array")
@@ -104,6 +127,130 @@ def _validate_schema2_contract(data: dict[str, Any], errors: list[str]) -> None:
     if not isinstance(levels, list) or any(isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 5 for level in levels):
         errors.append("required_evidence_levels must contain integers 1-5")
 
+
+def evidence_floor(
+    risk: Any,
+    project_type: Any,
+    task_type: Any,
+    parent_task_type: str | None = None,
+) -> int | None:
+    """Return the minimum evidence level for a schema-3 task, or None if inputs are invalid."""
+    if risk not in EVIDENCE_FLOOR_BY_RISK:
+        return None
+    floor = EVIDENCE_FLOOR_BY_RISK[risk]
+    if risk != "low" and project_type in EVIDENCE_FLOOR_BY_PROJECT_TYPE:
+        floor = max(floor, EVIDENCE_FLOOR_BY_PROJECT_TYPE[project_type])
+    if task_type == "vertical-feature" or parent_task_type == "vertical-feature":
+        floor = max(floor, VERTICAL_FEATURE_EVIDENCE_FLOOR)
+    return floor
+
+
+def _validate_derived_from(data: dict[str, Any], errors: list[str]) -> None:
+    derived_from = data.get("derived_from")
+    if not isinstance(derived_from, dict):
+        errors.append("derived task requires a derived_from object")
+        return
+    for field in ("task_id", "commit", "branch"):
+        if not _nonempty_string(derived_from.get(field)):
+            errors.append(f"derived_from.{field} is required")
+    parent_task_type = derived_from.get("parent_task_type")
+    if not _nonempty_string(parent_task_type):
+        errors.append("derived_from.parent_task_type is required")
+    elif parent_task_type not in TASK_TYPES:
+        errors.append(
+            "derived_from.parent_task_type must be one of "
+            + ", ".join(sorted(TASK_TYPES))
+        )
+
+
+def _requires_full_chain(data: dict[str, Any]) -> bool:
+    """Whether the task's chain must carry real references instead of not_applicable."""
+    task_type = data.get("task_type")
+    if task_type in {"vertical-feature", "repair"}:
+        return True
+    if task_type == "derived":
+        derived_from = data.get("derived_from")
+        parent_task_type = (
+            derived_from.get("parent_task_type")
+            if isinstance(derived_from, dict)
+            else None
+        )
+        return parent_task_type in {"vertical-feature", "repair"}
+    return False
+
+
+def _validate_schema3_contract(data: dict[str, Any], errors: list[str]) -> None:
+    non_goals = data.get("non_goals")
+    if not isinstance(non_goals, list) or not non_goals:
+        errors.append("non_goals must be a non-empty array")
+    elif any(not _nonempty_string(item) for item in non_goals):
+        errors.append("non_goals must contain only non-empty strings")
+
+    risk = data.get("risk")
+    if risk not in RISK_LEVELS:
+        errors.append("risk must be one of low, medium, high")
+
+    project_type = data.get("project_type", DEFAULT_PROJECT_TYPE)
+    if project_type not in PROJECT_TYPES:
+        errors.append("project_type must be one of " + ", ".join(PROJECT_TYPES))
+        project_type = DEFAULT_PROJECT_TYPE
+
+    task_type = data.get("task_type")
+
+    for name in CHAIN_NAMES:
+        entries = (data.get("chain") or {}).get(name) if isinstance(data.get("chain"), dict) else None
+        if isinstance(entries, list) and any(item == NOT_APPLICABLE_LITERAL for item in entries):
+            errors.append(
+                f"chain.{name} must not use the literal \"{NOT_APPLICABLE_LITERAL}\"; "
+                "use {\"not_applicable\": true, \"reason\": \"...\"}"
+            )
+
+    operations = data.get("operations")
+    if isinstance(operations, list):
+        for index, operation in enumerate(operations, 1):
+            if not isinstance(operation, dict):
+                continue
+            operation_id = operation.get("id") if _safe_identifier(operation.get("id")) else f"#{index}"
+            resources = operation.get("resources")
+            mode = operation.get("resource_mode")
+            if not isinstance(resources, list) or not resources:
+                errors.append(f"operation {operation_id} must declare non-empty resources")
+                continue
+            if mode not in OPERATION_RESOURCE_MODES:
+                errors.append(f"operation {operation_id} resource_mode must be one of single, batch")
+                continue
+            expected = "single" if len(resources) == 1 else "batch"
+            if mode != expected:
+                errors.append(
+                    f"operation {operation_id} resource_mode {mode} does not match "
+                    f"{len(resources)} resource(s); expected {expected}"
+                )
+
+    if task_type == "prerequisite" and not _nonempty_string(data.get("non_user_completion_reason")):
+        errors.append("prerequisite task requires a non-empty non_user_completion_reason")
+
+    if task_type == "derived":
+        _validate_derived_from(data, errors)
+
+    parent_task_type = None
+    if task_type == "derived":
+        derived_from = data.get("derived_from")
+        if isinstance(derived_from, dict):
+            parent_task_type = derived_from.get("parent_task_type")
+
+    floor = evidence_floor(risk, project_type, task_type, parent_task_type)
+    if floor is not None:
+        for index, item in enumerate(data.get("acceptance_tests", []), 1):
+            if not isinstance(item, dict):
+                continue
+            level = item.get("evidence_level")
+            if isinstance(level, bool) or not isinstance(level, int):
+                continue
+            if level < floor:
+                errors.append(
+                    f"acceptance test {item.get('id', index)} evidence_level {level} "
+                    f"is below the required floor {floor}"
+                )
 
 
 def _nonempty_string(value: Any) -> bool:
@@ -154,7 +301,7 @@ def load_contract(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
 
     schema = data.get("schema")
     if isinstance(schema, bool) or schema not in SUPPORTED_SCHEMAS:
-        errors.append("schema must be integer 1 or 2")
+        errors.append("schema must be integer 1, 2 or 3")
 
     for field in ("allowed_paths", "forbidden_paths"):
         values = data.get(field)
@@ -182,7 +329,11 @@ def load_contract(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
                 errors.append(f"acceptance test {index} missing field: {field}")
 
         test_id = item.get("id")
-        id_valid = _validate_full_acceptance_id(test_id) if schema == 2 else isinstance(test_id, str) and bool(IDENTIFIER_RE.fullmatch(test_id))
+        id_valid = (
+            _validate_full_acceptance_id(test_id)
+            if schema in {2, 3}
+            else isinstance(test_id, str) and bool(IDENTIFIER_RE.fullmatch(test_id))
+        )
         if not id_valid:
             errors.append(f"acceptance test {index} has invalid id")
         elif test_id in seen_ids:
@@ -201,8 +352,13 @@ def load_contract(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
         if isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 5:
             errors.append(f"acceptance test {index} evidence_level must be integer 1-5")
 
-    if schema == 2:
-        _validate_schema2_contract(data, errors)
+    if schema in {2, 3}:
+        allow_not_applicable_chain = schema == 3 and not _requires_full_chain(data)
+        _validate_schema2_contract(
+            data, errors, allow_not_applicable_chain=allow_not_applicable_chain
+        )
+    if schema == 3:
+        _validate_schema3_contract(data, errors)
 
     return (data if not errors else None), errors
 

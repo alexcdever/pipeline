@@ -60,9 +60,9 @@ class PlanningTests(unittest.TestCase):
         from pipeline_tools.planning import generate_task_sheets
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "op", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 1, "test_ref": "tests/test_planning.py", "command_ref": "python -m unittest"}], "chain": chain()}
+            project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "op", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_planning.py", "command_ref": "python -m unittest"}], "chain": chain()}
             requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "req", "source_refs": ["source"]}], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"]}
-            plan = {"schema": 1, "requirements": ["req"], "resources": ["resource"], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "current-task", "type": "prerequisite", "requirements": ["req"], "resources": ["resource"], "operations": ["op"], "depends_on": []}]}
+            plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["resource"], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "current-task", "type": "prerequisite", "requirements": ["req"], "resources": ["resource"], "operations": ["op"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"}]}
             (root / "implement-plan.md").write_text("current target", encoding="utf-8")
             (root / "src").mkdir(); (root / "src" / "app.py").write_text("app", encoding="utf-8")
             subprocess.run(["git", "init", "-q"], cwd=root, check=True); subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True); subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True); subprocess.run(["git", "add", "."], cwd=root, check=True); subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
@@ -153,7 +153,7 @@ class PlanningTests(unittest.TestCase):
             'schema': 1,
             'sources': [{'id': 'plan', 'path': 'implement-plan.md'}],
             'requirements': [{'id': 'r1', 'source_refs': ['plan']}],
-            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{
                 'id': 'acceptance-test-1',
                 'evidence_level': 1,
@@ -171,12 +171,12 @@ class PlanningTests(unittest.TestCase):
             'requirements': ['r1', 'r2'],
             'resources': ['src/app.py', 'src/db.py'],
             'operations': [
-                {'id': 'create', 'acceptance_tests': ['acceptance-test-1']},
-                {'id': 'read', 'acceptance_tests': ['acceptance-test-2']},
+                {'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']},
+                {'id': 'read', 'resources': ['src/db.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-2']},
             ],
             'acceptance_tests': [
-                {'id': 'acceptance-test-1', 'evidence_level': 1, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'},
-                {'id': 'acceptance-test-2', 'evidence_level': 1, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'},
+                {'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'},
+                {'id': 'acceptance-test-2', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'},
             ],
             'tasks': [{
                 'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
@@ -189,14 +189,14 @@ class PlanningTests(unittest.TestCase):
         derived = dict(plan)
         derived['requirements'] = ['r1']
         derived['resources'] = ['src/app.py']
-        derived['operations'] = [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}]
+        derived['operations'] = [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}]
         derived['tasks'] = [dict(plan['tasks'][0], type='derived', parent_task_id='missing')]
         self.assertTrue(any('derived' in error or 'parent' in error for error in validate_task_plan(derived)))
 
     def test_task_plan_rejects_missing_top_level_acceptance_records(self):
         plan = {
             'schema': 1, 'requirements': ['r1'], 'resources': ['src/app.py'],
-            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
                        'resources': ['src/app.py'], 'operations': ['create'],
                        'chain': chain(), 'depends_on': []}],
@@ -206,9 +206,9 @@ class PlanningTests(unittest.TestCase):
 
     def test_task_plan_requires_complete_top_level_acceptance_records(self):
         base = {
-            'schema': 1, 'requirements': ['r1'], 'resources': ['src/app.py'],
-            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
-            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 1,
+            'schema': 1, 'non_goals': ['本任务不扩展范围'], 'requirements': ['r1'], 'resources': ['src/app.py'],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
                                   'test_ref': 'tests/test_planning.py',
                                   'command_ref': 'python -m unittest'}],
             'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
@@ -229,7 +229,7 @@ class PlanningTests(unittest.TestCase):
             'schema': 1,
             'sources': [{'id': 'app', 'path': 'src/app.py'}],
             'resources': [{'id': 'app', 'path': 'src/app.py'}],
-            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{
                 'id': 'acceptance-test-1', 'evidence_level': 1,
                 'test_ref': 'tests/test_planning.py: test_project_facts_validation',
@@ -270,11 +270,12 @@ class PlanningTests(unittest.TestCase):
     def test_task_plan_validation(self):
         plan = {
             'schema': 1,
+            'non_goals': ['本任务不扩展范围'],
             'requirements': ['r1'],
             'resources': ['src/app.py'],
-            'operations': [{'id': 'create', 'acceptance_tests': ['acceptance-test-1']}],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{
-                'id': 'acceptance-test-1', 'evidence_level': 1,
+                'id': 'acceptance-test-1', 'evidence_level': 2,
                 'test_ref': 'tests/test_planning.py: test_task_plan_validation',
                 'command_ref': 'python -m unittest tests.test_planning -v',
             }],
@@ -468,5 +469,163 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(result['status'], 'blocked')
             self.assertTrue((directory / 'raw.log').exists())
             self.assertFalse((directory / 'finalization.json').exists())
+
+    def test_planning_preflight_reports_pre_existing_task_scenes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+            (root / 'implement-plan.md').write_text('real requirements', encoding='utf-8')
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            (root / 'docs' / 'tasks' / 'stale-sheet.md').write_text('# stale', encoding='utf-8')
+            (root / '.worktrees' / 'orphan-worktree').mkdir(parents=True)
+            (root / '.pipeline' / 'leftover-task').mkdir(parents=True)
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+            result = planning_preflight(root)
+            self.assertIn('task_scenes', result)
+            self.assertEqual(result['task_scenes']['sheets_without_worktree'], ['stale-sheet'])
+            self.assertEqual(result['task_scenes']['worktrees_without_sheet'], ['orphan-worktree'])
+            self.assertEqual(result['task_scenes']['leftover_evidence'], ['leftover-task'])
+            self.assertTrue(any('worktree' in error for error in result['errors']))
+            self.assertIn('reconcile existing task scenes before planning', result['next_actions'])
+
+    def test_planning_preflight_clean_repository_reports_no_task_scenes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+            (root / 'implement-plan.md').write_text('real requirements', encoding='utf-8')
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+            result = planning_preflight(root)
+            self.assertEqual(result['status'], 'pass')
+            self.assertEqual(result['task_scenes'], {'sheets_without_worktree': [], 'worktrees_without_sheet': [], 'uncommitted_sheets': [], 'leftover_evidence': []})
+            self.assertNotIn('reconcile existing task scenes before planning', result['next_actions'])
+
+    def test_task_plan_rejects_evidence_level_below_risk_floor(self):
+        def plan_with(risk, project_type, level):
+            chain_value = chain()
+            return {
+                'schema': 1, 'risk': risk, 'project_type': project_type,
+                'non_goals': ['本任务不扩展范围'],
+                'requirements': ['r1'], 'resources': ['src/app.py'],
+                'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+                'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': level,
+                                      'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+                'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                           'resources': ['src/app.py'], 'operations': ['create'],
+                           'chain': chain_value, 'depends_on': []}],
+            }
+
+        below = validate_task_plan(plan_with('high', 'web', 1))
+        self.assertTrue(any('below the required floor' in error for error in below), below)
+        conforming = validate_task_plan(plan_with('high', 'web', 3))
+        self.assertEqual(conforming, [])
+
+    def test_task_plan_requires_explicit_non_goals(self):
+        base = {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'], 'resources': ['src/app.py'],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                  'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        self.assertEqual(validate_task_plan(base), [])
+        missing = {key: value for key, value in base.items() if key != 'non_goals'}
+        self.assertTrue(any('non_goals' in error for error in validate_task_plan(missing)))
+        self.assertTrue(any('non_goals' in error for error in validate_task_plan(dict(base, non_goals=[]))))
+        self.assertTrue(any('non_goals' in error for error in validate_task_plan(dict(base, non_goals=['   ']))))
+
+    def test_task_plan_validates_resource_semantics_without_a_kind_literal(self):
+        def plan_with(operation):
+            return {
+                'schema': 1, 'non_goals': ['本任务不扩展范围'],
+                'requirements': ['r1'], 'resources': ['src/app.py'],
+                'operations': [operation],
+                'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                      'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+                'tasks': [{'id': 't1', 'type': 'prerequisite', 'requirements': ['r1'],
+                           'resources': ['src/app.py'], 'operations': ['create'],
+                           'depends_on': []}],
+            }
+
+        empty = plan_with({'id': 'create', 'acceptance_tests': ['acceptance-test-1'], 'resources': []})
+        self.assertTrue(any('resources' in error for error in validate_task_plan(empty)))
+        unknown = plan_with({'id': 'create', 'acceptance_tests': ['acceptance-test-1'], 'resources': ['missing-resource']})
+        self.assertTrue(any('unknown id' in error for error in validate_task_plan(unknown)))
+        single = plan_with({'id': 'create', 'acceptance_tests': ['acceptance-test-1'], 'resource_mode': 'single', 'resources': ['src/app.py']})
+        self.assertEqual(validate_task_plan(single), [])
+
+    def test_task_plan_requires_explicit_resource_mode_regardless_of_kind(self):
+        def plan_with(operation):
+            return {
+                'schema': 1, 'non_goals': ['本任务不扩展范围'],
+                'requirements': ['r1'],
+                'resources': ['src/app.py', 'src/db.py'],
+                'operations': [operation],
+                'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                      'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+                'tasks': [{'id': 't1', 'type': 'prerequisite', 'requirements': ['r1'],
+                           'resources': ['src/app.py', 'src/db.py'], 'operations': ['create'],
+                           'depends_on': []}],
+            }
+
+        implicit = plan_with({'id': 'create', 'kind': 'execute',
+                              'acceptance_tests': ['acceptance-test-1'],
+                              'resources': ['src/app.py', 'src/db.py']})
+        implicit_errors = validate_task_plan(implicit)
+        self.assertTrue(any('resource_mode' in error for error in implicit_errors), implicit_errors)
+
+        batch = plan_with({'id': 'create', 'kind': 'execute', 'resource_mode': 'batch',
+                           'acceptance_tests': ['acceptance-test-1'],
+                           'resources': ['src/app.py', 'src/db.py']})
+        self.assertEqual(validate_task_plan(batch), [])
+
+        mismatched = plan_with({'id': 'create', 'kind': 'execute', 'resource_mode': 'batch',
+                                'acceptance_tests': ['acceptance-test-1'],
+                                'resources': ['src/app.py']})
+        mismatched_errors = validate_task_plan(mismatched)
+        self.assertTrue(any('resource_mode' in error for error in mismatched_errors), mismatched_errors)
+
+    def test_task_plan_rejects_invalid_risk_and_project_type(self):
+        base = {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'], 'resources': ['src/app.py'],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                  'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        self.assertEqual(validate_task_plan(base), [])
+        bad_risk = dict(base, risk='banana')
+        self.assertTrue(any('risk' in error for error in validate_task_plan(bad_risk)))
+        bad_type = dict(base, project_type='banana')
+        self.assertTrue(any('project_type' in error for error in validate_task_plan(bad_type)))
+        high_unproven = dict(base, risk='high')
+        self.assertTrue(any('below the required floor' in error for error in validate_task_plan(high_unproven)))
+
+
+    def test_planning_preflight_blocks_on_expected_requirements_hash_drift(self):
+        from pipeline_tools.planning import planning_preflight
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "implement-plan.md").write_text("frozen requirements\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            result = planning_preflight(root, expected_requirements_sha256="0" * 64)
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("implement-plan.md hash changed" in error for error in result["errors"]), result["errors"])
+
 
 if __name__ == '__main__': unittest.main()

@@ -33,13 +33,13 @@ class PlanningLifecycleTests(unittest.TestCase):
             finalized = planning_run_finalize(root, "planning-test", success=True)
             self.assertEqual(finalized["status"], "finalized")
             repeated = planning_run_finalize(root, "planning-test", success=True)
-            self.assertEqual(repeated, finalized)
+            self.assertEqual(repeated["status"], "finalized")
+            self.assertEqual(repeated["run_id"], finalized["run_id"])
+            self.assertEqual(repeated["artifacts"], [])
             recovered = planning_run_recover(root, "planning-test")
-            self.assertEqual(recovered["status"], "pass")
-            self.assertEqual(recovered["identity"]["requirements_sha256"], started["identity"]["requirements_sha256"])
-            state = json.loads((root / ".pipeline" / "planning" / "planning-test" / "lifecycle.json").read_text())
-            self.assertEqual(state["head"], started["identity"]["head"])
-            self.assertEqual(state["root"], str(root.resolve()))
+            self.assertEqual(recovered["status"], "finalized")
+            self.assertFalse((root / ".pipeline" / "planning" / "planning-test").exists())
+            self.assertFalse((root / ".pipeline" / "planning").exists())
 
     def test_successful_finalize_cannot_bypass_generated_phase(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -92,6 +92,35 @@ class PlanningLifecycleTests(unittest.TestCase):
             duplicate = planning_run_start(root, "conflict-test")
             self.assertEqual(duplicate["status"], "blocked")
             self.assertNotEqual(conflict["identity"]["requirements_sha256"], recovered.get("identity", {}).get("requirements_sha256"))
+
+    def test_successful_finalize_writes_no_planning_products(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            planning_run_start(root, "no-products")
+            for phase in ("preflight", "planned", "generated"):
+                self.assertEqual(planning_run_transition(root, "no-products", phase)["status"], "pass")
+            finalized = planning_run_finalize(root, "no-products", success=True)
+            self.assertEqual(finalized["status"], "finalized")
+            self.assertEqual(finalized["artifacts"], [])
+            self.assertFalse((root / ".pipeline" / "planning" / "no-products").exists())
+            recovered = planning_run_recover(root, "no-products")
+            self.assertEqual(recovered["status"], "finalized")
+            self.assertEqual(recovered["artifacts"], [])
+
+    def test_failed_finalize_writes_lifecycle_and_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            planning_run_start(root, "failed-finalize")
+            planning_run_transition(root, "failed-finalize", "preflight", status="failed", error="planning stopped")
+            audit = root / ".pipeline" / "planning" / "failed-finalize"
+            self.assertTrue((audit / "lifecycle.json").is_file())
+            failed = planning_run_finalize(root, "failed-finalize", success=False)
+            self.assertEqual(failed["status"], "failed")
+            self.assertTrue((audit / "lifecycle.json").is_file())
+            self.assertTrue((audit / "result.json").is_file())
+            self.assertTrue(all(Path(path).is_file() for path in [audit / name for name in failed["artifacts"]]))
 
 
 if __name__ == "__main__":

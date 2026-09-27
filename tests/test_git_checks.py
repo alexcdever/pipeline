@@ -26,6 +26,43 @@ class GitChecks(unittest.TestCase):
             self.assertTrue(freeze_check(p,head,expected_branch='wrong'))
             self.assertTrue(freeze_check(p,head,expected_worktree=Path(d)/'other'))
 
+    def test_freeze_check_surfaces_unverified_instead_of_a_third_semantic(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'implement-plan.md').write_text('plan\n', encoding='utf-8')
+            sheet = p / 'task.md'
+            sheet.write_text(
+                '<!-- Task ID: freeze-task -->\n```pipeline-contract\n'
+                + json.dumps({
+                    'schema': 2, 'task_id': 'freeze-task', 'task_type': 'prerequisite',
+                    'implement_plan': {'path': 'implement-plan.md'},
+                    'allowed_paths': ['src/**'], 'forbidden_paths': [],
+                    'operations': [{'id': 'op', 'kind': 'validate', 'scope': 'task', 'acceptance_tests': ['acceptance-test-1']}],
+                    'chain': {name: ['src/app.py'] for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')},
+                    'dependencies': [],
+                    'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_git_checks.py', 'command_ref': 'python -m unittest'}],
+                    'required_evidence_levels': [2],
+                })
+                + '\n```\n',
+                encoding='utf-8',
+            )
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'freeze'], cwd=p, check=True)
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=p, text=True).strip()
+            unverified = []
+            errors = freeze_check(p, head, task_sheet=sheet, unverified=unverified)
+            self.assertEqual([error for error in errors if 'implement-plan' in error], [], errors)
+            self.assertTrue(any('unrecorded' in item for item in unverified), unverified)
+            self.assertTrue((p / '.pipeline' / 'freeze-task' / 'implement-plan.json').is_file())
+            unverified_again = []
+            freeze_check(p, head, task_sheet=sheet, unverified=unverified_again)
+            self.assertEqual(unverified_again, [])
+
     def test_absolute_scope_pattern_matches_repository_path(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d); subprocess.run(['git','init'],cwd=p,capture_output=True)
@@ -83,6 +120,7 @@ class GitChecks(unittest.TestCase):
             result = create_worktree_dispatch(root, sheet, 'scope-task', 'scope-branch', head, role='reviewer')
             self.assertEqual(result['status'], 'pass')
             self.assertEqual(result['identity']['role'], 'reviewer')
+            self.assertTrue(any('unrecorded' in item for item in result['unverified']), result)
             wrong = create_worktree_dispatch(root, sheet, 'scope-task', 'other-branch', head, role='bad')
             self.assertEqual(wrong['status'], 'blocked')
             self.assertIn('role', wrong['errors'][0])
