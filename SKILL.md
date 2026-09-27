@@ -52,8 +52,7 @@ AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其
 - 子代理返回 FAIL、BLOCKED、超时或证据缺失时，主代理必须分类并按恢复规则保留现场、建立 `derived` 任务（机器 ID/path 保留 `continuation`）或上报阻塞；不得把阶段结果改写为 PASS，也不得跳过后续核验。
 - 只有当前任务的最终证据全部齐全，或遇到必须由用户裁决、外部授权或无法自愈的阻塞，主代理才能结束本轮。
 - 默认推进策略是自动推进后续任务：完成并合并当前任务后，主代理继续队列中的下一个任务，不需要用户逐条确认。这是默认行为，不是例外。
-- 该策略按两级切换：运行级存于该次运行的 `lifecycle.json` 的 `approval_mode`，项目级存于 `.pipeline/config.json` 的 `approval_mode`；解析顺序是显式参数 → 运行记录 → 项目配置 → 默认 `automatic`。切换为 `manual` 时，主代理在每个任务派发前停下等待人工确认。
-- 项目级配置的形态是 `<仓库根目录>/.pipeline/config.json` 里的 `{"approval_mode": "automatic" | "manual"}`，这是它当前唯一被读取的键；路径、键名和取值枚举都由 `pipeline_tools/planning.py` 的 `_project_approval_mode` 固定。**没有任何命令会创建或改写该文件**——需要项目级默认值时必须手工创建。文件缺失、不可读、JSON 非法或 `approval_mode` 不在枚举内时都回退到默认 `automatic`，即默认自动推进后续任务。
+- 该策略按两级切换：运行级存于该次运行的 `lifecycle.json` 的 `approval_mode`，项目级存于 `.pipeline/config.json`；解析顺序是显式参数 → 运行记录 → 项目配置 → 默认 `automatic`。切换为 `manual` 时，主代理在每个任务派发前停下等待人工确认。项目级配置的形态、键名、枚举和回退规则见 `references/task-design.md` 的「审批策略配置」。
 
 ## 事实与上下文规则
 
@@ -77,7 +76,7 @@ AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其
 - 结构化执行闭环使用 `dispatch write`、`result verify` 和 `freshness`；只有当前 task-id、角色、HEAD、验收结果和证据引用均通过机械校验，才能把语义代理的 recommendation 交给下一阶段。
 - 工具不可用、命令超时、证据缺失或身份/范围漂移时标为 `BLOCKED`/漂移，不绕过工具改写成 PASS。
 - 报告必须包含机器可读的 `pipeline-evidence` 区块；自然语言报告不能单独产生验收结论。
-- 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。新版本工具首次发现 `.workflow/` 时会先自动迁移并校验；若 `.pipeline/` 已存在则报告冲突并停止，不覆盖、不双写。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。
+- 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
 - 任务单在 freeze 时记录 sha256（写入 `.pipeline/<task-id>/implement-plan.json` 的 `task_sheet_sha256`）；`freeze_check` 据此检测任务单在冻结后被改动。
@@ -115,34 +114,9 @@ AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其
 
 `.pipeline/<task-id>/` 至少含 `executor-report.md`、`review-report.md`、`final-check.md`；每份写明 task-id、worktree、branch、轮次、命令、退出码、关键断言。验收失败时保存完整日志等证据文件用于诊断；成功时无需保存原始输出。旧 `.workflow/<task-id>/` 必须迁移到这里，不能继续作为运行目录。
 
-## 版本升级与兼容性
+## 版本兼容与迁移
 
-### 目录结构变化
-- **v0.10.0 → v0.11.0**：移除“每个任务必须写握手 JSON 文件”的强制要求，改用模板化环境检查列表；证据文件改为失败时保存，成功时不保存。`pipeline-tools runtime handshake` 命令仍然存在，它是可选的能力检查，写入 `capability-handshake.json`，与已移除的强制握手 JSON 不是同一件事。
-- **旧版本迁移**：`.workflow/<task-id>/` 目录在新版本工具首次发现时自动迁移到 `.pipeline/<task-id>/` 并校验；若 `.pipeline/` 已存在则报告冲突并停止，不覆盖、不双写
-
-### 向后兼容性
-- 已存在的 `.pipeline/` 目录结构完全兼容新版本
-- 旧版握手JSON文件（如果存在）不影响新版本工作流，主代理会使用新的检查列表机制
-- 已保存的证据文件（包括成功时的原始输出）可保留作为历史记录，新任务按新规则执行
-
-### 升级建议
-- 更新技能版本后，主代理在下次任务启动时自动使用新的环境检查列表机制
-- 不需要手动清理旧版握手JSON文件或证据文件，但可选择清理成功任务的原始输出以节省空间
-- `.pipeline/metrics/` 是指标历史，必须纳入 Git 追踪，不应加入项目 `.gitignore`，详见 `references/metrics-contract.md`
-- 角色进度日志 `.pipeline/*/*-progress.jsonl` 是过程记录，由项目根目录 `.gitignore` 规则排除，不得进入 Git；`commit_history_check` 会按名拒绝它们，`scope_check` 对其豁免
-
-### 自动优化机制
-主代理在任务启动的「恢复核对」阶段执行以下优化操作（下列各项除注明外均为主代理职责，不是 `pipeline_tools` 的自动行为）：
-- **清理已合并的worktree**：任务成功合并后由主代理删除该任务的 worktree（包括其中的原始输出）；`pipeline_tools` 只创建和校验 worktree，没有自动清理命令
-- **主工作树 `.pipeline/` 内容约定**：`.pipeline/metrics/` 是纳入 Git 追踪的指标历史；`.pipeline/<task-id>/` 存放阶段报告与机器结果；角色进度日志 `.pipeline/*/*-progress.jsonl` 由项目 `.gitignore` 排除，不得进入 Git
-- **应用新证据策略**：新任务执行时按"失败保存、成功不保存"规则处理证据文件，由 `pipeline-tools planning evidence-finalize` 机械执行
-- **环境检查升级**：主代理在派发子代理前使用模板化环境检查列表，替代旧版握手机制，见「机械工具与项目级反馈」一节
-- **目录结构校验**：主代理确认 `.pipeline/` 目录结构符合当前版本要求；旧 `.workflow/` 目录由 `pipeline_tools` 首次访问时自动迁移（`layout.migrate_layout`），若 `.pipeline/` 已存在则报告冲突并停止
-
-正确流程：主代理在worktree中commit实现代码，再在worktree中commit报告文档，然后合并worktree分支到主分支（代码+报告一起合并），合并成功后清理worktree。
-
-以上优化在主代理的「恢复核对」阶段执行，不影响正在进行中的任务。
+版本历史、`.workflow/` 目录迁移规则，以及主代理在「恢复核对」阶段执行的一次性优化动作，见 `references/compat-and-migration.md`。这些内容不影响正在进行中的任务，也不改变上面的运行时规则。
 
 ## 任务规模与 `derived` 任务
 
@@ -163,4 +137,5 @@ AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其
 | 真实浏览器、设备、多层证据 | `references/live-and-browser.md` |
 | 跨介质操作故障矩阵 | `references/multi-medium.md` |
 | 项目级反馈事件与 Git 追踪 | `references/metrics-contract.md` |
+| 版本历史、`.workflow/` 迁移、一次性优化动作 | `references/compat-and-migration.md` |
 | 任务单 Markdown 结构检查（旧版辅助；真正的闸门是 `pipeline-tools task validate`） | `scripts/validate_task_sheet.py` |
