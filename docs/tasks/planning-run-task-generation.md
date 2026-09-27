@@ -5,7 +5,7 @@
 
 ## 任务目标
 
-在已通过规划前置检查的项目中，提供一个机械可验证的任务单生成能力：主代理提供需求事实、项目事实和任务计划后，工具为每个计划任务生成独立的 schema 2 任务单，绑定 `implement-plan.md` 哈希和 planning-run-id，并在失败时 fail closed、保留可审计规划现场。该任务是 prerequisite，不代表任何用户功能已经完成。
+在已通过规划前置检查的项目中，提供一个机械可验证的任务单生成能力：主代理提供需求事实、项目事实和任务计划后，工具为每个计划任务生成独立的 schema 2 任务单，绑定 `implement-plan.md` 哈希和 planning-run-id，并在失败时 fail closed、把结构化失败结果返回给人类开发者裁决而不写任何审计文件。该任务是 prerequisite，不代表任何用户功能已经完成。
 
 ## 任务类型
 
@@ -13,7 +13,7 @@
 
 ## 需求引用
 
-- `implement-plan.md`：目标、需求事实/项目事实职责边界、任务类型、哈希稳定性、失败产物和任务单生命周期。
+- `implement-plan.md`：目标、需求事实/项目事实职责边界、任务类型、哈希稳定性、失败处理和任务单生命周期。
 - `references/task-design.md`：契约冻结、任务拆分、证据和产物规则。
 
 ## 允许修改
@@ -53,21 +53,21 @@
 
 - 不从文件名或 JSON 字符串推断缺失的需求、资源、操作、链路或验收测试。
 - 任务计划、需求事实或项目事实校验失败时不得生成可冻结任务单。
-- 任务 ID 冲突、已有任务单、implement-plan 哈希漂移、路径越界或写入失败时必须停止并保留失败现场。
+- 任务 ID 冲突、已有任务单、implement-plan 哈希漂移、路径越界或写入失败时必须停止，把结构化失败结果返回给人类开发者裁决，不写任何审计文件。
 - 本任务不创建 worktree；worktree 派发属于后续独立任务。
 
 ## 设计与行为契约
 
 [输入] 已通过 preflight 的项目根目录、planning-run-id、project-facts、requirement-facts、task-plan
 → [处理] 校验三类事实/计划，绑定 implement-plan SHA-256，逐任务生成 schema 2 contract 和可读任务单
-→ [状态] 成功写入每个唯一 `docs/tasks/<task-id>.md`；失败写入 `.pipeline/planning/<planning-run-id>/` 审计结果且不产生可冻结任务单
+→ [状态] 成功写入每个唯一 `docs/tasks/<task-id>.md`；失败不写任何文件、不产生可冻结任务单，只返回结构化失败结果
 → [可见结果] CLI JSON 摘要列出生成任务、需求哈希、planning-run-id 和错误；生成后的每个任务单可被 `pipeline-tools task validate` 校验
 
 - 成功生成不得覆盖已有任务单。
 - 生成过程不得修改 `implement-plan.md`、事实输入或任务计划输入。
 - 生成任务单的 schema 2 contract 必须包含 task type、implement plan path、operations、七段链路、acceptance tests、dependencies 和 required evidence levels。
 - 成功路径不创建 worktree，也不自动提交任务单；任务单提交和 worktree 创建由主代理后续阶段完成。
-- 失败路径必须可重复诊断，不能把部分成功伪装成完整成功；已生成的临时文件必须不成为可冻结任务单。
+- 失败路径必须可重复诊断，不能把部分成功伪装成完整成功；已生成的临时文件必须不成为可冻结任务单，失败也不得留下任何审计文件。
 
 ## 环境前置
 
@@ -90,12 +90,12 @@
 ### 验收测试2：事实或计划校验失败时拒绝生成
 
 - 触发：移除来源、操作验收绑定或 vertical-feature 链路后运行生成命令。
-- 断言：返回结构化失败；不生成任何可冻结任务单；失败原因包含具体校验错误；规划现场写入 `.pipeline/planning/<planning-run-id>/`。
-- 测试：`tests/test_task_generation.py: TaskGenerationTests.test_generation_rejects_invalid_inputs_and_preserves_failure_artifacts`
-- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generation_rejects_invalid_inputs_and_preserves_failure_artifacts -v`
+- 断言：返回结构化失败；不生成任何可冻结任务单；失败原因包含具体校验错误；不写任何审计文件。
+- 测试：`tests/test_task_generation.py: TaskGenerationTests.test_generation_rejects_invalid_inputs_without_writing_failure_artifacts`
+- 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generation_rejects_invalid_inputs_without_writing_failure_artifacts -v`
 - 验收模式：集成 / CLI
 - 证据等级：2
-- 结果要求：退出码为配置/阻塞失败；目标任务单不存在；规划 run 目录存在且含结构化失败结果。
+- 结果要求：退出码为配置/阻塞失败；目标任务单不存在；`.pipeline/planning/<planning-run-id>/` 不存在。
 
 ### 验收测试3：冲突和幂等安全
 
@@ -120,7 +120,7 @@
 ### 验收测试5：CLI 端到端和规划现场生命周期
 
 - 触发：从临时项目根目录调用 `planning generate-task-sheets`，分别覆盖成功、失败和重复调用。
-- 断言：CLI JSON 输出包含 schema、command、status、task_id/run_id、artifacts、errors、next_actions；成功和失败退出码稳定；规划失败只保存审计中间结果，成功不产生 worktree。
+- 断言：CLI JSON 输出包含 schema、command、status、task_id/run_id、artifacts、errors、next_actions；成功和失败退出码稳定；生成失败不写任何审计文件，成功不产生 worktree。
 - 测试：`tests/test_cli.py: CLITests.test_planning_generate_task_sheets_cli_lifecycle`
 - 命令：`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_generate_task_sheets_cli_lifecycle -v`
 - 验收模式：CLI 集成
@@ -211,7 +211,7 @@
   },
   "acceptance_tests": [
     {"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: TaskGenerationTests.test_generate_valid_plan_creates_schema2_task_sheets", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generate_valid_plan_creates_schema2_task_sheets -v"},
-    {"id": "acceptance-test-2", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: TaskGenerationTests.test_generation_rejects_invalid_inputs_and_preserves_failure_artifacts", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generation_rejects_invalid_inputs_and_preserves_failure_artifacts -v"},
+    {"id": "acceptance-test-2", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: TaskGenerationTests.test_generation_rejects_invalid_inputs_without_writing_failure_artifacts", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generation_rejects_invalid_inputs_without_writing_failure_artifacts -v"},
     {"id": "acceptance-test-3", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: TaskGenerationTests.test_generation_is_fail_closed_for_existing_tasks_duplicate_ids_and_unsafe_output", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generation_is_fail_closed_for_existing_tasks_duplicate_ids_and_unsafe_output -v"},
     {"id": "acceptance-test-4", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: TaskGenerationTests.test_generation_rejects_implement_plan_hash_drift_and_checks_plan_sheet_consistency", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_task_generation.TaskGenerationTests.test_generation_rejects_implement_plan_hash_drift_and_checks_plan_sheet_consistency -v"},
     {"id": "acceptance-test-5", "evidence_level": 2, "test_ref": "tests/test_cli.py: CLITests.test_planning_generate_task_sheets_cli_lifecycle", "command_ref": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_cli.CLITests.test_planning_generate_task_sheets_cli_lifecycle -v"},

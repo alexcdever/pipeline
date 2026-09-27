@@ -88,7 +88,7 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertEqual(contract["risk"], "high")
             self.assertEqual(contract["project_type"], "web")
 
-    def test_generation_rejects_invalid_inputs_and_preserves_failure_artifacts(self):
+    def test_generation_rejects_invalid_inputs_without_writing_failure_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             project, requirements, plan = make_inputs(root)
@@ -97,8 +97,7 @@ class TaskGenerationTests(unittest.TestCase):
             result = self.run_generation(root, project, requirements, plan, run_id="invalid-run")
             self.assertEqual(result["status"], "blocked")
             self.assertTrue(any("sources" in error for error in result["errors"]))
-            audit = root / ".pipeline" / "planning" / "invalid-run" / "generation-result.json"
-            self.assertTrue(audit.is_file())
+            self.assertFalse((root / ".pipeline" / "planning").exists())
             self.assertFalse((root / "docs" / "tasks").exists())
 
     def test_generation_is_fail_closed_for_existing_tasks_duplicate_ids_and_unsafe_output(self):
@@ -144,7 +143,7 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertFalse((root / "docs" / "tasks" / "rollback-a.md").exists())
             self.assertFalse((root / "docs" / "tasks" / "rollback-b.md").exists())
             self.assertFalse(list((root / "docs" / "tasks").glob("*.planning-tmp")))
-            self.assertTrue((root / ".pipeline" / "planning" / "rollback-run" / "generation-result.json").is_file())
+            self.assertFalse((root / ".pipeline" / "planning").exists())
 
     def test_single_resource_operation_has_independent_coverage_and_readback(self):
         with tempfile.TemporaryDirectory() as directory:

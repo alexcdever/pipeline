@@ -1570,7 +1570,7 @@ def generate_task_sheets(
 ) -> dict[str, Any]:
     """Generate all task sheets atomically after mechanical planning checks."""
     root = Path(root).resolve()
-    audit = _planning_run_directory(root, planning_run_id)
+    _planning_run_directory(root, planning_run_id)
     result: dict[str, Any] = {"schema": 1, "command": "planning.generate-task-sheets", "status": "blocked", "run_id": planning_run_id, "planning_run_id": planning_run_id, "task_id": None, "task_ids": [], "artifacts": [], "errors": [], "next_actions": []}
     try:
         preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256)
@@ -1589,8 +1589,6 @@ def generate_task_sheets(
         if errors:
             result["errors"] = errors
             result["next_actions"] = ["fix planning inputs and rerun"]
-            audit.mkdir(parents=True, exist_ok=True)
-            (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
             return result
         destinations = [root / "docs" / "tasks" / f"{task_id}.md" for task_id in task_ids]
         for destination in destinations:
@@ -1601,8 +1599,6 @@ def generate_task_sheets(
         if errors:
             result["errors"] = errors
             result["next_actions"] = ["remove conflicts without overwriting existing task sheets"]
-            audit.mkdir(parents=True, exist_ok=True)
-            (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
             return result
         contents = [
             _task_sheet_text(
@@ -1628,8 +1624,6 @@ def generate_task_sheets(
                 path.unlink(missing_ok=True)
             result["errors"] = validation_errors
             result["next_actions"] = ["fix generated contract before rerunning"]
-            audit.mkdir(parents=True, exist_ok=True)
-            (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
             return result
         published: list[Path] = []
         try:
@@ -1652,8 +1646,6 @@ def generate_task_sheets(
         return result
     except (OSError, ValueError, TypeError, KeyError) as error:
         result["errors"] = [f"{type(error).__name__}: {error}"]
-        audit.mkdir(parents=True, exist_ok=True)
-        (audit / "generation-result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
         return result
 
 
@@ -1754,10 +1746,6 @@ def planning_to_dispatch(
         assumptions=project_facts.get("assumptions") if isinstance(project_facts, dict) else None,
         unknowns=project_facts.get("unknowns") if isinstance(project_facts, dict) else None,
     )
-    if generated.get("status") != "pass":
-        generation_artifact = audit / "generation-result.json"
-        if generation_artifact.is_file():
-            generated = {**generated, "artifacts": [*generated.get("artifacts", []), str(generation_artifact)]}
     if not stage("task-generation", generated.get("status", "blocked"), generated):
         return result
     task_ids = generated.get("task_ids", [])

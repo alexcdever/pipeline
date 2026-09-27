@@ -136,7 +136,8 @@ schema 3 的 `risk`、`project_type`、`task_type` 共同推导每条验收测�
 规划成功与规划失败的处理不同，这是失败恢复的前提：
 
 - **成功时**：`.pipeline/planning/<planning-run-id>/` 下不保留任何东西——没有阶段 JSON、没有 `dispatch.json`、没有 `lifecycle.json`、没有 `result.json`，也不创建该目录。成功后只留下已冻结的任务单（`docs/tasks/<task-id>.md`）。`planning_run_finalize(..., success=True)` 会删除审计目录，`planning_to_dispatch` 成功返回时 `artifacts` 为空；重复 finalize 是幂等的（目录不存在即视为已最终化）。
-- **失败 / 中断 / 冲突时**：保留完整审计链，包括 `lifecycle.json`、按序的阶段 JSON、`generation-result.json` 和 `result.json`，供恢复与诊断使用。
+- **任务单生成失败时**：`generate_task_sheets` 不写任何审计文件，失败结果只通过返回值交给人类开发者裁决，`.pipeline/planning/<planning-run-id>/` 不会因此创建。
+- **其他失败 / 中断 / 冲突时**：保留完整审计链，包括 `lifecycle.json`、按序的阶段 JSON 和 `result.json`，供恢复与诊断使用。
 
 因此不要以「`.pipeline/planning/` 里有没有记录」判断规划是否成功；成功本来就不留记录。
 

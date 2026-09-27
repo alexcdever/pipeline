@@ -134,7 +134,7 @@ class CLITests(unittest.TestCase):
             self.assertEqual(failed.returncode, 3, (failed.stdout, failed.stderr))
             failure = json.loads(failed.stdout)
             self.assertEqual(failure['status'], 'blocked')
-            self.assertTrue((root / '.pipeline' / 'planning' / 'cli-run' / 'generation-result.json').is_file())
+            self.assertFalse((root / '.pipeline' / 'planning').exists())
 
     def test_planning_cli_task_plan_validate_accepts_root_and_rejects_bad_plan(self):
         with tempfile.TemporaryDirectory() as d:

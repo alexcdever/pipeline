@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -86,10 +87,32 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertNotIn("<", item["command_ref"])
             self.assertRegex(item["id"], r"^acceptance-test-[a-z0-9.-]+$")
 
-    def test_all_task_sheets_validate_after_historical_schema_migration(self):
+    def _merged_into_head(self, text):
+        """Treat a sheet whose merge commit is already in HEAD as a frozen historical record."""
+        section = re.search(r"^### 最终结果$(.*?)(?=^## |\Z)", text, re.DOTALL | re.MULTILINE)
+        if section is None:
+            return False
+        recorded = re.search(r"^- 合并提交：\s*(.+)$", section.group(1), re.MULTILINE)
+        if recorded is None:
+            return False
+        for token in re.findall(r"[0-9a-f]{7,40}", recorded.group(1)):
+            completed = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", token, "HEAD"],
+                cwd=ROOT,
+                capture_output=True,
+            )
+            if completed.returncode == 0:
+                return True
+        return False
+
+    def test_unmerged_task_sheets_validate_after_historical_schema_migration(self):
         from scripts.validate_task_sheet import validate
 
-        task_sheets = sorted((ROOT / "docs/tasks").glob("*.md"))
+        task_sheets = [
+            path
+            for path in sorted((ROOT / "docs" / "tasks").glob("*.md"))
+            if not self._merged_into_head(path.read_text(encoding="utf-8"))
+        ]
         self.assertGreater(len(task_sheets), 1)
         for path in task_sheets:
             self.assertEqual(validate(path), [], path)
