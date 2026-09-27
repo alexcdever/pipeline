@@ -415,6 +415,9 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
                     errors.append(f"{name} command {index} has no numeric exit_code")
                 elif not _evidence_file_exists(directory, command.get("evidence_ref")):
                     errors.append(f"{name} command {index} evidence_ref is missing or not relative")
+                cwd = command.get("cwd")
+                if cwd is not None and (not isinstance(cwd, str) or not cwd.strip()):
+                    errors.append(f"{name} command {index} cwd must be a non-empty string")
 
         assertions = value.get("assertions")
         if not isinstance(assertions, list) or not assertions or any(
@@ -835,7 +838,7 @@ def lifecycle_status(root: Path, task_id: str, evidence_directory: Path) -> dict
         "executor": ["dispatch_executor"],
         "review": ["dispatch_reviewer"],
         "final-check": ["run_final_check"],
-        "merge": ["run_gate_pre_merge", "merge_branch"],
+        "merge": ["run_gate_pre_merge", "merge_branch_in_main_worktree"],
     }
     if blockers:
         status = "blocked"
@@ -853,7 +856,7 @@ def lifecycle_status(root: Path, task_id: str, evidence_directory: Path) -> dict
         "errors": errors,
         "blockers": blockers,
         "next_actions": next_actions,
-        "forbidden_actions": ["merge_branch"] if phase != "merge" else [],
+        "forbidden_actions": ["merge_branch_in_main_worktree"] if phase != "merge" else [],
         "unverified": [] if phase == "merge" else ["current phase acceptance evidence"],
     }
 
@@ -871,6 +874,17 @@ def _file_sha256(path: Path) -> str | None:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return None
+
+
+def _contract_from_text(text: str) -> dict[str, Any] | None:
+    match = re.search(r"```pipeline-contract[ \t]*\r?\n(.*?)\r?\n```", text, re.DOTALL)
+    if not match:
+        return None
+    try:
+        value = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _planning_requirements_sha256(root: Path, task_id: str | None) -> str | None:
@@ -1440,9 +1454,8 @@ def _resolves_to_root(value: Any, root: Path) -> bool:
 def _post_merge_reverified_in_main_worktree(report: dict[str, Any] | None, root: Path) -> bool:
     """Return whether a passing command ran in the main worktree after merging.
 
-    Command entries carry no ``cwd`` field in the evidence schema, so the
-    closest existing field is used: a per-command ``cwd`` when a producer
-    supplies one, otherwise the report-level ``worktree``.
+    A per-command ``cwd`` is authoritative; when a producer omits it, the
+    report-level ``worktree`` is used as the fallback.
     """
     if not isinstance(report, dict):
         return False
@@ -1579,6 +1592,22 @@ def freeze_check(
             observed_sheet = _file_sha256(task_sheet)
             if recorded_sheet and observed_sheet and recorded_sheet != observed_sheet:
                 errors.append("task sheet changed after freeze")
+            if sheet_contract.get("task_type") == "derived":
+                derived_from = sheet_contract.get("derived_from")
+                if isinstance(derived_from, dict):
+                    parent_id = derived_from.get("task_id")
+                    parent_commit = derived_from.get("commit")
+                    declared_parent_type = derived_from.get("parent_task_type")
+                    if isinstance(parent_id, str) and isinstance(parent_commit, str):
+                        rc, parent_text = git(root, "show", f"{parent_commit}:docs/tasks/{parent_id}.md", redact_output=False)
+                        if rc:
+                            errors.append("derived task parent sheet is unavailable at the declared commit")
+                        else:
+                            parent_contract = _contract_from_text(parent_text)
+                            if not isinstance(parent_contract, dict):
+                                errors.append("derived task parent sheet has no readable contract")
+                            elif parent_contract.get("task_type") != declared_parent_type:
+                                errors.append("derived_from.parent_task_type does not match the parent task sheet")
             plan_errors, _recorded_hash, observed_hash, plan_unverified = implement_plan_status(
                 root, sheet_contract, sheet_task_id
             )

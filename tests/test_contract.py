@@ -218,6 +218,50 @@ class ContractTests(unittest.TestCase):
 
         self.assertEqual(self._errors(batch), [])
 
+    def test_schema3_rejects_non_array_assumptions(self):
+        errors = self._errors(lambda data: data.__setitem__('assumptions', 'not an array'))
+        self.assertTrue(
+            any('assumptions must be an array' in error for error in errors), errors
+        )
+
+    def test_schema3_rejects_non_object_assumption_records(self):
+        errors = self._errors(lambda data: data.__setitem__('assumptions', [['nested']]))
+        self.assertTrue(
+            any('assumptions[1] must be an object' in error for error in errors), errors
+        )
+
+    def test_schema3_rejects_unsafe_unknown_ids(self):
+        errors = self._errors(
+            lambda data: data.__setitem__('unknowns', [{'id': 'bad id!'}])
+        )
+        self.assertTrue(
+            any(
+                'unknowns[1] id must be a safe identifier' in error for error in errors
+            ),
+            errors,
+        )
+
+    def test_schema3_accepts_empty_assumptions_and_unknowns(self):
+        def mutate(data):
+            data['assumptions'] = []
+            data['unknowns'] = []
+
+        self.assertEqual(self._errors(mutate), [])
+
+    def test_schema3_accepts_contract_without_assumptions_or_unknowns(self):
+        def mutate(data):
+            data.pop('assumptions', None)
+            data.pop('unknowns', None)
+
+        self.assertEqual(self._errors(mutate), [])
+
+    def test_schema3_accepts_well_formed_assumptions_and_unknowns(self):
+        def mutate(data):
+            data['assumptions'] = [{'id': 'assumption-1', 'text': 'the API stays stable'}]
+            data['unknowns'] = [{'id': 'unknown-1', 'text': 'exact latency budget'}]
+
+        self.assertEqual(self._errors(mutate), [])
+
     def test_schema3_requires_prerequisite_non_user_completion_reason(self):
         errors = self._errors(lambda data: data.__setitem__('task_type', 'prerequisite'))
         self.assertTrue(any('non_user_completion_reason' in error for error in errors), errors)

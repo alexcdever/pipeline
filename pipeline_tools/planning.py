@@ -1350,6 +1350,23 @@ def planning_run_transition(root: Path, run_id: str, phase: str, *, status: str 
         return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["recover"]}
 
 
+def _purge_successful_planning_run(root: Path, run_id: str) -> None:
+    """Remove a successful run's process records, leaving only task sheets."""
+    try:
+        directory = _planning_run_directory(Path(root), run_id)
+    except (OSError, ValueError):
+        return
+    if not directory.is_dir():
+        return
+    shutil.rmtree(directory, ignore_errors=True)
+    planning_root = directory.parent
+    try:
+        if planning_root.is_dir() and not any(planning_root.iterdir()):
+            planning_root.rmdir()
+    except OSError:
+        pass
+
+
 def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: bool = False) -> dict[str, Any]:
     try:
         candidate = _planning_run_directory(Path(root), run_id)
@@ -1393,13 +1410,7 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
             # A successful planning run leaves only the frozen task sheets.  The
             # lifecycle, stage and dispatch records are process artifacts and are
             # removed here; failures keep the full audit trail below.
-            shutil.rmtree(directory, ignore_errors=True)
-            planning_root = directory.parent
-            try:
-                if planning_root.is_dir() and not any(planning_root.iterdir()):
-                    planning_root.rmdir()
-            except OSError:
-                pass
+            _purge_successful_planning_run(root, run_id)
             return result
         state.update({"phase": phase, "status": phase, "result": "fail", "next_actions": []})
         state.setdefault("history", []).append({"phase": phase, "status": phase})
@@ -1806,6 +1817,7 @@ def planning_to_dispatch(
     result["status"] = "dispatch-ready"
     result["next_actions"] = ["start executor separately; do not infer executor success"]
     result["artifacts"] = []
+    _purge_successful_planning_run(root, run_id)
     return result
 
 

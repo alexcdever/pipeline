@@ -627,5 +627,51 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(result["status"], "blocked")
             self.assertTrue(any("implement-plan.md hash changed" in error for error in result["errors"]), result["errors"])
 
+    def test_planning_preflight_blocks_on_uncommitted_task_sheet(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            (root / "implement-plan.md").write_text("real requirements", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            (root / "docs" / "tasks").mkdir(parents=True)
+            (root / "docs" / "tasks" / "t9.md").write_text("sheet", encoding="utf-8")
+            subprocess.run(["git", "worktree", "add", "-b", "t9-branch", ".worktrees/t9", "HEAD"], cwd=root, check=True)
+            result = planning_preflight(root)
+            self.assertEqual(result["status"], "blocked", result)
+            self.assertIn("t9", result["task_scenes"]["uncommitted_sheets"])
+            self.assertTrue(any("task sheet" in error for error in result["errors"]), result["errors"])
+
+    def test_planning_preflight_migrates_lone_legacy_workflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            (root / "implement-plan.md").write_text("real requirements", encoding="utf-8")
+            (root / ".workflow" / "task-a").mkdir(parents=True)
+            (root / ".workflow" / "task-a" / "note.txt").write_text("legacy", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            result = planning_preflight(root)
+            self.assertEqual(result["status"], "pass", result)
+            self.assertFalse((root / ".workflow").exists())
+            self.assertTrue((root / ".pipeline" / "task-a" / "note.txt").is_file())
+
+    def test_planning_preflight_does_not_misreport_project_named_worktrees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / ".worktrees" / "not-an-orphan"
+            root.mkdir(parents=True)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            (root / "implement-plan.md").write_text("real requirements", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            result = planning_preflight(root)
+            self.assertNotIn("isolated worktree is orphaned", result["errors"], result)
+
 
 if __name__ == '__main__': unittest.main()

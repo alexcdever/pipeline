@@ -226,6 +226,19 @@ def _validate_schema3_contract(data: dict[str, Any], errors: list[str]) -> None:
                     f"{len(resources)} resource(s); expected {expected}"
                 )
 
+    for field in ("assumptions", "unknowns"):
+        records = data.get(field, [])
+        if not isinstance(records, list):
+            errors.append(f"{field} must be an array")
+            continue
+        for index, record in enumerate(records, 1):
+            if not isinstance(record, dict):
+                errors.append(f"{field}[{index}] must be an object")
+                continue
+            identifier = record.get("id")
+            if identifier is not None and not _safe_identifier(identifier):
+                errors.append(f"{field}[{index}] id must be a safe identifier")
+
     if task_type == "prerequisite" and not _nonempty_string(data.get("non_user_completion_reason")):
         errors.append("prerequisite task requires a non-empty non_user_completion_reason")
 

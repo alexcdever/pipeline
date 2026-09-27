@@ -8,6 +8,8 @@
 
 这三份机器结果 JSON 不只是补充记录，而是 **pre-merge gate 的必需项**：`gate` 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 三者存在且各为 JSON 对象。只有 Markdown 报告、缺任何一份机器结果，pre-merge gate 直接 FAIL。
 
+报告里的 `commands[]` 条目每条可带可选字段 `cwd`（该命令实际运行的工作树的绝对路径）。post-merge gate 要求 `final-check.md` 里至少有一条 `exit_code == 0` 且 `cwd` 解析到主工作树根的命令，否则判定「合并后复验缺失」（`cwd` 缺省时回退到报告级 `worktree`）。
+
 “跑全量测试”、“功能正常”或“所有验收测试通过”都不是验收证据。
 
 ## 事实与结论边界

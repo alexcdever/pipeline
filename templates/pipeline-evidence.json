@@ -11,6 +11,7 @@
     {
       "command": "<complete command>",
       "exit_code": 0,
+      "cwd": "<absolute path of the worktree this command ran in>",
       "evidence_ref": ".pipeline/<task-id>/<raw-output>.log"
     }
   ],

@@ -364,6 +364,38 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(unverified, [])
 
 
+class MachineResultGateTests(unittest.TestCase):
+    def test_pre_merge_requires_all_three_machine_results(self):
+        from pipeline_tools.core import _machine_result_errors
+
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            errors = _machine_result_errors(directory, 'pre-merge')
+            self.assertIn('missing executor-result.json', errors)
+            self.assertIn('missing reviewer-result.json', errors)
+            self.assertIn('missing final-result.json', errors)
+
+    def test_unreadable_machine_result_is_rejected(self):
+        from pipeline_tools.core import _machine_result_errors
+
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            for name in ('executor-result.json', 'reviewer-result.json', 'final-result.json'):
+                (directory / name).write_text('{}', encoding='utf-8')
+            (directory / 'reviewer-result.json').write_text('not json', encoding='utf-8')
+            errors = _machine_result_errors(directory, 'pre-merge')
+            self.assertIn('reviewer-result.json is not a readable JSON object', errors)
+
+    def test_valid_machine_results_are_accepted(self):
+        from pipeline_tools.core import _machine_result_errors
+
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            for name in ('executor-result.json', 'reviewer-result.json', 'final-result.json'):
+                (directory / name).write_text('{}', encoding='utf-8')
+            self.assertEqual(_machine_result_errors(directory, 'pre-merge'), [])
+
+
 if __name__ == '__main__':
     unittest.main()
 

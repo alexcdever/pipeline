@@ -249,6 +249,40 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             self.assertEqual(len(list((root / ".worktrees").iterdir())), 1)
             self.assertTrue(all(Path(path).is_file() for path in replay["artifacts"]))
 
+    def test_successful_dispatch_after_run_start_leaves_no_lifecycle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, head = self.make_repo(directory)
+            started = planning_run_start(root, "dispatch-leak-run")
+            self.assertEqual(started["status"], "pass", started)
+            audit = root / ".pipeline" / "planning" / "dispatch-leak-run"
+            self.assertTrue(audit.is_dir())
+            project, requirements, plan = self.inputs()
+            project.update({"assumptions": [], "unknowns": [], "conflicts": [], "non_goals": ["本任务不扩展用户可见范围"], "decision_blockers": []})
+            result = planning_to_dispatch(
+                root, "dispatch-leak-run", project, requirements, plan,
+                task_id="integration-task", branch="dispatch-leak-run-branch",
+                baseline=head, approval_mode="automatic",
+            )
+            self.assertEqual(result["status"], "dispatch-ready", result)
+            self.assertFalse(audit.exists(), sorted(p.name for p in audit.iterdir()) if audit.exists() else [])
+            self.assertFalse((root / ".pipeline" / "planning").exists())
+
+    def test_blocked_dispatch_after_run_start_keeps_lifecycle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, head = self.make_repo(directory)
+            planning_run_start(root, "dispatch-keep-run")
+            project, requirements, plan = self.inputs(conflict=True)
+            project.update({"assumptions": [], "unknowns": [], "conflicts": [], "non_goals": ["本任务不扩展用户可见范围"], "decision_blockers": []})
+            result = planning_to_dispatch(
+                root, "dispatch-keep-run", project, requirements, plan,
+                task_id="integration-task", branch="dispatch-keep-run-branch",
+                baseline=head, approval_mode="automatic",
+            )
+            self.assertNotEqual(result["status"], "dispatch-ready", result)
+            audit = root / ".pipeline" / "planning" / "dispatch-keep-run"
+            self.assertTrue(audit.is_dir())
+            self.assertTrue((audit / "lifecycle.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

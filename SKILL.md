@@ -73,7 +73,7 @@ AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其
 - 主代理未经用户明确授权不得修改产品代码；executor/reviewer 失败后应重派、建立 `derived` 任务（机器 ID/path 保留 `continuation`）或保留决策点，不得接管实现。
 - OpenCode Desktop 会话可用 `metrics import-opencode-session` 导入结构化流程信号；导入器不得从自然语言推断产品 PASS。
 - 程序化命令应优先使用 `--format json --output <path>`；JSON 结果是后续阶段的权威输入，终端短摘要不作为流程状态来源。
-- 使用 `lifecycle status` 获取当前阶段和允许/禁止动作；语义代理只能提交 recommendation/findings，不能直接把自然语言结论当作 gate 状态。
+- 使用 `lifecycle status` 获取当前阶段和允许/禁止动作；语义代理只能提交 recommendation/findings，不能直接把自然语言结论当作 gate 状态。`lifecycle status` 在 merge 阶段返回的动作标识 `merge_branch_in_main_worktree` 表示由主代理手工合并，`pipeline-tools` 没有对应的合并命令，不要去找它。
 - 结构化执行闭环使用 `dispatch write`、`result verify` 和 `freshness`；只有当前 task-id、角色、HEAD、验收结果和证据引用均通过机械校验，才能把语义代理的 recommendation 交给下一阶段。
 - 工具不可用、命令超时、证据缺失或身份/范围漂移时标为 `BLOCKED`/漂移，不绕过工具改写成 PASS。
 - 报告必须包含机器可读的 `pipeline-evidence` 区块；自然语言报告不能单独产生验收结论。

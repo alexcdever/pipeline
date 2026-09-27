@@ -176,4 +176,60 @@ class GitChecks(unittest.TestCase):
                 ['.pipeline/metrics-export.json', 'IDEA.md'],
             )
 
+    def test_freeze_check_detects_task_sheet_change_after_freeze(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'implement-plan.md').write_text('plan\n', encoding='utf-8')
+            contract = {
+                'schema': 3,
+                'task_id': 'freeze-drift',
+                'task_type': 'prerequisite',
+                'project_type': 'service',
+                'risk': 'medium',
+                'implement_plan': {'path': 'implement-plan.md'},
+                'allowed_paths': ['src/**'],
+                'forbidden_paths': [],
+                'non_goals': ['must not rewrite history'],
+                'non_user_completion_reason': 'no user-facing surface',
+                'operations': [{
+                    'id': 'op', 'kind': 'validate', 'scope': 'project',
+                    'resources': ['src/app.py'], 'resource_mode': 'single',
+                    'acceptance_tests': ['acceptance-test-1'],
+                }],
+                'chain': {
+                    name: {'not_applicable': True, 'reason': 'prerequisite task has no user-visible chain'}
+                    for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')
+                },
+                'dependencies': [],
+                'acceptance_tests': [{
+                    'id': 'acceptance-test-1', 'evidence_level': 2,
+                    'test_ref': 'tests/test_git_checks.py: test_x',
+                    'command_ref': 'python -m unittest',
+                }],
+                'required_evidence_levels': [2],
+            }
+            sheet = p / 'docs' / 'tasks' / 'freeze-drift.md'
+            sheet.parent.mkdir(parents=True)
+            sheet.write_text(
+                '<!-- Task ID: freeze-drift -->\n```pipeline-contract\n'
+                + json.dumps(contract) + '\n```\n',
+                encoding='utf-8',
+            )
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'freeze'], cwd=p, check=True, capture_output=True)
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=p, text=True).strip()
+            first = freeze_check(p, head, task_sheet=sheet)
+            self.assertNotIn('task sheet changed after freeze', first, first)
+            sheet.write_text(
+                sheet.read_text(encoding='utf-8').replace('must not rewrite history', 'must not rewrite task history'),
+                encoding='utf-8',
+            )
+            second = freeze_check(p, head, task_sheet=sheet)
+            self.assertIn('task sheet changed after freeze', second, second)
+
 if __name__=='__main__': unittest.main()
