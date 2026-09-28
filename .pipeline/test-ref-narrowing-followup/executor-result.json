@@ -6,7 +6,7 @@
   "branch": "test-ref-narrowing-followup",
   "role": "executor",
   "round": 1,
-  "status": "READY-TO-MERGE",
+  "status": "pass",
   "identity": {
     "product_head": "5a41b87b1749e08f0a2e3911786192518503314b",
     "head": "5a41b87b1749e08f0a2e3911786192518503314b"
@@ -104,49 +104,49 @@
   "acceptance": [
     {
       "id": "acceptance-test-planner-rejects-out-of-scope-test-ref",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-planner-rejects-unowned-test-ref-in-shared-root",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-cli-generate-task-sheets-lifecycle-passes",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-cli-contract-consistency-schema2-passes",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-dispatch-valid-run-reaches-identity-verified-dispatch",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-dispatch-conflict-fails-closed",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-contract-consistency-matching-plan-and-schema2-pass",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     },
     {
       "id": "acceptance-test-strict-test-ref-placement-documented",
-      "status": "PASS",
+      "status": "pass",
       "exit_code": 0,
       "evidence_refs": ["executor-report.md"]
     }

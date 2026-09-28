@@ -183,6 +183,27 @@ FAILED (failures=22)
 
 - `unknown-historic-41-count`（任务单已记 non_blocking）：终审记录 41/22 vs 37/18 的差异本任务无法独立复现；本轮进程内实测中间态为 22 条，与 22 一致。
 
+## 17. 裁决后补记：执行者证据状态大小写对齐（C4）
+
+**事实**：`executor-result.json` 顶层 `status` 用 `READY-TO-MERGE`、8 条 `acceptance[].status` 用 `PASS`（大写）；而 `result verify` 侧的 `verify_structured_result`（`pipeline_tools/core.py:1201`）只接受小写 `{pass, fail, blocked, flaky}`，`:1213` 的 acceptance 只接受小写 `{pass, fail, blocked, flaky, unverified}`。gate 侧 `evidence_verify`（`pipeline_tools/core.py:364`）读 markdown 的 ` ```pipeline-evidence ` 块时 `valid_statuses` 却是大写集合（`PASS`/`FAIL`/`BLOCKED`/`FLAKY`/`EXPLORATORY_ONLY`/`READY-TO-MERGE`/`MERGED`），`gate_check`（`:1670`）进一步要求 `PASS`/`READY-TO-MERGE`。两套约定方向相反且并存。
+
+**缺陷性质**：执行者只满足了 gate 侧（markdown 证据块大写），未满足 `result verify` 侧（JSON 机器结果需小写），而原报告第 15 节称「无失败或未完成项」，未涵盖此点。
+
+**授权来源**：主代理（用户明确裁决「修 executor-result.json」）。
+
+**改了什么**（逐字段，只改大小写，不改语义、不改 ID、不改 `identity`、不改 `acceptance` 条目集合）：
+
+| 文件 | 字段 | 改前 | 改后 |
+|---|---|---|---|
+| `.pipeline/test-ref-narrowing-followup/executor-result.json` | 顶层 `status` | `READY-TO-MERGE` | `pass` |
+| 同上 | 8 条 `acceptance[].status` | `PASS` | `pass` |
+
+**未改**：`executor-report.md` 的 ` ```pipeline-evidence ` 块（那一侧要大写，本来就是对的）；`identity`；`acceptance` 条目集合；`commands` / `assertions` / `unverified` / `evidence_refs`。
+
+**遗留**：`result verify`（要求小写）与 gate 证据块（要求大写）两套约定方向相反，属工具链既有张力，不在本任务范围。
+
+**证据时序瑕疵补记**：原报告第 11.2 节记录的 `gate pre-merge` 输出为 6 项缺失（含 `executor-report.md`、`executor-result.json`），与复核时实测的 4 项缺失不一致。审查者已核实：该 gate 命令在 executor 证据落盘之前执行，输出在当时真实，属证据时序问题而非记录错误。
+
 ```pipeline-evidence
 {"schema":1,"task_id":"test-ref-narrowing-followup","worktree":".worktrees/test-ref-narrowing-followup","branch":"test-ref-narrowing-followup","role":"executor","round":1,"status":"PASS","commands":[{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests (after removing narrowing, before migration)","exit_code":1,"expected_exit_code":1,"evidence_ref":"executor-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests (final)","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_planning.PlanningTests.test_task_plan_rejects_acceptance_test_ref_outside_task_resources","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_planning.PlanningTests.test_task_plan_rejects_test_ref_in_same_test_dir_but_not_owned","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_cli.CLITests.test_planning_generate_task_sheets_cli_lifecycle","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_cli.CLITests.test_task_plan_contract_consistency_cli_accepts_matching_schema2_sheet","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_planning_dispatch_integration.PlanningDispatchIntegrationTests.test_dispatch_conflict_fails_closed_and_preserves_identity_artifacts","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_task_plan_contract_consistency.TaskPlanContractConsistencyTests.test_matching_plan_and_schema2_sheet_pass","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_documents_test_ref_placement_and_position_rules","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m pipeline_tools --format json task validate docs/tasks/test-ref-narrowing-followup.md","exit_code":0,"evidence_ref":"executor-report.md"},{"command":"python -m pipeline_tools --format json gate pre-merge .pipeline/test-ref-narrowing-followup --task-id test-ref-narrowing-followup","exit_code":3,"expected_exit_code":3,"evidence_ref":"executor-report.md"},{"command":"python -m pipeline_tools --format json freshness . .pipeline/test-ref-narrowing-followup --result .pipeline/test-ref-narrowing-followup/executor-result.json","exit_code":0,"evidence_ref":"executor-report.md"}],"assertions":["pipeline_tools/planning.py _validate_test_ref_placement: removed 'claimed = [...]' and 'if not claimed: continue'; now unconditional 'if any(_covers_path(item, path) for item in allowed_paths): continue'.","Intermediate state after code change: Ran 285 tests, FAILED (failures=22), all 'test_ref ... is outside the task's allowed paths'.","Final state after fixture migration: Ran 285 tests, OK, 211.295s, 0 failures.","All 8 acceptance tests pass with exit_code 0.","No assertion was weakened, deleted or skipped; only fixture resources input data changed.","references/task-design.md no longer contains '不主张归属', '提出归属主张' or '位置校验不生效'.","tests/test_acceptance_id_and_template_compliance.py adds positive unconditional assertion and negative exemption assertions.","Frozen task sheet sha256 unchanged vs baseline f0e5b7c."],"evidence_refs":["executor-report.md","executor-result.json"],"unverified":["independent review","final check","merge to main"]}
 ```
