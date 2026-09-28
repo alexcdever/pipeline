@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "task_id": "task-ref-verifiability",
+  "role": "reviewer",
+  "status": "fail",
+  "identity": {
+    "product_head": "8376061b70343df5d6ac44d8a3c317847d8d2b74",
+    "head": "8376061b70343df5d6ac44d8a3c317847d8d2b74"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-planner-rejects-test-ref-outside-allowed-paths",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-planner-accepts-test-ref-inside-allowed-paths",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-generator-blocks-out-of-scope-test-ref",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-gate-rejects-absent-test-ref-method",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-test-ref-rules-documented",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    }
+  ],
+  "verdict": "REJECT",
+  "verdict_reasons": [
+    "current HEAD full suite is RED: Ran 285 tests, FAILED (failures=1)",
+    "failure caused by executor committing non-retained evidence files .pipeline/task-ref-verifiability/full-suite.log and targeted-acceptance.log, violating RETAINED_EVIDENCE_NAMES",
+    "executor-result.json is missing, violating the pre-merge required machine results"
+  ],
+  "conditions": [
+    "main agent must explicitly ratify the _shares_test_root narrowing and open a follow-up task for the 22 strict-rule fixtures in test_cli.py, test_planning_dispatch_integration.py and test_task_plan_contract_consistency.py",
+    "the two non-retained evidence logs must be removed (executor artifact, reviewer may not edit)",
+    "executor-result.json must be produced or the executor delivery judged incomplete"
+  ],
+  "unverified": [
+    "freshness observed.evidence_only (command blocked before producing the observation)",
+    "exact per-file mapping of the 19 allowed-path fixtures eliminated on the unmigrated tree"
+  ]
+}
