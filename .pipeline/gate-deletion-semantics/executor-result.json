@@ -53,6 +53,7 @@
     "final-check",
     "merge to main",
     "post-merge gate",
-    "evidence-retention-forward-gate report block check (main repo code unmodified)"
+    "evidence-retention-forward-gate report block check (main repo code unmodified)",
+    ".gitattributes effect requires a fresh clone to validate"
   ]
 }

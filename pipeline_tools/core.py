@@ -1579,10 +1579,14 @@ def gate_check(
                 continue
             exit_code = command.get("exit_code")
             expected = command.get("expected_exit_code")
-            if expected is None:
+            if expected is not None and (
+                isinstance(expected, bool) or not isinstance(expected, int)
+            ):
+                errors.append(f"{name} command expected_exit_code must be an integer")
+            elif expected is None:
                 if exit_code != 0:
                     errors.append(f"{name} contains a non-zero command exit_code")
-            elif exit_code != expected:
+            elif isinstance(exit_code, bool) or exit_code != expected:
                 errors.append(f"{name} command exit_code does not match declared expected_exit_code")
 
     if (root / ".git").exists() or (root / ".git").is_file():

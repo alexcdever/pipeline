@@ -175,6 +175,30 @@
 
 - `evidence-retention-forward-gate` 的报告可能仍因 status 值、缺 `evidence_ref` 等原因 blocked；其块检查报错需待代码合并到主仓库后才消失。
 
+## 十、弱断言修正、布尔边界加固与行尾固定（本轮追加）
+
+### 为何改
+
+独立核验指出三处：`tests/test_evidence.py` 的 `test_undeclared_nonzero_exit_code_is_still_rejected` 被指为「恒真弱断言」；`gate_check` 的 `elif exit_code != expected` 在 `expected=True` 时会因 `1 == True` 误放行；仓库无 `.gitattributes`，行尾无固定。
+
+**核验后修正一处前提**：该测试**并未**使用 `assertIsNotNone`（全文件无此调用）。它原本用 `assertTrue(any('non-zero' in error for error in errors), errors)`，实测**确实有区分力**（`exit_code=0` 无该错误、`exit_code=4` 有）。故「恒真」判断不成立。但按「必须直接断言拒绝行为、且不得恒真」的要求，仍把它收紧为精确断言。
+
+### 授权来源
+
+主代理（用户明确裁决「一次修完」「测试必须真实通过，不许空断言」）。
+
+### 改了什么
+
+- `tests/test_evidence.py`：`test_undeclared_nonzero_exit_code_is_still_rejected` 的断言由 `assertTrue(any('non-zero' in ...))` 收紧为 `assertIn('review-report.md contains a non-zero command exit_code', errors)`；新增 `test_gate_rejects_boolean_expected_exit_code`（`exit_code:1, expected_exit_code:true` 必须被 gate 拒）。
+- `pipeline_tools/core.py` 的 `gate_check`：`expected_exit_code` 非整数（含 bool）时先报类型错误；`exit_code` 为 bool 或与声明不符时报不匹配。与 `evidence_verify` 的类型防御一致（纵深防御）。
+- `.gitattributes`：固定 `* text=auto eol=lf`，`*.cmd`/`*.bat` 保留 `eol=crlf`。
+
+### 验证方式
+
+- **弱断言非恒真**（不落盘、用 monkeypatch 证伪）：把 `gate_check` 换成「永不报错」，该测试**失败**；恢复后通过。证明它真的在测拒绝行为。
+- **布尔边界**：`expected=true, exit_code=1` 经 `gate_check` **报错**（`expected_exit_code must be an integer`）；把 bool 守卫移除后 `test_gate_rejects_boolean_expected_exit_code` **失败**，证明该测试非空。
+- 未放宽「未声明 `expected_exit_code` 时 `exit_code` 必须为 0」：`exit_code=4` 无声明仍报 `non-zero command exit_code`。
+
 ```pipeline-evidence
 {
   "schema": 1,
