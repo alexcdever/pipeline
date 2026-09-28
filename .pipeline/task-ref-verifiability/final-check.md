@@ -32,7 +32,7 @@
 ### 1.4 后续
 
 - 为 22 个既有 fixture **另开 follow-up 任务**，附**完整清单**，纳入 `allowed_paths` 后按严格规则逐一修正。
-- 完整清单引用执行者报告附录（`executor.md`）中的枚举；本终审未逐条复制，避免与执行者产物产生第二份可能漂移的副本。
+- 完整清单引用执行者报告附录（`executor-report.md`）中的枚举；本终审未逐条复制，避免与执行者产物产生第二份可能漂移的副本。
 
 ## 2. 数字歧义澄清（独立复核）
 
@@ -94,7 +94,7 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools --format json fre
 4. `25088fd` 审查者复验报告更新。
 5. `9c91fde` 审查者 `reviewer-result.json` 更新为 **ACCEPT WITH CONDITIONS**。
 
-复验确认：全量 `Ran 285 tests` / OK；证据目录恰 4 个保留集文件（`executor.md`、`executor-result.json`、`reviewer.md`、`reviewer-result.json`）；gate errors 从 3 项降为 **2 项**；两处校验未回退。
+复验确认：全量 `Ran 285 tests` / OK；证据目录恰 4 个保留集文件（`executor-report.md`、`executor-result.json`、`review-report.md`、`reviewer-result.json`）；gate errors 从 3 项降为 **2 项**；两处校验未回退。
 
 ## 7. 核心事实独立复核
 
