@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "task_id": "toolchain-freshness-fixes",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "6994f7ba20375e5c7bc8f5dc2da9ed0b308690a0",
+    "head": "6994f7ba20375e5c7bc8f5dc2da9ed0b308690a0"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-acceptance-evidence-refs-resolve-from-evidence-directory",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-acceptance-evidence-refs-still-reject-absolute-and-traversal",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-metrics-commit-keeps-evidence-only",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-product-drift-still-blocks",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-docs-aligned",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    }
+  ],
+  "unverified": [
+    "independent review not performed by this executor round",
+    "main-agent final check not performed",
+    "merge not performed"
+  ]
+}
