@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "task_id": "test-ref-narrowing-followup",
+  "role": "main-final",
+  "round": 1,
+  "status": "pass",
+  "worktree": ".worktrees/test-ref-narrowing-followup",
+  "branch": "test-ref-narrowing-followup",
+  "identity": {
+    "product_head": "5a41b87b1749e08f0a2e3911786192518503314b",
+    "head": "0100f52a91bf57bf19e8a242107c8ac25cd909dd",
+    "basis": "product_head is the product-code commit 5a41b87; head is the final-check-time HEAD 0100f52, the C4 status-case fix. 04dc81b, 220cd5a and 0100f52 only add evidence and metrics files, so product_head semantics are unaffected."
+  },
+  "acceptance": [
+    {"id": "acceptance-test-planner-rejects-out-of-scope-test-ref", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-planner-rejects-unowned-test-ref-in-shared-root", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-cli-generate-task-sheets-lifecycle-passes", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-cli-contract-consistency-schema2-passes", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-dispatch-valid-run-reaches-identity-verified-dispatch", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-dispatch-conflict-fails-closed", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-contract-consistency-matching-plan-and-schema2-pass", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-strict-test-ref-placement-documented", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "adjudications": {
+    "C4_status_case": "Real defect: executor satisfied only the markdown/gate side (upper-case) and not the result verify side (lower-case), and the report claimed no outstanding items. Medium severity, product code unaffected. Fixed by 0100f52 (case only) and re-verified. The opposite-case dual convention is pre-existing toolchain tension, out of scope; recommend a separate ticket to unify the status vocabularies.",
+    "gate_missing_list_6_vs_4": "Evidence-timing artifact, not a recording error: the gate ran before executor evidence landed, so its output was truthful at the time.",
+    "identity_head_lag": "Acceptable. Writing identity changes HEAD (self-referential); reviewer-result documents product_head vs head basis.",
+    "_shares_test_root_dead_code": "Confirmed dead code at planning.py:669; the task sheet explicitly preserves it unchanged. Cleanup is a separate ticket."
+  },
+  "unverified": [
+    "unknown-historic-41-count: 41/22 vs 37/18 historical discrepancy could not be independently reproduced; in-process intermediate measurement is 22, consistent with 22",
+    "merge to main (human developer action)"
+  ]
+}
