@@ -24,7 +24,7 @@ REQUIRED_FIELDS = (
 ACCEPTANCE_FIELDS = ("id", "evidence_level", "test_ref", "command_ref")
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ACCEPTANCE_ID_RE = re.compile(r"acceptance-test-[A-Za-z0-9][A-Za-z0-9._-]*\Z")
-SUPPORTED_SCHEMAS = {1, 2, 3}
+SUPPORTED_SCHEMAS = {1, 2, 3, 4}
 CHAIN_NAMES = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 TASK_TYPES = {"vertical-feature", "prerequisite", "repair", "derived"}
 PROJECT_TYPES = ("library", "cli", "service", "web", "desktop", "multi-process")
@@ -76,12 +76,13 @@ def _validate_schema2_contract(
     data: dict[str, Any],
     errors: list[str],
     allow_not_applicable_chain: bool = False,
+    doc_field: str = "implement_plan",
 ) -> None:
     if not _nonempty_string(data.get("task_type")) or data.get("task_type") not in TASK_TYPES:
         errors.append("task_type must be one of vertical-feature, prerequisite, repair, derived")
-    implement_plan = data.get("implement_plan")
-    if not isinstance(implement_plan, dict) or not _nonempty_string(implement_plan.get("path")):
-        errors.append("implement_plan.path is required")
+    requirements_doc = data.get(doc_field)
+    if not isinstance(requirements_doc, dict) or not _nonempty_string(requirements_doc.get("path")):
+        errors.append(f"{doc_field}.path is required")
     operations = data.get("operations")
     operation_ids: set[str] = set()
     operation_acceptance_refs: dict[str, list[str]] = {}
@@ -344,7 +345,7 @@ def load_contract(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
         test_id = item.get("id")
         id_valid = (
             _validate_full_acceptance_id(test_id)
-            if schema in {2, 3}
+            if schema in {2, 3, 4}
             else isinstance(test_id, str) and bool(IDENTIFIER_RE.fullmatch(test_id))
         )
         if not id_valid:
@@ -365,12 +366,15 @@ def load_contract(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
         if isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 5:
             errors.append(f"acceptance test {index} evidence_level must be integer 1-5")
 
-    if schema in {2, 3}:
-        allow_not_applicable_chain = schema == 3 and not _requires_full_chain(data)
+    if schema in {2, 3, 4}:
+        allow_not_applicable_chain = schema in {3, 4} and not _requires_full_chain(data)
         _validate_schema2_contract(
-            data, errors, allow_not_applicable_chain=allow_not_applicable_chain
+            data,
+            errors,
+            allow_not_applicable_chain=allow_not_applicable_chain,
+            doc_field="goal" if schema == 4 else "implement_plan",
         )
-    if schema == 3:
+    if schema in {3, 4}:
         _validate_schema3_contract(data, errors)
 
     return (data if not errors else None), errors

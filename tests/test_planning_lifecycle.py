@@ -85,7 +85,7 @@ class PlanningLifecycleTests(unittest.TestCase):
             audit = root / ".pipeline" / "planning" / "failed-test"
             self.assertTrue((audit / "lifecycle.json").is_file())
             conflict = planning_run_start(root, "conflict-test")
-            (root / "implement-plan.md").write_text("drift\n", encoding="utf-8")
+            (root / "goal.md").write_text("drift\n", encoding="utf-8")
             recovered = planning_run_recover(root, "conflict-test")
             self.assertEqual(recovered["status"], "blocked")
             self.assertEqual(recovered["phase"], "conflict")

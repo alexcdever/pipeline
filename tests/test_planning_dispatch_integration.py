@@ -14,7 +14,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
         subprocess.run(["git", "branch", "-M", "main"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
-        (root / "implement-plan.md").write_text("frozen planning requirements\n", encoding="utf-8")
+        (root / "goal.md").write_text("frozen planning requirements\n", encoding="utf-8")
         (root / "src").mkdir()
         (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=root, check=True)
@@ -25,7 +25,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
     def inputs(self, *, conflict=False):
         project = {
             "schema": 1,
-            "sources": [{"id": "project-source", "path": "implement-plan.md"}],
+            "sources": [{"id": "project-source", "path": "goal.md"}],
             "resources": [{"id": "resource", "path": "src/app.py"}],
             "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}],
             "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 3, "test_ref": "tests/test_planning_dispatch_integration.py", "command_ref": "python -m unittest"}],
@@ -39,7 +39,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             ]
         requirements = {
             "schema": 1,
-            "sources": [{"id": "requirement-source", "path": "implement-plan.md"}],
+            "sources": [{"id": "requirement-source", "path": "goal.md"}],
             "requirements": [{"id": "requirement", "source_refs": ["requirement-source"]}],
             "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}],
             "acceptance_tests": project["acceptance_tests"],
@@ -177,7 +177,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
                 root, head = self.make_repo(directory)
                 project, requirements, plan = self.inputs(**options)
                 if label == "preflight":
-                    (root / "implement-plan.md").unlink()
+                    (root / "goal.md").unlink()
                 result = planning_to_dispatch(root, f"failed-{label}", project, requirements, plan, task_id="integration-task", branch="integration-task-branch", baseline=head, approved=True)
                 self.assertNotEqual(result["status"], "dispatch-ready")
                 self.assertEqual(result["stages"][-1]["name"], expected)

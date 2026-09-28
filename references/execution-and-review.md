@@ -4,19 +4,19 @@
 
 主代理在契约提交后创建唯一的 `<仓库根目录>/.worktrees/<task-id>`，并在 dispatch 中传入绝对路径。执行子代理和审查子代理必须先核对该路径、branch、task-id 与 `git worktree list --porcelain` 一致，再在指定 worktree 工作；不得自行运行 `git worktree add`，不得改用仓库同级目录或为同一任务创建第二个 worktree。独立审查上下文不要求新建 Git worktree。工具首次访问任务证据时会自动把 `.workflow/<task-id>/` 迁移为 `.pipeline/<task-id>/`，并核对文件哈希、路径引用和工具测试；若 `.pipeline/` 已存在则报告冲突并停止。迁移完成后不能继续写入旧目录。
 
-## 执行期 implement-plan 哈希稳定性
+## 执行期 goal 哈希稳定性
 
-`implement-plan.md` 的 sha256 在规划、任务生成和执行期间必须稳定（implement-plan.md 第 39 行）。`pipeline_tools/core.py` 为此提供两个函数：
+`goal.md` 的 sha256 在规划、任务生成和执行期间必须稳定。`pipeline_tools/core.py` 为此提供两个函数（旧名 `implement_plan_status` / `_record_implement_plan_hash` 保留为别名，历史调用方继续可用）：
 
-- `implement_plan_status(root, contract, task_id=None)`：比较契约记录的哈希与实时文件的哈希，返回**四元组** `(errors, recorded, observed, unverified)`（`pipeline_tools/core.py:912-951`）。调用方必须按四元组解包；只解三元的代码会抛 `ValueError`。`recorded` 的完整回退顺序是：契约的 `implement_plan.sha256` → `.pipeline/planning/*/dispatch.json|lifecycle.json|result.json` 里的 `requirements_sha256`（或 `identity.requirements_sha256`，见 `_planning_requirements_sha256`，`pipeline_tools/core.py:875-894`）→ `.pipeline/<task-id>/implement-plan.json` 里的 `sha256`（见 `_recorded_implement_plan_sha256`，`pipeline_tools/core.py:897-909`）。
-- 第四个返回值 `unverified` 是未验证项列表，不是可以忽略的附加信息：任务没有记录哈希时，即使文件可读、`errors` 为空，也会返回 `implement-plan hash unrecorded: <path>`；既无记录又读不到文件时返回 `implement-plan hash unrecorded and plan unreadable: <path>`（`pipeline_tools/core.py:943`、`:950`）。这表示哈希未被强制，必须按未验证处理，不能当作通过。
-- `_record_implement_plan_hash(root, task_id, observed)`：把观察到的哈希写入 `.pipeline/<task-id>/implement-plan.json`（内容为 `{"schema": 1, "task_id": ..., "sha256": observed}`，`pipeline_tools/core.py:963`），让后续阶段能继续强制它。创建 worktree 后调用一次；冻结检查也会调用它（见下）。
+- `goal_status(root, contract, task_id=None)`：比较契约记录的哈希与实时文件的哈希，返回**四元组** `(errors, recorded, observed, unverified)`。调用方必须按四元组解包；只解三元的代码会抛 `ValueError`。`recorded` 的完整回退顺序是：schema 4 契约的 `goal.sha256`（schema 1-3 读旧 `implement_plan.sha256`）→ `.pipeline/planning/*/dispatch.json|lifecycle.json|result.json` 里的 `requirements_sha256`（或 `identity.requirements_sha256`，见 `_planning_requirements_sha256`）→ `.pipeline/<task-id>/goal.json` 里的 `sha256`（历史任务回退到 `implement-plan.json`，见 `_recorded_goal_sha256`）。
+- 第四个返回值 `unverified` 是未验证项列表，不是可以忽略的附加信息：任务没有记录哈希时，即使文件可读、`errors` 为空，也会返回 `goal hash unrecorded: <path>`；既无记录又读不到文件时返回 `goal hash unrecorded and plan unreadable: <path>`。这表示哈希未被强制，必须按未验证处理，不能当作通过。
+- `_record_goal_hash(root, task_id, observed)`：把观察到的哈希写入 `.pipeline/<task-id>/goal.json`（内容为 `{"schema": 1, "task_id": ..., "sha256": observed}`）；schema 1-3 的旧任务仍写 `implement-plan.json`，因此历史契约保持可读。创建 worktree 后调用一次；冻结检查也会调用它（见下）。
 
 执行时的检查点：
 
-- 派发（`create_worktree_dispatch`）时会调用 `implement_plan_status`；任何漂移都返回 `blocked`，并给出 `re-plan before continuing`，不会创建 worktree。
-- 冻结检查（`freeze_check`，即 `task preflight` / `task freeze-check`）在传入 `--task-sheet` 时会再查一次，并且**有写副作用**：它调用 `_record_implement_plan_hash` 把本次观察到的哈希持久化到 `.pipeline/<task-id>/implement-plan.json`。因此这两个命令不是纯只读的身份检查——它们会创建或更新该证据文件。哈希漂移仍然会让 `errors` 非空，不会因为写入而被掩盖。`unverified` 只在调用方传入列表时回传；两个命令在文本输出里打印 `UNVERIFIED: ...`，在 `--format json` 下把同一列表放进结果的 `unverified` 字段。未记录哈希不是失败，但也不是通过。
-- 新鲜度检查（`evidence_freshness`）会记录 `implement_plan_recorded` 与 `implement_plan_observed` 两个观察项，漂移计入 `errors`。
+- 派发（`create_worktree_dispatch`）时会调用 `goal_status`；任何漂移都返回 `blocked`，并给出 `re-plan before continuing`，不会创建 worktree。
+- 冻结检查（`freeze_check`，即 `task preflight` / `task freeze-check`）在传入 `--task-sheet` 时会再查一次，并且**有写副作用**：它调用 `_record_goal_hash` 把本次观察到的哈希持久化到 `.pipeline/<task-id>/goal.json`（旧 schema 写 `implement-plan.json`）。因此这两个命令不是纯只读的身份检查——它们会创建或更新该证据文件。哈希漂移仍然会让 `errors` 非空，不会因为写入而被掩盖。`unverified` 只在调用方传入列表时回传；两个命令在文本输出里打印 `UNVERIFIED: ...`，在 `--format json` 下把同一列表放进结果的 `unverified` 字段。未记录哈希不是失败，但也不是通过。
+- 新鲜度检查（`evidence_freshness`）会记录 `goal_recorded` 与 `goal_observed` 两个观察项，漂移计入 `errors`。
 
 结论：哈希漂移等于需求在执行期被改动，正确反应是**停下重新规划**，不是放宽断言、改契约或继续合并。审查子代理和主代理终检都不得把漂移解释成可接受的差异。
 

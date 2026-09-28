@@ -5,12 +5,12 @@
 
 ```pipeline-contract
 {
-  "schema": 3,
+  "schema": 4,
   "task_id": "<task-id>",
   "task_type": "repair",
   "project_type": "service",
   "risk": "medium",
-  "implement_plan": {"path": "implement-plan.md"},
+  "goal": {"path": "goal.md"},
   "allowed_paths": ["<repo-relative-or-explicit-sibling-path-pattern>"],
   "forbidden_paths": ["<path-pattern>"],
   "non_goals": ["<explicit non-goal that this task must not pursue>"],
@@ -48,9 +48,9 @@
 }
 ```
 
-`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 3 and complete `acceptance-test-*` IDs; schema 1 and schema 2 are retained only for deprecated historical reads. Keep it synchronized with the human-readable contract; after the contract commit it is frozen.
+`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 4 with the `goal` field and complete `acceptance-test-*` IDs; schema 1-3 are retained only for deprecated historical reads (they keep the legacy `implement_plan` field). Keep it synchronized with the human-readable contract; after the contract commit it is frozen.
 
-Schema 3 rules worth restating here:
+Schema 4 rules worth restating here:
 
 - `non_goals` must be a non-empty array of non-empty strings.
 - `risk` must be `low`, `medium` or `high`; `project_type` defaults to `service`.

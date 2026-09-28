@@ -65,7 +65,7 @@
 - `prerequisite`：只产出被后续任务消费的底座（schema、协议、算法、持久化、构建或环境能力）。任务计划必须为该任务声明 `non_user_completion_reason`，说明为什么它不是用户功能完成；生成器把它原样写入契约，缺失或空白时任务单生成失败（不再填默认英文）。
 - `derived`：从一个父任务的**明确提交**派生出的新任务，重新生成独立任务单，不复用父任务的证据。包含设计变更后按裁决重开的那一类。
 
-非目标「不得冒充完整用户功能」（implement-plan.md 第 28 行）直接决定类型选择：只要任务产出不构成用户可观察的完成，就不能标 `vertical-feature` 或 `repair`，必须标 `prerequisite` 并在 `non_user_completion_reason` 里说清它只是底座。反过来说，用 `prerequisite` 逃避真实用户链路的验收也是违规——底座本身仍要有验收测试，只是它不冒充最终用户功能。
+非目标「不得冒充完整用户功能」（goal.md 第 28 行）直接决定类型选择：只要任务产出不构成用户可观察的完成，就不能标 `vertical-feature` 或 `repair`，必须标 `prerequisite` 并在 `non_user_completion_reason` 里说清它只是底座。反过来说，用 `prerequisite` 逃避真实用户链路的验收也是违规——底座本身仍要有验收测试，只是它不冒充最终用户功能。
 
 **命名统一**：机器 id/path token 是 `continuation`，类型 token 是 `derived`。文档里的「延续任务 / continuation」与代码里的 `derived` 指同一件事，两者都保留，但必须成对出现并说明对应关系：任务类型字段写 `derived`，机器 id 和路径前缀保留 `continuation`（`create_derived_dispatch(..., continuation=True)` 要求子任务 id 含 `continuation`）。SKILL.md 与本文件使用同一套说法。
 

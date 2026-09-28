@@ -12,11 +12,11 @@ metadata:
 
 # 编程工作流
 
-与具体产品和工具无关的多代理编程工作流：定义主代理、执行子代理、审查子代理之间的协作契约，以及任务单、验收测试、证据、恢复与合并规则。不规定具体子代理调用方式或通知方式；实现 worktree 的路径、创建和核对规则除外。
+服务于大语言模型与具备子代理机制的 agent 软件的编程工作流：定义主代理、执行子代理、审查子代理之间的协作契约，以及任务单、验收测试、证据、恢复与合并规则。它面向的是能读写项目文件、运行命令并派发子代理的 LLM 宿主（如 agent 软件、IDE 内置 agent、CLI agent）；不规定具体模型、子代理调用方式或通知方式；实现 worktree 的路径、创建和核对规则除外。
 
 ## 适用场景
 
-AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其需要隔离 worktree、独立审查和真实测试的任务。
+具备子代理机制的大语言模型 agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其需要隔离 worktree、独立审查和真实测试的任务。
 
 执行 agent 须能读写项目文件、运行构建/测试命令、创建 Git worktree 并创建子代理；能力不足时在结果中标注证据边界，单代理自检 ≠ 独立审查。主代理成功返回、测试数量增加、退出码为 0 或报告文件存在，都不能单独代表产品完成。
 
@@ -79,10 +79,11 @@ AI agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其
 - 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
-- 任务单在 freeze 时记录 sha256（写入 `.pipeline/<task-id>/implement-plan.json` 的 `task_sheet_sha256`）；`freeze_check` 据此检测任务单在冻结后被改动。
-- `planning_to_dispatch` 支持 `expected_requirements_sha256` 绑定规划期需求基线；传入后 preflight 用它在派发前核对 `implement-plan.md` 哈希是否漂移。
+- 需求权威文件是仓库根目录的 `goal.md`；旧的 `implement-plan.md` 只作为迁移来源，`planning goal-sync` 会把它按字节原样复制成带来源头的 `goal.md`（不重写内容），此后只编辑 `goal.md`。
+- 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）；`freeze_check` 据此检测任务单在冻结后被改动。
+- `planning_to_dispatch` 支持 `expected_requirements_sha256` 绑定规划期需求基线；传入后 preflight 用它在派发前核对 `goal.md` 哈希是否漂移。
 - `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。
-- 生成的 schema-3 契约携带 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结。
+- 生成的 schema-4 契约携带 `goal` 字段（`path`/`sha256`/`planning_run_id`）与 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结；schema 1-3 只保留历史读取，继续使用旧 `implement_plan` 字段。
 - 正式 `evidence verify` 前先运行 `evidence readiness`；缺 final-check 或必要报告时记录“未准备好”，不要把阶段顺序问题误作产品验收失败。指标报告优先按 task/run/terminal 维度解释，不用全项目累计 `success_rate` 代替终态结论。
 - 正常只把短摘要放入上下文；完整输出、报告和统计事件留在项目文件中，需要诊断时再读取。
 

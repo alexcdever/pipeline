@@ -192,9 +192,10 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertEqual(validate_structure(path), [], name)
             self.assertEqual(path.read_bytes(), before, name)
 
-    def test_template_emits_schema3_without_process_record_sections(self):
+    def test_template_emits_schema4_without_process_record_sections(self):
         text = (ROOT / "templates/task-sheet.md").read_text(encoding="utf-8")
-        self.assertIn('"schema": 3', text)
+        self.assertIn('"schema": 4', text)
+        self.assertIn('"goal"', text)
         self.assertIn('"non_goals"', text)
         self.assertIn('"resource_mode"', text)
         for heading in ("## 任务级进度", "### 任务锚点", "### 验收台账", "### 执行记录", "### 最终结果"):

@@ -31,6 +31,7 @@ from .planning import (
     planning_run_recover,
     compare_task_plan_contract,
     planning_to_dispatch,
+    sync_goal_document,
 )
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
 from .core import (
@@ -136,6 +137,7 @@ def _build_parser() -> argparse.ArgumentParser:
     planning = groups.add_parser("planning")
     planning_sub = planning.add_subparsers(dest="action", required=True)
     pf = planning_sub.add_parser("preflight"); pf.add_argument("root", type=Path)
+    goal_sync = planning_sub.add_parser("goal-sync"); goal_sync.add_argument("root", type=Path)
     facts = planning_sub.add_parser("facts-validate"); facts.add_argument("path", type=Path); facts.add_argument("--root", type=Path)
     normalize = planning_sub.add_parser("facts-normalize"); normalize.add_argument("path", type=Path); normalize.add_argument("--run-id")
     conflicts = planning_sub.add_parser("facts-conflict-detect"); conflicts.add_argument("path", type=Path); conflicts.add_argument("--run-id")
@@ -903,6 +905,19 @@ def _main(argv: list[str] | None = None) -> int:
         if args.group == "planning":
             if args.action == "preflight":
                 value = planning_preflight(args.root); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
+            if args.action == "goal-sync":
+                goal_path, sync_error = sync_goal_document(args.root)
+                value = {
+                    "schema": 1, "command": "planning.goal-sync",
+                    "status": "blocked" if sync_error else "pass",
+                    "goal": str(goal_path), "errors": [sync_error] if sync_error else [],
+                    "next_actions": ["create goal.md manually"] if sync_error else ["edit goal.md directly"],
+                }
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(json.dumps(value, ensure_ascii=True, sort_keys=True))
+                return BLOCKED if sync_error else PASS
             if args.action == "to-dispatch":
                 value = planning_to_dispatch(
                     args.root, args.run_id, _json_file_for_cli(args.project_facts),

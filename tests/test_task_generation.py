@@ -16,12 +16,12 @@ CHAIN = {name: ["src/app.py"] for name in ("entry", "interaction", "application"
 
 
 def make_inputs(root, task_ids=("task-a", "task-b")):
-    (root / "implement-plan.md").write_text("stable implement plan\n", encoding="utf-8")
+    (root / "goal.md").write_text("stable goal\n", encoding="utf-8")
     (root / "src").mkdir(exist_ok=True)
     (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
     acceptance = [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: test", "command_ref": "python -m unittest tests.test_task_generation -v"}]
-    project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
-    requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance}
+    project = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
+    requirements = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance}
     tasks = [{"id": task_id, "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"} for task_id in task_ids]
     plan = {"schema": 1, "non_goals": ["本任务不扩展用户可见范围"], "requirements": ["requirement"], "resources": ["resource"], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": tasks}
     return project, requirements, plan
@@ -48,13 +48,13 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertEqual(result["status"], "pass")
             self.assertEqual(result["task_ids"], ["task-a", "task-b"])
             self.assertEqual(result["planning_run_id"], "run-1")
-            self.assertEqual(result["requirements_sha256"], hashlib.sha256((root / "implement-plan.md").read_bytes()).hexdigest())
+            self.assertEqual(result["requirements_sha256"], hashlib.sha256((root / "goal.md").read_bytes()).hexdigest())
             self.assertFalse((root / ".worktrees").exists())
             for task_id in result["task_ids"]:
                 sheet = root / "docs" / "tasks" / f"{task_id}.md"
                 self.assertEqual(validate_task(sheet), [])
                 text = sheet.read_text(encoding="utf-8")
-                self.assertIn('"schema": 3', text)
+                self.assertIn('"schema": 4', text)
                 self.assertIn('"planning_run_id": "run-1"', text)
                 self.assertIn('"operations"', text)
                 self.assertIn('"chain"', text)
@@ -185,19 +185,19 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertEqual(contract["operations"][0]["resources"], ["resource", "resource-db"])
             self.assertEqual(validate_task(sheet), [])
 
-    def test_generation_rejects_implement_plan_hash_drift_and_checks_plan_sheet_consistency(self):
+    def test_generation_rejects_goal_hash_drift_and_checks_plan_sheet_consistency(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             project, requirements, plan = make_inputs(root, ("consistent",))
             make_repo(root)
-            expected = hashlib.sha256((root / "implement-plan.md").read_bytes()).hexdigest()
-            (root / "implement-plan.md").write_text("drifted plan\n", encoding="utf-8")
+            expected = hashlib.sha256((root / "goal.md").read_bytes()).hexdigest()
+            (root / "goal.md").write_text("drifted goal\n", encoding="utf-8")
             drift = self.run_generation(root, project, requirements, plan, run_id="drift-run", expected=expected)
             self.assertEqual(drift["status"], "blocked")
             self.assertTrue(any("hash" in error for error in drift["errors"]))
             self.assertFalse((root / "docs" / "tasks" / "consistent.md").exists())
 
-            (root / "implement-plan.md").write_text("stable implement plan\n", encoding="utf-8")
+            (root / "goal.md").write_text("stable goal\n", encoding="utf-8")
             result = self.run_generation(root, project, requirements, plan, run_id="consistent-run")
             self.assertEqual(result["status"], "pass")
             sheet = root / "docs" / "tasks" / "consistent.md"

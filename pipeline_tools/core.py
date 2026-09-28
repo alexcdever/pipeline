@@ -909,85 +909,114 @@ def _planning_requirements_sha256(root: Path, task_id: str | None) -> str | None
     return None
 
 
-def _recorded_implement_plan_sha256(root: Path, task_id: str | None) -> str | None:
-    """Return the implement-plan hash persisted in the task evidence directory."""
+def _goal_evidence_files(directory: Path) -> list[Path]:
+    """Return the goal evidence file, preferring goal.json over the legacy name."""
+    return [directory / "goal.json", directory / "implement-plan.json"]
+
+
+def _recorded_goal_sha256(root: Path, task_id: str | None) -> str | None:
+    """Return the goal hash persisted in the task evidence directory."""
     if not task_id:
         return None
-    value = _json_file(active_pipeline_dir(Path(root)) / task_id / "implement-plan.json")
-    if not isinstance(value, dict):
-        return None
-    if value.get("task_id") not in (None, task_id):
-        return None
-    digest = value.get("sha256")
-    if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
-        return digest
+    directory = active_pipeline_dir(Path(root)) / task_id
+    for path in _goal_evidence_files(directory):
+        value = _json_file(path)
+        if not isinstance(value, dict):
+            continue
+        if value.get("task_id") not in (None, task_id):
+            continue
+        digest = value.get("sha256")
+        if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+            return digest
     return None
 
 
-def implement_plan_status(
+def goal_status(
     root: Path, contract: dict[str, Any], task_id: str | None = None
 ) -> tuple[list[str], str | None, str | None, list[str]]:
-    """Compare the recorded and live implement-plan hashes for a frozen contract.
+    """Compare the recorded and live goal hashes for a frozen contract.
 
     Returns ``(errors, recorded, observed, unverified)``.  The recorded value
     comes from the contract, else from the planning record, else from the task
     evidence directory; a drift error instructs re-planning.  A task with no
     recorded hash is reported as unverified instead of silently passing.
+    Schema 4 binds the ``goal`` field; schema 1-3 keep the legacy
+    ``implement_plan`` field read-only.
     """
     root = Path(root)
-    relative = "implement-plan.md"
+    goal = contract.get("goal")
+    legacy_plan = contract.get("implement_plan")
+    if isinstance(goal, dict):
+        label, relative, document = "goal", "goal.md", goal
+    elif isinstance(legacy_plan, dict):
+        label, relative, document = "implement-plan", "implement-plan.md", legacy_plan
+    elif contract.get("schema") == 4:
+        label, relative, document = "goal", "goal.md", None
+    else:
+        label, relative, document = "implement-plan", "implement-plan.md", None
     recorded: str | None = None
-    implement_plan = contract.get("implement_plan")
-    if isinstance(implement_plan, dict):
-        path_value = implement_plan.get("path")
+    if isinstance(document, dict):
+        path_value = document.get("path")
         if isinstance(path_value, str) and path_value.strip():
             relative = path_value.strip()
-        digest = implement_plan.get("sha256")
+        digest = document.get("sha256")
         if isinstance(digest, str) and digest.strip():
             recorded = digest.strip()
     if not _validate_evidence_ref(relative):
-        return [f"implement-plan path is not project-relative: {relative}"], recorded, None, []
+        return [f"{label} path is not project-relative: {relative}"], recorded, None, []
     if recorded is None and task_id:
         recorded = _planning_requirements_sha256(root, task_id)
     if recorded is None and task_id:
-        recorded = _recorded_implement_plan_sha256(root, task_id)
+        recorded = _recorded_goal_sha256(root, task_id)
     observed = _file_sha256(root / relative)
     if observed is None:
         if recorded:
-            return [f"implement-plan is missing or unreadable: {relative}"], recorded, None, []
-        return [], None, None, [f"implement-plan hash unrecorded and plan unreadable: {relative}"]
+            return [f"{label} is missing or unreadable: {relative}"], recorded, None, []
+        return [], None, None, [f"{label} hash unrecorded and requirements doc unreadable: {relative}"]
     if recorded and recorded != observed:
         return [
-            "implement-plan hash drift: recorded "
+            f"{label} hash drift: recorded "
             f"{recorded} but observed {observed}; requirements changed after planning, re-plan before continuing"
         ], recorded, observed, []
     if recorded is None:
-        return [], None, observed, [f"implement-plan hash unrecorded: {relative}"]
+        return [], None, observed, [f"{label} hash unrecorded: {relative}"]
     return [], recorded, observed, []
 
 
+# Legacy name retained for callers that still import it.
+implement_plan_status = goal_status
+
+
 def _recorded_task_sheet_sha256(root: Path, task_id: str | None) -> str | None:
-    """Return the task-sheet hash persisted next to the implement-plan hash."""
+    """Return the task-sheet hash persisted next to the goal hash."""
     if not task_id:
         return None
-    value = _json_file(active_pipeline_dir(Path(root)) / task_id / "implement-plan.json")
-    if not isinstance(value, dict):
-        return None
-    if value.get("task_id") not in (None, task_id):
-        return None
-    digest = value.get("task_sheet_sha256")
-    if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
-        return digest
+    directory = active_pipeline_dir(Path(root)) / task_id
+    for path in _goal_evidence_files(directory):
+        value = _json_file(path)
+        if not isinstance(value, dict):
+            continue
+        if value.get("task_id") not in (None, task_id):
+            continue
+        digest = value.get("task_sheet_sha256")
+        if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+            return digest
     return None
 
 
-def _record_implement_plan_hash(
+def _record_goal_hash(
     root: Path,
     task_id: str,
     observed: str | None,
     task_sheet_sha256: str | None = None,
+    *,
+    legacy: bool = False,
 ) -> None:
-    """Persist observed freeze hashes so later stages can enforce them."""
+    """Persist observed freeze hashes so later stages can enforce them.
+
+    Schema 4 tasks record goal.json; legacy schema 1-3 tasks keep writing the
+    implement-plan.json evidence file so historical contracts stay readable.
+    """
     if not observed and not task_sheet_sha256:
         return
     directory = active_pipeline_dir(Path(root)) / task_id
@@ -995,7 +1024,8 @@ def _record_implement_plan_hash(
         directory.mkdir(parents=True, exist_ok=True)
     except OSError:
         return
-    existing = _json_file(directory / "implement-plan.json")
+    name = "implement-plan.json" if legacy else "goal.json"
+    existing = _json_file(directory / name)
     value: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
     value["schema"] = 1
     value["task_id"] = task_id
@@ -1003,7 +1033,11 @@ def _record_implement_plan_hash(
         value["sha256"] = observed
     if task_sheet_sha256:
         value["task_sheet_sha256"] = task_sheet_sha256
-    _write_log(directory / "implement-plan.json", json.dumps(value, ensure_ascii=True, sort_keys=True))
+    _write_log(directory / name, json.dumps(value, ensure_ascii=True, sort_keys=True))
+
+
+# Legacy name retained for callers that still reference it.
+_record_implement_plan_hash = _record_goal_hash
 
 
 def _task_sheet_contract(root: Path, task_id: str | None) -> dict[str, Any] | None:
@@ -1241,7 +1275,7 @@ def create_worktree_dispatch(root: Path, task_sheet: Path, task_id: str, branch:
         result["errors"].append(reason); result["blockers"].append({"class": "workflow", "category": category, "reason": reason}); return result
     if role not in {"executor", "reviewer"}: return blocked("invalid dispatch role")
     contract, errors = load_contract(task_sheet)
-    if contract is None or errors or contract.get("schema") not in {2, 3}: return blocked("task sheet is not a valid frozen schema2/schema3 contract: " + "; ".join(errors or ["schema must be 2 or 3"]), "freeze")
+    if contract is None or errors or contract.get("schema") not in {2, 3, 4}: return blocked("task sheet is not a valid frozen schema2/schema3/schema4 contract: " + "; ".join(errors or ["schema must be 2, 3 or 4"]), "freeze")
     if contract.get("task_id") != task_id: return blocked("task sheet task_id does not match dispatch task_id")
     plan_errors, _recorded_hash, observed_hash, plan_unverified = implement_plan_status(root, contract, task_id)
     if plan_errors: return blocked("; ".join(plan_errors), "drift")
@@ -1280,7 +1314,7 @@ def create_worktree_dispatch(root: Path, task_sheet: Path, task_id: str, branch:
     if rc1 or rc2 or rc3 or Path(actual_root.strip()).resolve() != target.resolve() or actual_branch.strip() != branch or actual_head.strip() != baseline: return blocked("post-create identity verification failed", "identity")
     result.update({"status": "pass", "identity": {"task_id": task_id, "role": role, "root": str(root), "worktree": str(target.resolve()), "branch": branch, "head": baseline, "task_sheet": str(task_sheet), "contract_schema": contract.get("schema"), "implement_plan_sha256": observed_hash}, "observed": ["worktree list before and after", "root", "branch", "HEAD", "path", "implement-plan hash"], "artifacts": [str(target)], "next_actions": ["dispatch using this exact worktree"]})
     result["unverified"] = plan_unverified
-    _record_implement_plan_hash(root, task_id, observed_hash)
+    _record_goal_hash(root, task_id, observed_hash, legacy=contract.get("schema") != 4)
     return result
 
 
@@ -1611,7 +1645,10 @@ def freeze_check(
             plan_errors, _recorded_hash, observed_hash, plan_unverified = implement_plan_status(
                 root, sheet_contract, sheet_task_id
             )
-            _record_implement_plan_hash(root, sheet_task_id, observed_hash, observed_sheet)
+            _record_goal_hash(
+                root, sheet_task_id, observed_hash, observed_sheet,
+                legacy=sheet_contract.get("schema") != 4,
+            )
             if unverified is not None:
                 unverified.extend(plan_unverified)
             errors.extend(plan_errors)
