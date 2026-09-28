@@ -44,7 +44,7 @@
   ],
   "full_suite": {
     "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
-    "ran": 268,
+    "ran": 275,
     "result": "OK",
     "exit_code": 0
   },

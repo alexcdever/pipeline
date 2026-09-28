@@ -199,6 +199,38 @@
 - **布尔边界**：`expected=true, exit_code=1` 经 `gate_check` **报错**（`expected_exit_code must be an integer`）；把 bool 守卫移除后 `test_gate_rejects_boolean_expected_exit_code` **失败**，证明该测试非空。
 - 未放宽「未声明 `expected_exit_code` 时 `exit_code` 必须为 0」：`exit_code=4` 无声明仍报 `non-zero command exit_code`。
 
+## 十一、行尾规范化与任务单保护（本轮追加）
+
+### 为何 renormalize
+
+引入 `.gitattributes` 后，需要一次性把已跟踪文件的行尾规范化到规则要求，否则规则只对新签出生效、索引里仍是旧行尾。
+
+### 为何用 `-text` 而非 `eol=crlf` 保护任务单
+
+独立核验发现 `freeze_check`（`core.py:1655-1665`）用 `_file_sha256`（`core.py:898-900`，读原始字节）比对任务单 sha256，行尾变化会改变哈希。`docs/tasks/` 下有 **25** 张任务单，其中仅 2 张当前是 CRLF，其余 23 张是 LF。若用 `docs/tasks/** eol=crlf`，下次签出会把那 23 张 LF 任务单翻成 CRLF，制造**新的** churn，比要修的还多。故采用 `docs/tasks/*.md -text`：让 git **完全不碰**这些文件的行尾，25 张任务单全部保持当前字节。
+
+### 授权来源
+
+主代理（用户明确裁决「用 `-text` 保护全部任务单，而非 eol=crlf」）。
+
+### 改了什么
+
+- `.gitattributes` 追加 `docs/tasks/*.md -text`（放在最后，覆盖前面的 `* text=auto eol=lf`）。
+- `git add --renormalize .` 规范化 15 个 `.pipeline/` 文件的行尾（CRLF→LF），**不含**任何 `docs/tasks/` 文件。
+
+### 变更范围与硬门禁
+
+- 暂存区 16 个：`.gitattributes` + 15 个 `.pipeline/` 文件；`git diff --cached --name-only -- docs/tasks/` **为空**。
+- 纯行尾证据：`git diff --cached --ignore-all-space --stat` 只剩 `.gitattributes`（+1 行），15 个文件在忽略空白后**零差异**，证明纯行尾。
+- 任务单字节未变：`sha256sum docs/tasks/gate-deletion-semantics.md` = `ec0668e6...`，与 renormalize 前记录的 CRLF 版哈希**完全一致**。
+- 剩余 `i/crlf`：仅 2 张任务单（`attr/-text`），符合预期。
+
+### 验证
+
+- 全量：`Ran 275 tests in 173.394s` → OK。
+- gate pre-merge：`status pass`，exit 0。
+- `git diff --check`：exit 0。
+
 ```pipeline-evidence
 {
   "schema": 1,
