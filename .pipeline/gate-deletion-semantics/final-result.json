@@ -1,86 +1,110 @@
 {
   "schema": 1,
   "task_id": "gate-deletion-semantics",
-  "role": "final",
+  "role": "main-final",
   "status": "pass_with_conditions",
   "decision": "ACCEPT_WITH_CONDITIONS",
   "verdict": "ACCEPT WITH CONDITIONS",
   "identity": {
-    "product_head": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
-    "head": "f15e77ece6d8d2edc53407c0291e70fb2d3f5fa3",
+    "product_head": "8d677b073801a4094506497a26018fe7a15a9eb0",
+    "head": "2c88bad356b66dbde1f7901af446de3725c2cf7c",
     "baseline": "692ee6387ea2e60d53d63680235906096ed90903",
     "branch": "gate-deletion-semantics",
     "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
-    "convention": "product_head = the execution commit under review (code-enforced by evidence_freshness, core.py:1364-1388, and templates/pipeline-evidence.json:21-22); head = the evidence HEAD verified at generation time (non-enforced fallback, core.py:1390)",
-    "reviewed_commit": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
-    "review_evidence_head": "f15e77ece6d8d2edc53407c0291e70fb2d3f5fa3"
+    "convention": "product_head = the last execution commit that changed non-evidence files, so that product_head..HEAD is evidence-only (code-enforced by evidence_freshness, core.py; templates/pipeline-evidence.json). This task has six execution commits (ac4a165, 116b30c, 89835f0, b7ae0cc, 8d677b0, 2c88bad); 8d677b0 is the last one touching a non-evidence path (.gitattributes), so it is the correct product_head. head = the evidence HEAD at generation time (non-enforced fallback).",
+    "reviewed_commit": "8d677b073801a4094506497a26018fe7a15a9eb0",
+    "review_evidence_head": "2c88bad356b66dbde1f7901af446de3725c2cf7c",
+    "execution_commits": [
+      "ac4a165",
+      "116b30c",
+      "89835f0",
+      "b7ae0cc",
+      "8d677b0",
+      "2c88bad"
+    ],
+    "review_commit": "f15e77e"
   },
   "acceptance": [
-    {"id": "acceptance-test-delete-non-retained-evidence-not-a-violation", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五条-acceptance-全部由本轮实跑", "executor-report.md#三验收测试运行记录", "review-report.md#f-5-条-acceptance-独立验证"]},
-    {"id": "acceptance-test-delete-retained-evidence-is-a-violation", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五条-acceptance-全部由本轮实跑", "executor-report.md#三验收测试运行记录", "review-report.md#f-5-条-acceptance-独立验证"]},
-    {"id": "acceptance-test-add-non-retained-evidence-still-violates", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五条-acceptance-全部由本轮实跑", "executor-report.md#三验收测试运行记录", "review-report.md#f-5-条-acceptance-独立验证"]},
-    {"id": "acceptance-test-forward-gate-guard-migrated", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五条-acceptance-全部由本轮实跑", "executor-report.md#四迁移的既有测试", "review-report.md#d-迁移的既有测试"]},
-    {"id": "acceptance-test-retention-gate-docs-aligned", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五条-acceptance-全部由本轮实跑", "executor-report.md#三验收测试运行记录", "review-report.md#f-5-条-acceptance-独立验证"]}
+    {"id": "acceptance-test-delete-non-retained-evidence-not-a-violation", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"]},
+    {"id": "acceptance-test-delete-retained-evidence-is-a-violation", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"]},
+    {"id": "acceptance-test-add-non-retained-evidence-still-violates", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"]},
+    {"id": "acceptance-test-forward-gate-guard-migrated", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"]},
+    {"id": "acceptance-test-retention-gate-docs-aligned", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"]}
   ],
   "full_suite": {
     "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
-    "ran": 268,
+    "ran": 275,
     "result": "OK",
     "exit_code": 0,
-    "duration_s": 213.827
+    "duration_s": 200.573
   },
   "forward_gate": {
-    "since_cdf55e9": {"command": "python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "result": "PASS"},
-    "default_full_scan": {"command": "python -m pipeline_tools scope history . --evidence-root .pipeline", "exit_code": 4, "result": "FAIL", "non_retained_deletions": 0, "note": "the single 'D ' hit is a progress-log deletion, reported unconditionally"}
+    "since_cdf55e9": {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "result": "PASS"},
+    "default_full_scan": {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline", "exit_code": 4, "result": "FAIL", "note": "gate not relaxed overall; only the deletion direction was narrowed"}
   },
   "adjudications": [
     {
-      "id": "adjudication-identity-field-convention",
-      "question": "executor-result.json identity.head = baseline 692ee63 and identity.commit = pre-amend 97c953b: is this stale identity requiring correction?",
-      "precedent": "evidence-retention-forward-gate/executor-result.json has product_head == head == cdf55e9 (baseline), while its execution commit was d238ba2; the then-reviewer accepted it as matching the dispatch-stated expected value.",
-      "code_basis": "pipeline_tools/core.py evidence_freshness (approx. :1343-1391) reads identity.product_head as the base of an evidence-only diff against HEAD (product/test HEAD drifted); identity.head is only a fallback when product_head is absent (:1390). templates/pipeline-evidence.json:21-22 declares product_head as the sole identity field. No product code reads identity.commit.",
-      "doc_basis": "No reference document states whether identity.head means the baseline or the reviewed commit. references/acceptance-evidence.md:41-43 only requires per-report identity fields and treats post-report worktree changes as invalidation.",
-      "ruling": "The reviewer's claim that identity.head must point at the reviewed commit is NOT established (head is not the enforced field; the precedent shows head=baseline was accepted). However identity.product_head = baseline IS a defect under the code-enforced semantics, and identity.commit = 97c953b points at a dangling pre-amend commit that is not an ancestor of HEAD (git merge-base --is-ancestor exit 1).",
-      "requires_fix": true,
-      "fix_target": ".pipeline/gate-deletion-semantics/executor-result.json",
-      "fix_requirements": "Set identity.product_head and identity.commit to 12e302cad2a4c6670c4490aa4a4bbde07d3c9440 (optionally align identity.head to the same value or leave it). The file is already committed by 12e302c, so this is a modification of a committed executor artifact and must be dispatched with a recorded adjudication, not performed by the final check. After the fix, re-run `result verify` (expect exit 0) and `freshness` (expect the 'product/test HEAD drifted' error to clear; 'evidence artifact missing' clears only once final-check.md and final-result.json are committed).",
-      "evidence": "freshness -> status blocked, exit 3, errors [product/test HEAD drifted, evidence artifact missing], observed product_head=692ee638..., evidence_only=false; result verify -> PASS exit 0 (it does not check identity)"
-    },
-    {
-      "id": "adjudication-metrics-contract-line-118",
-      "question": "references/metrics-contract.md:118 omits the deletion direction; is it in-scope for this task?",
-      "ruling": "Out of scope for this task; open a separate documentation-alignment task.",
-      "basis": "The file IS inside allowed_paths (references/**), but the frozen contract's mechanical acceptance does not cover it: acceptance-test-5 test_ref is test_references_acceptance_evidence_documents_deletion_semantics, whose body (tests/test_acceptance_id_and_template_compliance.py:241-249) reads only references/acceptance-evidence.md. Line 118 also remains literally true (the retained set was not changed); only the directional rule is missing. Editing it now would be scope creep against a frozen task sheet whose non_goals forbid changes to the sheet.",
+      "id": "adjudication-scope-expansion",
+      "question": "Delivered work far exceeds the three operations in the frozen contract. Does this violate goal.md:41 ('the frozen task contract must not be silently modified')?",
+      "ruling": "No. It is a recorded, authorized change, not a silent modification.",
+      "basis": [
+        "The frozen task sheet bytes never changed: sha256 docs/tasks/gate-deletion-semantics.md == ec0668e69513bf4443d958ec9506f15ab965efc0db51529834156a0adec212b0 both now and at baseline 692ee63; docs/tasks/ has no diff from 692ee63 to HEAD.",
+        "Every expansion traces to an explicit user ruling (restore all deleted commands + change gate; change the evidence-block parser; accept and commit the renormalize separately; use -text to protect all task sheets) and is recorded with an 'authorization source' subsection in executor-report.md sections 9-11.",
+        "Process records live in .pipeline/gate-deletion-semantics/executor-report.md, exactly where goal.md:41 says they belong."
+      ],
+      "caveat": "The expansions arguably should have opened a derived/continuation task sheet (references/merge-and-recovery.md:24 item 5) instead of being done in the same task. This is a process-completeness gap, not a silent modification. Raised as a human-decision item.",
       "blocking": false
     },
     {
-      "id": "adjudication-rename-status-undefined",
-      "question": "The contract defines only A/M/D; R* rename status is undefined.",
-      "ruling": "Acceptable. 'R100'.startswith('D') is false, so renames follow the non-deletion path (non-retained rename still violates). This is conservative and does not loosen the gate; R065/R090/R100 still appear as violations in the default full scan.",
+      "id": "adjudication-metrics-contract-line-118",
+      "question": "references/metrics-contract.md:118 omits the deletion direction; is it in scope for this task?",
+      "ruling": "Out of scope; open a separate documentation-alignment task.",
+      "basis": "The file IS inside allowed_paths (references/**), but the frozen contract's mechanical acceptance does not cover it: acceptance-test-5's test_ref reads only references/acceptance-evidence.md (tests/test_acceptance_id_and_template_compliance.py:241-249). The line remains literally true; only the directional rule is missing. Editing it now would be scope creep against a frozen sheet whose non_goals forbid changes to the sheet.",
+      "blocking": false
+    },
+    {
+      "id": "adjudication-cmd-eol-crlf",
+      "question": "bin/pipeline-tools.cmd is declared 'text eol=crlf' by .gitattributes but is currently LF on disk. Is the future behaviour change safe?",
+      "ruling": "Safe; record as a known item.",
+      "basis": "The file is a standard Windows batch script (@echo off / setlocal / set PYTHONPATH / python -m pipeline_tools / exit /b). It is invoked via cmd /c (tests/test_cli.py:657) and documented as the Windows entry point (README.md:108). CRLF is the native batch line ending; cmd handles both. Only a future fresh checkout changes, so there is no drift in this run.",
+      "blocking": false
+    },
+    {
+      "id": "adjudication-renormalize-commit-split",
+      "question": "Is splitting the renormalize (8d677b0) from the report record (2c88bad) reasonable?",
+      "ruling": "Yes; keep them split.",
+      "basis": "8d677b0 is a pure line-ending change (zero non-.gitattributes diff under --ignore-all-space); 2c88bad is a pure content change (executor-report.md +32 lines, executor-result.json 1 line). Merging them would make format churn and semantic records indistinguishable, contrary to references/merge-and-recovery.md:33.",
+      "blocking": false
+    },
+    {
+      "id": "adjudication-identity-field-convention",
+      "question": "Which commit should identity.product_head point at when a task has multiple execution commits?",
+      "ruling": "8d677b0 — the last execution commit that changed a non-evidence path.",
+      "basis": "evidence_freshness diffs product_head..HEAD and requires the changes to be evidence-only. The six execution commits are ac4a165, 116b30c, 89835f0, b7ae0cc, 8d677b0, 2c88bad. Only 8d677b0 touched a non-evidence path (.gitattributes); 2c88bad touched only .pipeline/gate-deletion-semantics/. Therefore product_head = 8d677b0 keeps the tail evidence-only.",
       "blocking": false
     }
   ],
   "observed": [
-    "git log --oneline -8: f15e77e -> 12e302c -> 692ee63 -> 4a2336c -> 8f1f1e0 -> 2480424 -> e58ff37 -> c27b7c7",
-    "git show --stat 12e302c: 8 files changed, 297 insertions(+), 7 deletions(-)",
-    "git show --stat f15e77e: 3 files changed, 323 insertions(+)",
-    "git rev-parse 692ee63: 692ee6387ea2e60d53d63680235906096ed90903; main in the primary worktree also 692ee63",
-    "git worktree list --porcelain: primary tree (main=692ee63) and task tree (branch=gate-deletion-semantics, HEAD=f15e77e) only",
-    "git status --short: empty",
-    "git merge-base --is-ancestor 97c953b HEAD: exit 1 (not an ancestor; dangling object only)",
-    "git log --name-only 692ee63..f15e77e contains no docs/tasks, goal.md, IDEA.md or implement-plan.md",
-    "acceptance tests 1-3: Ran 3 tests in 3.432s OK; acceptance 4: Ran 1 test in 1.550s OK; acceptance 5: Ran 1 test in 0.001s OK",
-    "full suite: Ran 268 tests in 213.827s OK, exit 0"
+    "git log --oneline -8: 2c88bad -> 8d677b0 -> b7ae0cc -> 89835f0 -> 116b30c -> ac4a165 -> 9311e47 -> f15e77e",
+    "git show --stat 8d677b0: 16 files changed, 332 insertions(+), 331 deletions(-)",
+    "git show --stat 2c88bad: 2 files changed, 33 insertions(+), 1 deletion(-)",
+    "git diff 692ee63 HEAD --stat -- docs/tasks/: empty, exit 0",
+    "sha256 docs/tasks/gate-deletion-semantics.md == ec0668e69513bf4443d958ec9506f15ab965efc0db51529834156a0adec212b0",
+    "git worktree list --porcelain: primary tree (main=692ee63) and task tree (branch=gate-deletion-semantics, HEAD=2c88bad) only",
+    "acceptance 1/2/3/4/5 each exit 0, OK",
+    "full suite: Ran 275 tests in 200.573s OK, exit 0",
+    "gate pre-merge: PASS, exit 0",
+    "git status --short --untracked-files=no: empty"
   ],
   "unverified": [
-    "freshness after correcting executor-result.json identity (the executor artifact was not modified by this final check)",
     "merge to main and the post-merge gate in the primary worktree",
     "evidence finalization (finalization.json not produced)",
+    "the .gitattributes eol=crlf effect requires a real checkout/clone to validate",
     "primary-worktree dependency/artifact load verification after merge"
   ],
   "next_actions": [
-    "dispatch an executor (or record an adjudication) to correct executor-result.json identity.product_head and identity.commit to 12e302c, then re-run freshness to exit 0",
     "open a separate task to add the deletion-direction wording to references/metrics-contract.md:118",
+    "record bin/pipeline-tools.cmd LF->CRLF on next checkout as a known change",
     "human developer decides whether to merge; the final check does not merge, push, or checkout main"
   ]
 }
