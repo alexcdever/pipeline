@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics-continuation-1",
+  "role": "reviewer",
+  "status": "pass",
+  "identity": {
+    "product_head": "9f0e6cc539f9028d6ca2a6efd6196ddadeb1f28f",
+    "head": "9f0e6cc539f9028d6ca2a6efd6196ddadeb1f28f",
+    "branch": "gate-deletion-semantics-continuation-1",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics-continuation-1"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-declared-expected-exit-code-allows-nonzero-result",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-gate-rejects-boolean-expected-exit-code",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-evidence-block-parses-with-other-code-fences",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-delete-non-retained-evidence-is-not-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    }
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "conditions": [
+    "Main-agent final check must record the freshness failure (status blocked, exit 3, errors [evidence artifact missing]) that the executor omitted.",
+    "The contradiction between forbidden_paths containing .pipeline/** and the derived record task's own evidence directory must be escalated as a contract defect."
+  ],
+  "verified_facts": [
+    "All four acceptance tests pass independently (exit code 0 each).",
+    "Full suite: Ran 275 tests in 208.916s, OK, exit code 0.",
+    "Task sheet sha256 unchanged versus c92788c baseline: 1721091c5a2d7bb8776cce38e9c7bd9560e6d9f99ed6ca5198d9ca2b839b8129.",
+    "No forbidden path changed between c92788c and HEAD; no .pipeline/metrics/ file deleted.",
+    "core.py:252 deleting = status.startswith(\"D\") and core.py:263 if retained == deleting: (deletion semantics fix, 12e302c).",
+    "expected_exit_code validated at core.py:435/439 and core.py:1581/1585/1590.",
+    "First-closing-fence via next(...) at core.py:343-346 and reconcile.py:25.",
+    "Boolean guard at core.py:437 and core.py:1583; exit_code guard at core.py:1589.",
+    ".gitattributes has exactly 4 lines matching the task sheet.",
+    "8d677b0 touches 16 files: .gitattributes plus 15 tracked .pipeline/ files.",
+    "executor-report.md has exactly one pipeline-evidence block with 12 commands (all exit 0) and 10 assertions, matching the executor's self-report.",
+    "gate pre-merge reports exactly four missing artifacts: review-report.md, final-check.md, reviewer-result.json, final-result.json.",
+    "product_head 5bf40a3 is an ancestor of HEAD; 5bf40a3..9f0e6cc differs only in executor-result.json, evidence_only true."
+  ],
+  "executor_self_report_discrepancies": [
+    "The executor did not report the freshness failure (status blocked, exit 3, errors [evidence artifact missing]); its commands[] contains no freshness entry and the report never mentions it. All other self-reported facts were independently confirmed."
+  ],
+  "unverified": [
+    "main-agent final check (final-check.md) not performed in this round",
+    "merge to main not performed in this round",
+    "post-merge gate not performed in this round",
+    "evidence directory finalization not performed in this round",
+    ".gitattributes line-ending effect requires a fresh clone to validate end-to-end"
+  ]
+}
