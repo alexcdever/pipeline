@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "task_id": "toolchain-freshness-fixes",
+  "role": "main-final",
+  "status": "pass",
+  "identity": {
+    "product_head": "6994f7ba20375e5c7bc8f5dc2da9ed0b308690a0",
+    "head": "1b1aaad1e88670ec4b328b49c1fca5df77c495f0",
+    "basis": "product_head is the reported execution commit 6994f7b (the product-code change), matching executor-result.json and reviewer-result.json identity.product_head; head is the current worktree HEAD 1b1aaad, the independent-review commit that this final round re-ran against."
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-acceptance-evidence-refs-resolve-from-evidence-directory",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-acceptance-evidence-refs-still-reject-absolute-and-traversal",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-metrics-commit-keeps-evidence-only",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-product-drift-still-blocks",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-docs-aligned",
+      "status": "pass",
+      "exit_code": 0,
+      "landing": "Contract test_ref/command_ref point at tests/test_acceptance_id_and_template_compliance.py: AcceptanceIdAndTemplateComplianceTests.test_references_execution_and_review_documents_freshness_resolution_basis, which is not in allowed_paths and does not exist there. The executor placed the same method (same name, same assertions) in tests/test_evidence.py: EvidenceTests. This round ran it at that actual landing point (exit 0) and separately ran the contract command verbatim (AttributeError, exit 1, recorded with expected_exit_code 1).",
+      "evidence_refs": ["final-check.md"]
+    }
+  ],
+  "adjudications": {
+    "contract_test_ref_deviation": "ACCEPTED AS-IS, RECORDED AS A CONTRACT DEFECT. The frozen contract is self-contradictory: acceptance_tests[5].test_ref points at tests/test_acceptance_id_and_template_compliance.py, a file absent from allowed_paths (which lists only pipeline_tools/core.py, tests/test_evidence.py, references/acceptance-evidence.md, references/execution-and-review.md). The executor correctly honored allowed_paths and landed the test in tests/test_evidence.py. Root cause is planning-time generation. Recommendation: open a derived task to make acceptance_tests[].test_ref always land inside allowed_paths, plus a planning-time consistency check.",
+    "gate_blind_spot_test_ref": "RECORDED AS A FOLLOW-UP ISSUE. grep over pipeline_tools/ and scripts/ shows test_ref/command_ref are only checked for field presence (contract.py:24, contract.py:358, planning.py:667, planning.py:673) and rendered into the task sheet (planning.py:1647). No code compares test_ref or command_ref against the real on-disk test location, so this deviation is invisible to every mechanical gate. Distinct from the known forbidden_paths gap (defect E).",
+    "freshness_json_residue": "NOT PRESENT, NOTHING DELETED. .pipeline/toolchain-freshness-fixes/freshness.json does not exist, was never committed (git log --all and git ls-files show nothing), and is not git-ignored. Re-running freshness this round still did not create it: evidence_freshness only returns the path string in its artifacts field (core.py:1425) and never writes the file."
+  },
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "unverified": [
+    "The reviewer's pre-fix red reproduction (git archive fa485f4 to a temp tree, FAILED (failures=3)) was not independently re-run in this final round; accepted only as reviewer-reported.",
+    "The reviewer's freshness run that reportedly wrote freshness.json could not be reproduced: no such file exists now and freshness does not write it.",
+    "Plan-generation internals in pipeline_tools/planning.py that produced the out-of-scope test_ref were read for call sites but not traced to the exact emitting branch."
+  ]
+}
