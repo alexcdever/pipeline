@@ -683,11 +683,9 @@ def _validate_test_ref_placement(
 ) -> None:
     """Reject an acceptance test_ref that points outside the task's resources.
 
-    The check only applies to a test file that shares a directory with a
-    declared task resource: that is the case where the task claims ownership of
-    the surrounding tree and the test must therefore live inside it.  A task
-    that declares no resource in the test's directory makes no such claim, so
-    its acceptance record is left to the other structural checks.
+    The check is unconditional: the file named by ``test_ref`` must fall inside
+    the task's ``allowed_paths``, whether or not the task declares a resource in
+    the same directory tree.
     """
     for test_id in sorted(declared):
         record = records.get(test_id)
@@ -695,12 +693,6 @@ def _validate_test_ref_placement(
             continue
         path = _test_ref_path(record.get("test_ref"))
         if path is None:
-            continue
-        claimed = [
-            item for item in allowed_paths
-            if _covers_path(item, path) or _shares_test_root(item, path)
-        ]
-        if not claimed:
             continue
         if any(_covers_path(item, path) for item in allowed_paths):
             continue

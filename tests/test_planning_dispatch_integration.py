@@ -48,10 +48,10 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             "schema": 1,
             "non_goals": ["本任务不扩展用户可见范围"],
             "requirements": ["requirement"],
-            "resources": ["resource"],
+            "resources": ["resource", "tests/test_planning_dispatch_integration.py"],
             "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}],
             "acceptance_tests": project["acceptance_tests"],
-            "tasks": [{"id": "integration-task", "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"}],
+            "tasks": [{"id": "integration-task", "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource", "tests/test_planning_dispatch_integration.py"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"}],
         }
         return project, requirements, plan
 

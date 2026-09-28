@@ -13,8 +13,8 @@ class TaskPlanContractConsistencyTests(unittest.TestCase):
         plan_path.write_text("stable plan\n", encoding="utf-8")
         digest = hashlib.sha256(plan_path.read_bytes()).hexdigest()
         acceptance = [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_x.py", "command_ref": "python -m unittest"}]
-        plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": [{"id": "op", "kind": "validate", "scope": "task", "resources": ["pipeline_tools/planning.py"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": [{"id": "demo", "type": "prerequisite", "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": ["op"], "chain": {name: ["not-applicable"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}, "depends_on": []}]}
-        contract = {"schema": 2, "task_id": "demo", "task_type": "prerequisite", "implement_plan": {"path": "implement-plan.md", "sha256": digest, "planning_run_id": "run-1"}, "allowed_paths": ["pipeline_tools/planning.py"], "forbidden_paths": ["implement-plan.md"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": [{key: value for key, value in operation.items() if key != "resource_mode"} for operation in plan["operations"]], "chain": {name: ["not-applicable"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}, "acceptance_tests": acceptance, "dependencies": [], "required_evidence_levels": [2]}
+        plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": [{"id": "op", "kind": "validate", "scope": "task", "resources": ["pipeline_tools/planning.py"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": [{"id": "demo", "type": "prerequisite", "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": ["op"], "chain": {name: ["not-applicable"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}, "depends_on": []}]}
+        contract = {"schema": 2, "task_id": "demo", "task_type": "prerequisite", "implement_plan": {"path": "implement-plan.md", "sha256": digest, "planning_run_id": "run-1"}, "allowed_paths": ["pipeline_tools/planning.py", "tests/test_x.py"], "forbidden_paths": ["implement-plan.md"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": [{key: value for key, value in operation.items() if key != "resource_mode"} for operation in plan["operations"]], "chain": {name: ["not-applicable"] for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")}, "acceptance_tests": acceptance, "dependencies": [], "required_evidence_levels": [2]}
         sheet = root / "task.md"
         sheet.write_text("<!-- Task ID: demo -->\n```pipeline-contract\n" + json.dumps(contract) + "\n```\n", encoding="utf-8")
         return plan, sheet, digest
@@ -70,10 +70,10 @@ class TaskPlanContractConsistencyTests(unittest.TestCase):
             {"id": "op-a", "kind": "execute", "scope": "task", "resources": ["pipeline_tools/planning.py"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]},
             {"id": "op-b", "kind": "execute", "scope": "task", "resources": ["pipeline_tools/planning.py"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]},
         ]
-        plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": operations, "acceptance_tests": acceptance,
-                "tasks": [{"id": "demo", "type": "prerequisite", "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": ["op-a", "op-b"], "chain": chain_value, "depends_on": []}]}
+        plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": operations, "acceptance_tests": acceptance,
+                "tasks": [{"id": "demo", "type": "prerequisite", "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": ["op-a", "op-b"], "chain": chain_value, "depends_on": []}]}
         contract = {"schema": 2, "task_id": "demo", "task_type": "prerequisite", "implement_plan": {"path": "implement-plan.md", "sha256": digest, "planning_run_id": "run-1"},
-                    "allowed_paths": ["pipeline_tools/planning.py"], "forbidden_paths": ["implement-plan.md"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py"],
+                    "allowed_paths": ["pipeline_tools/planning.py", "tests/test_x.py"], "forbidden_paths": ["implement-plan.md"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"],
                     "operations": [{key: value for key, value in operation.items() if key != "resource_mode"} for operation in operations],
                     "chain": chain_value, "acceptance_tests": acceptance, "dependencies": [], "required_evidence_levels": [2]}
         sheet = root / "task.md"
@@ -102,13 +102,13 @@ class TaskPlanContractConsistencyTests(unittest.TestCase):
         chain_value = {name: {"not_applicable": True, "reason": "no reference"} for name in names}
         acceptance = [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_x.py", "command_ref": "python -m unittest"}]
         operation = {"id": "op", "kind": "validate", "scope": "task", "resources": ["pipeline_tools/planning.py"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}
-        plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": [operation], "acceptance_tests": acceptance,
-                "tasks": [{"id": "demo", "type": "prerequisite", "requirements": ["req"], "resources": ["pipeline_tools/planning.py"], "operations": ["op"], "chain": chain_value, "depends_on": []}]}
+        plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": [operation], "acceptance_tests": acceptance,
+                "tasks": [{"id": "demo", "type": "prerequisite", "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"], "operations": ["op"], "chain": chain_value, "depends_on": []}]}
         contract = {"schema": 3, "task_id": "demo", "task_type": "prerequisite", "project_type": "service", "risk": "medium",
                     "implement_plan": {"path": "implement-plan.md", "sha256": digest, "planning_run_id": "run-1"},
-                    "non_goals": ["本任务不扩展范围"], "allowed_paths": ["pipeline_tools/planning.py"], "forbidden_paths": ["implement-plan.md"],
+                    "non_goals": ["本任务不扩展范围"], "allowed_paths": ["pipeline_tools/planning.py", "tests/test_x.py"], "forbidden_paths": ["implement-plan.md"],
                     "non_user_completion_reason": "prerequisite task produces enabling artifacts",
-                    "requirements": ["req"], "resources": ["pipeline_tools/planning.py"],
+                    "requirements": ["req"], "resources": ["pipeline_tools/planning.py", "tests/test_x.py"],
                     "operations": [dict(operation, resource_mode="single")], "chain": chain_value,
                     "acceptance_tests": acceptance, "dependencies": [], "required_evidence_levels": [2]}
         sheet = root / "task.md"

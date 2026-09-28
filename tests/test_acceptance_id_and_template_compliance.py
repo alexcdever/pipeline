@@ -283,6 +283,13 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("类名.方法名", acceptance)
         self.assertIn("is outside the task's allowed paths", task_design)
         self.assertIn("absent", task_design)
+        # 严格规则：规划期位置校验必须写成无条件约束。
+        self.assertIn("`test_ref` 指名的文件必须落在任务的 `allowed_paths` 之内", task_design)
+        self.assertIn("无条件", task_design)
+        # 文档不得再保留任何收窄豁免措辞。
+        self.assertNotIn("不主张归属", task_design)
+        self.assertNotIn("提出归属主张", task_design)
+        self.assertNotIn("位置校验不生效", task_design)
 
 
 if __name__ == "__main__":

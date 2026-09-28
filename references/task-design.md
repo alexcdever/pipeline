@@ -101,10 +101,8 @@ schema 3 的每个 operation 必须声明 `resource_mode`，取值只能是 `sin
 
 位置规则分两层，分别由规划期和 gate 期机械校验：
 
-- 规划期（`pipeline_tools/planning.py`）：当任务声明的资源与 `test_ref` 位于同一目录树时，`test_ref` 指名的文件必须落在任务的 `allowed_paths` 之内。允许的写法包括精确路径、目录前缀（`tests/` 结尾）和通配（`tests/*`）。落在任务资源范围之外的验收测试会被判 `... test_ref ... is outside the task's allowed paths`。
+- 规划期（`pipeline_tools/planning.py`）：`test_ref` 指名的文件必须落在任务的 `allowed_paths` 之内；这条判定是无条件的，不因任务是否声明了与测试同目录树的资源而改变。允许的写法包括精确路径、目录前缀（`tests/` 结尾）和通配（`tests/*`）。落在任务资源范围之外的验收测试会被判 `... test_ref ... is outside the task's allowed paths`。
 - gate 期（`pipeline_tools/core.py`）：`test_ref` 指名的文件必须真实存在，且当 `test_ref` 声明了类名或方法名时，该符号必须在文件里真实声明；缺失会被判 `... test_ref method is absent from ...`。gate 只做位置与存在性核验，不解释测试语义。
-
-任务若未声明与 `test_ref` 同目录树的资源，视为不对该目录提出归属主张，规划期位置校验不生效；这类验收记录仍受其余结构校验约束。
 
 ### 证据等级下限表
 
