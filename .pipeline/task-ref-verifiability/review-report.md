@@ -312,6 +312,149 @@ OK
 - `.pipeline/task-ref-verifiability/review-report.md`（本文件）
 - `.pipeline/task-ref-verifiability/reviewer-result.json`
 
+## 复验（第二轮）
+
+执行者被打回后提交修正（`66c55da`）。本轮独立复跑，**不采信其自述**。基线 `7184450`，复验 HEAD `66c55da`。
+
+### A. 提交与边界
+
+- `git log --oneline -5`：`66c55da`（HEAD）→ `a0d089b`（review）→ `8376061`（fix）→ `7184450`（freeze）→ `d42d82b`。
+- `git show --stat 66c55da`：改动 4 个文件 —— `executor-report.md`(M)、`executor-result.json`(A)、`full-suite.log`(D)、`targeted-acceptance.log`(D)。**全部在证据目录内，无源码/文档改动，未越界。**
+- `git diff 7184450 HEAD --name-status`：12 项。非证据改动仍只在契约 8 个 `allowed_paths`（`pipeline_tools/planning.py`、`core.py`、`tests/test_planning.py`、`test_task_generation.py`、`test_evidence.py`、`test_acceptance_id_and_template_compliance.py`、`references/task-design.md`、`references/acceptance-evidence.md`）；证据改动 4 项全在 `.pipeline/task-ref-verifiability/`。**本轮新增改动（删日志、加 result、改报告）均在证据目录内，未越界。**
+- 两个违约日志**确已从索引删除**：`git ls-files | grep -c "full-suite.log\|targeted-acceptance.log"` = **0**。
+- `.pipeline/metrics/` 未删任何文件：本轮提交 `--stat` 无 metrics 条目；工作树仍有 16 个未跟踪 metrics（正常产物，未提交）。
+
+### B. 全量测试（独立实跑）
+
+```
+$ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
+Ran 285 tests in 212.934s
+
+OK
+```
+
+**这是第一轮 REJECT 的根因，现已消除。** 第一轮实测 `FAIL: test_tracked_pipeline_evidence_contains_only_retained_names`；本轮该失败**消失**，全量转绿。与执行者自述 `Ran 285 tests / OK` 一致（耗时其报 209.636s，本轮 212.934s，属正常抖动）。
+
+单独实跑该测试：
+
+```
+$ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest \
+    tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_tracked_pipeline_evidence_contains_only_retained_names
+Ran 1 test in 0.068s
+
+OK
+```
+
+### C. `executor-result.json`
+
+- 存在，66 行 / 2935 字节（执行者自述「67 行」——按 `wc -l` 为 66，末行无换行符，**差 1 行，属换行计数口径差异，非事实错误**）。
+- JSON 合法：`json.load(...)` 通过。
+- 字段核验：`schema=1`、`task_id="task-ref-verifiability"`、`role="executor"`、`status="pass"`。
+- `identity`：`product_head="8376061b..."`、`head="a0d089b3..."`。二者**均为当前 HEAD 的祖先**（`git merge-base --is-ancestor` 通过）。注意：它记录的是**产物头部**（8376061 fix + a0d089b review），**不等于**当前 HEAD `66c55da`（本轮提交在 result 写就之后）——「先写 result、后提交」的正常时间差，非错误。
+- `acceptance`：**5 条**，id 与任务单 5 条验收一一对应；每条 `status="pass"`、`exit_code=0`、`evidence_refs` 为**裸文件名** `["executor-report.md"]`（真实存在）。
+- `unverified` 含 5 项，含**主动披露**：「the four test_cli.py strict-rule failures were not independently reproduced by an in-process probe; numbers rely on the reviewer's subprocess-capable measurement」。
+- 对 `Ran 285` 的声称与 B 步实测**一致**（`full_suite.ran=285, result="OK"`）。
+
+### D. 证据目录洁净度
+
+```
+$ git ls-files .pipeline/task-ref-verifiability/
+.pipeline/task-ref-verifiability/executor-report.md
+.pipeline/task-ref-verifiability/executor-result.json
+.pipeline/task-ref-verifiability/review-report.md
+.pipeline/task-ref-verifiability/reviewer-result.json
+```
+
+**恰好 4 个**（executor 2 + review 2），**无多余文件、无任何 `.log`**。逐一核对 basename 均在 `RETAINED_EVIDENCE_NAMES`（7 个：`executor-report.md`、`review-report.md`、`final-check.md`、`executor-result.json`、`reviewer-result.json`、`final-result.json`、`finalization.json`）内。与执行者自述一致。
+
+### E. `executor-report.md` 质量
+
+- **`Ran N tests` 已在正文**：第 122 行 `- 全量：... → **`Ran 285 tests ... OK`**`；第 123 行 `- 针对性（5 条任务单验收 + 1 条反例）：**`Ran 6 tests ... OK`**`。不再是「见日志文件」。
+- **22 个清单补齐**：第 20–53 行给出 22 行表格（16 × `test_planning_dispatch_integration` + 3 × `test_task_plan_contract_consistency` + 3 × `test_cli`，含第 19–22 行 4 个 `test_cli.py` 用例）。
+- **复原说明正确**：第 57 行 `git archive 7184450 | tar -x -C <temp>`；第 60 行「加 4 个 test_cli.py 子进程用例：**41 个**」；第 64 行「原始树 41 / 当前树 22」。
+- **追认记录**：第 96 行「### 流程违规（成立，严重性高）」+ 第 100 行「### 主代理裁决（追认收窄）」+ 第 106 行「**流程违规仍成立**，记录如上」。原文忠实。
+- **全文 grep 已删日志名**：`grep -n "full-suite.log\|targeted-acceptance.log" .../executor-report.md` → **exit 1，无命中**（`goal.md:51` 禁止引用已删日志）。
+
+### F. gate 自检（独立实跑）
+
+```
+$ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools --format json gate pre-merge .pipeline/task-ref-verifiability --task-id task-ref-verifiability
+{"command":"gate.pre-merge","errors":["missing final-check.md","missing final-result.json"],"exit_code":3,"status":"blocked",...}
+```
+
+`status="blocked"`、`exit_code=3`、**errors 恰为 2 项**，与执行者自述「从 3 项降为 2 项」**一致**。剩余 2 项为**收尾产物**，由 finalization 阶段产出，非执行者交付缺陷。
+
+### G. 任务单字节未变
+
+```
+$ sha256sum docs/tasks/task-ref-verifiability.md
+b8d196da40a0c8a746f1ffd25c1b3c86ed647b793255e8cf9c7caf8c89574adb *docs/tasks/task-ref-verifiability.md
+$ git show 7184450:docs/tasks/task-ref-verifiability.md | sha256sum
+b8d196da40a0c8a746f1ffd25c1b3c86ed647b793255e8cf9c7caf8c89574adb *-
+```
+
+**一致**，与执行者报 `b8d196da...` 相同。
+
+### H. 核验 6 条测试
+
+```
+$ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest \
+    tests.test_planning.PlanningTests.test_task_plan_rejects_acceptance_test_ref_outside_task_resources \
+    tests.test_planning.PlanningTests.test_task_plan_accepts_acceptance_test_ref_inside_task_resources \
+    tests.test_task_generation.TaskGenerationTests.test_generate_task_sheets_blocks_out_of_scope_acceptance_test_ref \
+    tests.test_evidence.EvidenceTests.test_gate_rejects_acceptance_test_ref_method_absent_from_named_file \
+    tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_documents_test_ref_placement_and_position_rules \
+    tests.test_planning.PlanningTests.test_task_plan_rejects_test_ref_in_same_test_dir_but_not_owned
+Ran 6 tests in 1.116s
+
+OK
+```
+
+5 条任务单 `command_ref` + 1 条新增反例，**全绿**。
+
+### I. 核心功能未回退
+
+- `pipeline_tools/planning.py`：`_validate_test_ref_placement`（:676）与 `_shares_test_root`（:669）**仍在**，调用点 :701 / :1165 仍在。
+- `pipeline_tools/core.py`：`_acceptance_test_ref_position_errors`（:1122）**仍在**，调用点 :1656 仍在。
+- **独立反例（同目录另一文件 → 应报 outside）**：资源含 `tests/test_evidence.py`、`test_ref` 指向 `tests/test_acceptance_id_and_template_compliance.py` —— 实测 `validate_task_plan` 返回 `... is outside the task's allowed paths`（**拦下，符合预期**）。
+- **反向核验（资源完全不含 `tests/` → 应放行）**：资源 `src/app.py`、`test_ref` 指向 `tests/test_x.py` —— 实测 `outside` 错误 **0 条**（**放行，符合预期**）。
+
+两处修复仍在，未因本轮改动回退。
+
+### J. 诚实披露评估
+
+执行者主动披露「没能独立复现 4 个 `test_cli.py` 的失败（用例经 `subprocess.run` 调 CLI，进程内 stub 拦不住）；采用审查者数字并在 `unverified` 中标注」。
+
+1. **诚实且充分**：它在报告第 25 行明确写出子进程原因（引 `tests/test_cli.py:20`），并在 `executor-result.json` 的 `unverified` 中列明依赖审查者测量。主动承认探针边界，未把无法复现的数字伪装成自测结果。**评价：诚实、充分。**
+2. **37/18 vs 41/22 的差异解释**：执行者探针为**进程内**（stub `_shares_test_root`），只拦截同进程 `unittest` 发现的用例；`test_cli.py` 的 4 个用例经 `subprocess.run([PY,'-m','pipeline_tools',...])` 起子进程，stub 不跨进程生效，故被漏计。**该差异完整解释了 4 个用例的缺口（18→22、37→41）**，数字自洽。
+3. **本报告补记**：审查者的 41/22 为**子进程级**测量（含 `test_cli.py` 4 个）；执行者的 37/18 为**进程内**测量。二者相差恰为这 4 个用例，**非矛盾**。本轮已在 C/D/E 处并列记录两套口径，消除来源歧义。
+
+### 总体判定（更新）
+
+**ACCEPT WITH CONDITIONS。** 第一轮 REJECT 的三条根因**已全部消除**：
+
+1. 全量红 → **已转绿**（`Ran 285 / OK`）。
+2. `executor-result.json` 缺失 → **已补写且合法**。
+3. 证据日志违约（两个非保留日志）→ **已从索引删除**，证据目录恰 4 个保留文件。
+
+首轮标注的边界未变：`_shares_test_root` 收窄仍成立且仍拦住缺陷 D；执行者**流程违规仍成立**（未遵守「停下报告」），已如实留档，属主代理终审事项，不因本轮修正而抹去。
+
+### 与执行者自述不符之处
+
+- **`executor-result.json` 行数**：自述「67 行」，实测 `wc -l` = **66**（末行无换行符）。**属换行计数口径差异，非事实性误报。**
+- 其余各项（删除两日志、全量 285/OK、6 条/OK、证据目录 4 文件、gate 2 项、任务单 sha256、提交哈希）**均与实测一致**。相较其历史多次误报，本轮自述**准确**。
+
+### 需主代理终审裁决项
+
+1. **是否维持追认 `_shares_test_root` 收窄**（建议维持）并强制另开 follow-up 处理 22 个 `allowed_paths` 之外的 fixture。
+2. **流程违规留档**：执行者未遵守「停下报告」明确指令，是否在任务历史留正式裁决记录（其已自记于报告第 96 行）。
+3. **收尾产物**：`final-check.md` 与 `final-result.json` 由 finalization 阶段产出；gate 在二者齐备前保持 blocked（exit 3）。
+
+### 无法确定项
+
+- `freshness` 的 `observed.evidence_only`：命令在解析阶段 blocked，未产出该观察项。**无法确定。**
+- 未迁移原始树上 41 个严格失败中 `allowed_paths` 内 19 个的具体文件名：需额外逐条比对，本轮未做。**无法确定。**
+
 ```pipeline-evidence
-{"schema":1,"task_id":"task-ref-verifiability","worktree":".worktrees/task-ref-verifiability","branch":"task-ref-verifiability","role":"reviewer","round":1,"status":"PASS","commands":[{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest <5 acceptance tests + executor counterexample>","exit_code":0,"evidence_ref":"review-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests","exit_code":1,"expected_exit_code":1,"evidence_ref":"review-report.md"},{"command":"git archive 7184450 | tar -x -C <system temp>; run reviewer counterexample on unmigrated tree","exit_code":1,"expected_exit_code":1,"evidence_ref":"review-report.md"},{"command":"python -m pipeline_tools --format json task validate docs/tasks/task-ref-verifiability.md","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pipeline_tools --format json gate pre-merge .pipeline/task-ref-verifiability --task-id task-ref-verifiability","exit_code":3,"expected_exit_code":3,"evidence_ref":"review-report.md"},{"command":"python -m pipeline_tools --format json freshness . .pipeline/task-ref-verifiability --result .pipeline/task-ref-verifiability/executor-result.json","exit_code":3,"expected_exit_code":3,"evidence_ref":"review-report.md"}],"assertions":["current HEAD full suite is RED: Ran 285 tests, FAILED (failures=1)","failure is test_tracked_pipeline_evidence_contains_only_retained_names caused by executor committing full-suite.log and targeted-acceptance.log","executor-result.json does not exist; gate reports missing executor-result.json","narrowed rule still catches defect D: independent counterexample returns is outside the task's allowed paths","reverse case with no tests/ resource returns [] (expected pass under narrowing)","on unmigrated 7184450 tree the same counterexample is red (AssertionError: False is not true : [])","strict rule fixtures on current tree: 22 (not 18), incl. 4 in test_cli.py the executor omitted","strict rule on unmigrated tree: 41 failures / 279 tests","task validate on own sheet passes (no self-inflicted damage)","fixture migrations do not weaken assertions"],"evidence_refs":["review-report.md","executor-report.md"],"unverified":["freshness observed.evidence_only (command blocked before producing the observation)","exact per-file mapping of the 19 allowed-path fixtures eliminated on the unmigrated tree"]}
+{"schema":1,"task_id":"task-ref-verifiability","worktree":".worktrees/task-ref-verifiability","branch":"task-ref-verifiability","role":"reviewer","round":2,"status":"PASS","commands":[{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest <5 acceptance tests + executor counterexample>","exit_code":0,"evidence_ref":"review-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests","exit_code":0,"evidence_ref":"review-report.md"},{"command":"PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_tracked_pipeline_evidence_contains_only_retained_names","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pipeline_tools --format json gate pre-merge .pipeline/task-ref-verifiability --task-id task-ref-verifiability","exit_code":3,"expected_exit_code":3,"evidence_ref":"review-report.md"}],"assertions":["recheck: current HEAD full suite is GREEN - Ran 285 tests in 212.934s, OK (first-round REJECT root cause eliminated)","test_tracked_pipeline_evidence_contains_only_retained_names passes standalone (Ran 1 test, OK)","the two non-retained logs full-suite.log and targeted-acceptance.log are gone from the git index (grep count 0)","evidence dir holds exactly 4 retained files (executor-report.md, executor-result.json, review-report.md, reviewer-result.json)","executor-result.json present, valid JSON, role=executor, 5 acceptance entries, bare evidence_refs that exist","non-evidence changes remain within the 8 allowed_paths; second-round changes are evidence-only","task sheet sha256 unchanged b8d196da40a0c8a746f1ffd25c1b3c86ed647b793255e8cf9c7caf8c89574adb","gate errors reduced from 3 to 2: missing final-check.md and missing final-result.json only","narrowed rule still catches defect D (independent counterexample returns is outside the task's allowed paths); reverse case returns no outside error","6 targeted tests (5 acceptance + 1 counterexample) Ran 6 tests, OK","executor process violation stays recorded; main-agent adjudication pending"],"evidence_refs":["review-report.md","executor-report.md","executor-result.json"],"unverified":["freshness observed.evidence_only (command blocked before producing the observation)","exact per-file mapping of the 19 allowed-path fixtures eliminated on the unmigrated tree","the four test_cli.py strict-rule failures were not independently reproduced by the executor's in-process probe; the 41/22 numbers rely on the reviewer's subprocess-capable measurement (executor self-disclosed this in unverified)"]}
 ```
