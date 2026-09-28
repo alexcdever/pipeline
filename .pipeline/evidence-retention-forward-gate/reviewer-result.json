@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "task_id": "evidence-retention-forward-gate",
+  "role": "reviewer",
+  "status": "pass_with_conditions",
+  "identity": {
+    "product_head": "cdf55e9b9ec7b1322d66790e3d2fee244ffe22fa",
+    "head": "c27b7c7a2a04f9549db02f70b588a8e5d3b401dd"
+  },
+  "acceptance": [
+    {"id": "acceptance-test-retained-evidence-contract", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-repository-evidence-only-retained", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-since-baseline-ignores-earlier-history", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-default-history-scan-unchanged", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-scope-history-cli-since", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-references-evidence-contract-aligned", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-metrics-tracked-not-ignored", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证", "review-report.md#g-测试-7-修复"]},
+    {"id": "acceptance-test-task-sheet-script-schema4", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-forbidden-paths-scope-consistent", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md#二逐条验收测试的独立验证"]}
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "conditions": [
+    {
+      "id": "out-of-scope-deletion-11-files",
+      "issue": "87 个删除中 11 个来自 .pipeline/pipeline-tools-v1-continuation-1/，不在 op-delete-drifted-evidence.resources 与 allowed_paths 内",
+      "assessment": "删除对象为真实漂移过程产物，非用户代码/非冻结文件/非 metrics，可在 cdf55e9 历史中恢复；执行者已在 executor-report.md 第四节留痕且不回滚。倾向可接受，但属实质越界，须主代理终审裁决。",
+      "requires_adjudication": true
+    }
+  ],
+  "observations": [
+    {
+      "id": "delegation-baseline-mismatch",
+      "issue": "委派说明预期 '--since cdf55e9 应 pass'，但 cdf55e9..HEAD 包含清理提交 d238ba2，按契约语义必然报违规",
+      "resolution": "用 --since d238ba2 实测 exit 0 PASS，证明前向闸门按设计工作；属委派预期错误，非产品缺陷"
+    }
+  ],
+  "unverified": [
+    "merge to main",
+    "final-check by main agent",
+    "adjudication of the 11 out-of-scope deletions",
+    "metrics growth across tasks",
+    "transient cause of the earlier flaky run"
+  ]
+}
