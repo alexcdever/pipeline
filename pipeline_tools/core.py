@@ -1383,8 +1383,15 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
                     evidence_root = evidence_directory.resolve().relative_to(root.resolve()).as_posix()
                 except (OSError, ValueError):
                     evidence_root = ""
+                # Metrics events are workflow metadata that may be committed to the
+                # host project (see references/metrics-contract.md). scope_check
+                # already exempts them; evidence_only must use the same basis or
+                # every task that ran pipeline-tools flips to a false product drift.
                 evidence_only = bool(evidence_root) and all(
-                    path == evidence_root or path.startswith(evidence_root + "/") for path in changed_paths
+                    path == evidence_root
+                    or path.startswith(evidence_root + "/")
+                    or is_metrics_path(path)
+                    for path in changed_paths
                 )
                 observed.append({"fact": "product_head", "value": product_head})
                 observed.append({"fact": "changed_paths", "value": changed_paths})
@@ -1398,11 +1405,14 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
         for item in result.get("acceptance", []):
             if isinstance(item, dict):
                 evidence_refs.extend(ref for ref in item.get("evidence_refs", []) if isinstance(ref, str))
-    missing = []
-    for reference in evidence_refs:
-        candidate = root / reference.replace("\\", "/")
-        if not candidate.is_file():
-            missing.append(reference)
+    # acceptance[].evidence_refs use the same basis as commands[].evidence_ref:
+    # bare names resolve against the task evidence directory, while explicit
+    # .pipeline/... references still resolve from the project root.
+    missing = [
+        reference
+        for reference in evidence_refs
+        if not _evidence_file_exists(evidence_directory, reference)
+    ]
     if missing:
         errors.append("evidence artifact missing")
     return {

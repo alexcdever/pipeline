@@ -44,6 +44,16 @@
 
 失效情形：引用其他任务/worktree/旧 branch；worktree 在报告后继续变化而未重生成；reviewer 只复制执行报告；报告只有结论没有命令和断言；任务单验收测试或范围已变而无对应 `derived` 任务（任务类型写 `derived`，机器 ID/path 保留 `continuation`）。
 
+### 证据引用解析基准
+
+`commands[].evidence_ref` 与 `acceptance[].evidence_refs` 使用**同一解析基准**：两者都以**证据目录**（`.pipeline/<task-id>/`）为相对根。裸文件名（如 `test.log`、`executor-report.md`）解析到证据目录；显式以 `.pipeline/` 开头的引用仍从项目根解析。绝对路径和包含 `..` 的穿越引用一律判为非法，`freshness` 报 `evidence artifact missing`。
+
+`acceptance[].evidence_refs` 的解析必须复用 `pipeline_tools/core.py` 的 `_evidence_file_exists`，不得另写一套基准，否则同一份 `executor-result.json` 里 `commands[]` 能过而 `acceptance[]` 报缺失。
+
+### evidence_only 与 `.pipeline/metrics/`
+
+`evidence_freshness` 用 `evidence_only` 判断 `product_head..HEAD` 的改动是否全部落在证据目录内。`.pipeline/metrics/` 是工作流元数据（见 `references/metrics-contract.md`），始终豁免：`is_metrics_path` 命中的路径不破坏 `evidence_only`，与 `scope_check` 口径一致。否则任何跑过 pipeline-tools 的任务都会因 metrics 事件翻转为 `evidence_only: false` 并误报 `product/test HEAD drifted`。产品代码、测试或证据目录之外的其它改动仍照常触发 `product/test HEAD drifted`。
+
 ## 证据等级
 
 1. 领域/算法单元测试；

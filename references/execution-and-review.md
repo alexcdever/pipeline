@@ -17,6 +17,8 @@
 - 派发（`create_worktree_dispatch`）时会调用 `goal_status`；任何漂移都返回 `blocked`，并给出 `re-plan before continuing`，不会创建 worktree。
 - 冻结检查（`freeze_check`，即 `task preflight` / `task freeze-check`）在传入 `--task-sheet` 时会再查一次，并且**有写副作用**：它调用 `_record_goal_hash` 把本次观察到的哈希持久化到 `.pipeline/<task-id>/goal.json`（旧 schema 写 `implement-plan.json`）。因此这两个命令不是纯只读的身份检查——它们会创建或更新该证据文件。哈希漂移仍然会让 `errors` 非空，不会因为写入而被掩盖。`unverified` 只在调用方传入列表时回传；两个命令在文本输出里打印 `UNVERIFIED: ...`，在 `--format json` 下把同一列表放进结果的 `unverified` 字段。未记录哈希不是失败，但也不是通过。
 - 新鲜度检查（`evidence_freshness`）会记录 `goal_recorded` 与 `goal_observed` 两个观察项，漂移计入 `errors`。
+- 新鲜度检查同时核对证据引用解析基准：`commands[].evidence_ref` 与 `acceptance[].evidence_refs` 都以**证据目录**为相对根，裸文件名解析到证据目录，显式 `.pipeline/` 引用从项目根解析，绝对路径与 `..` 穿越引用一律判缺失。`acceptance[].evidence_refs` 的解析复用 `pipeline_tools/core.py` 的 `_evidence_file_exists`。
+- `evidence_freshness` 的 `evidence_only` 判定豁免 `.pipeline/metrics/`（工作流元数据，见 `references/metrics-contract.md`），与 `scope_check` 口径一致；证据目录之外的产品或测试改动仍报 `product/test HEAD drifted`。
 
 结论：哈希漂移等于需求在执行期被改动，正确反应是**停下重新规划**，不是放宽断言、改契约或继续合并。审查子代理和主代理终检都不得把漂移解释成可接受的差异。
 

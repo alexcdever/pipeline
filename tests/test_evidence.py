@@ -444,6 +444,87 @@ class EvidenceTests(unittest.TestCase):
             errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
             self.assertTrue(any('expected_exit_code' in error for error in errors), errors)
 
+    def _commit_freshness_fixture(self, root, directory, product_head, refs):
+        import subprocess
+
+        result = {
+            'schema': 1,
+            'task_id': 'demo',
+            'role': 'executor',
+            'status': 'pass',
+            'identity': {'product_head': product_head},
+            'acceptance': [{'id': 'acceptance-test-1', 'evidence_refs': refs}],
+            'unverified': [],
+        }
+        result_path = directory / 'executor-result.json'
+        result_path.write_text(json.dumps(result), encoding='utf-8')
+        subprocess.run(['git', '-C', str(root), 'add', '.pipeline'], check=True)
+        subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'evidence'], check=True)
+        return result_path
+
+    def test_freshness_acceptance_evidence_refs_resolve_from_evidence_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            product_head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            self._task_with_plan_hash(root)
+            result_path = self._commit_freshness_fixture(root, directory, product_head, ['test.log'])
+            value = evidence_freshness(root, directory, result_path)
+            self.assertNotIn('evidence artifact missing', value['errors'], value)
+            self.assertEqual(value['status'], 'pass', value)
+
+    def test_freshness_acceptance_evidence_refs_still_reject_absolute_and_traversal(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            product_head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            self._task_with_plan_hash(root)
+            absolute = str(directory / 'test.log').replace('\\', '/')
+            result_path = self._commit_freshness_fixture(
+                root, directory, product_head, [absolute, '../outside.log']
+            )
+            value = evidence_freshness(root, directory, result_path)
+            self.assertIn('evidence artifact missing', value['errors'], value)
+            self.assertEqual(value['status'], 'blocked', value)
+
+    def test_freshness_allows_metrics_only_commit_after_product_head(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            product_head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            self._task_with_plan_hash(root)
+            result_path = self._commit_freshness_fixture(root, directory, product_head, ['test.log'])
+            metrics = root / '.pipeline' / 'metrics'
+            metrics.mkdir(parents=True, exist_ok=True)
+            (metrics / 'event-1.json').write_text('{"schema": 1}\n', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', '.pipeline/metrics'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'metrics'], check=True)
+            value = evidence_freshness(root, directory, result_path)
+            self.assertNotIn('product/test HEAD drifted', value['errors'], value)
+            self.assertTrue(
+                any(item.get('fact') == 'evidence_only' and item.get('value') for item in value['observed']),
+                value,
+            )
+
+    def test_references_execution_and_review_documents_freshness_resolution_basis(self):
+        root = Path(__file__).parents[1]
+        acceptance = (root / 'references' / 'acceptance-evidence.md').read_text(encoding='utf-8')
+        execution = (root / 'references' / 'execution-and-review.md').read_text(encoding='utf-8')
+        for text in (acceptance, execution):
+            self.assertIn('acceptance[].evidence_refs', text)
+            self.assertIn('证据目录', text)
+            self.assertIn('.pipeline/metrics/', text)
+        self.assertIn('evidence_only', acceptance)
+        self.assertIn('evidence_only', execution)
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):
