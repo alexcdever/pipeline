@@ -62,15 +62,6 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         reference = (ROOT / "references/acceptance-evidence.md").read_text(encoding="utf-8")
         self.assertIn("归一", reference)
         self.assertIn("pass_with_conditions", reference)
-        self.assertIn("evidence_verify", reference)
-        self.assertIn("verify_structured_result", reference)
-        template = json.loads((ROOT / "templates/pipeline-evidence.json").read_text(encoding="utf-8"))
-        self.assertEqual(template["status"], "PASS")
-
-    def test_references_document_one_status_vocabulary(self):
-        reference = (ROOT / "references/acceptance-evidence.md").read_text(encoding="utf-8")
-        self.assertIn("归一", reference)
-        self.assertIn("pass_with_conditions", reference)
         self.assertIn("pass", reference)
         self.assertIn("evidence_verify", reference)
         self.assertIn("verify_structured_result", reference)
