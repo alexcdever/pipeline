@@ -81,6 +81,7 @@
       "question": "Which commit should identity.product_head point at when a task has multiple execution commits?",
       "ruling": "8d677b0 — the last execution commit that changed a non-evidence path.",
       "basis": "evidence_freshness diffs product_head..HEAD and requires the changes to be evidence-only. The six execution commits are ac4a165, 116b30c, 89835f0, b7ae0cc, 8d677b0, 2c88bad. Only 8d677b0 touched a non-evidence path (.gitattributes); 2c88bad touched only .pipeline/gate-deletion-semantics/. Therefore product_head = 8d677b0 keeps the tail evidence-only.",
+      "empirical_confirmation": "Running freshness against this final-result.json reports evidence_only=true with no 'product/test HEAD drifted' error, while executor-result.json (product_head=12e302c) still reports drifted/false. This confirms the ruling.",
       "blocking": false
     }
   ],
@@ -94,13 +95,16 @@
     "acceptance 1/2/3/4/5 each exit 0, OK",
     "full suite: Ran 275 tests in 200.573s OK, exit 0",
     "gate pre-merge: PASS, exit 0",
+    "freshness executor-result.json: blocked exit 3, errors [product/test HEAD drifted, evidence artifact missing], evidence_only=false",
+    "freshness final-result.json: blocked exit 3, errors [evidence artifact missing], evidence_only=true (the product/test HEAD drifted error is cleared by pointing product_head at 8d677b0)",
     "git status --short --untracked-files=no: empty"
   ],
   "unverified": [
     "merge to main and the post-merge gate in the primary worktree",
     "evidence finalization (finalization.json not produced)",
     "the .gitattributes eol=crlf effect requires a real checkout/clone to validate",
-    "primary-worktree dependency/artifact load verification after merge"
+    "primary-worktree dependency/artifact load verification after merge",
+    "evidence.freshness returns blocked (exit 3) on all three machine-result files because evidence_refs use bare filenames resolved against repo root (core.py:1402-1407); pre-existing repo-wide convention mismatch, not introduced by this task; gate pre-merge does not consume freshness and still passes"
   ],
   "next_actions": [
     "open a separate task to add the deletion-direction wording to references/metrics-contract.md:118",

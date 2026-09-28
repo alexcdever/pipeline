@@ -127,6 +127,22 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools gate pre-merge .p
 → exit 0
 ```
 
+### freshness（本轮实跑，如实记录未通过项）
+
+`evidence.freshness` 对三份机器结果**全部报 blocked（exit 3）**，不是本任务引入，也不是某一角色的个别缺陷：
+
+| 结果文件 | errors | evidence_only |
+|---|---|---|
+| `executor-result.json` | `["product/test HEAD drifted", "evidence artifact missing"]` | `false` |
+| `reviewer-result.json` | `["product/test HEAD drifted", "evidence artifact missing"]` | `false` |
+| `final-result.json` | `["evidence artifact missing"]` | `true` |
+
+其中 `evidence artifact missing` 的根因是 `freshness` 把 `evidence_refs` 当**仓库根相对路径**解析（`core.py:1402-1407`：`candidate = root / reference`），而三份结果文件都沿用**裸文件名**约定（`executor-report.md#…`、`review-report.md#…`、`final-check.md`）。根目录下不存在 `executor-report.md` / `review-report.md` / `final-check.md`，故一律判缺失。这是**全仓库既定约定与该检查之间的既有不一致**，三份文件一致，非本轮终审引入。
+
+对 `final-result.json` 而言，`product/test HEAD drifted` **已消失**（`evidence_only=true`），这正是把 `product_head` 指向 `8d677b0`（最后一条改非证据路径的执行提交）所预期的结果——**本终审的 identity 裁定由此获得实证**；仅剩与另外两份相同的 `evidence artifact missing`。
+
+`gate pre-merge` 不消费 `freshness`，故仍 `PASS / exit 0`；该发现**不阻塞合并**，列为已知项与后续修复项。终审选择让 `final-result.json` 的 `evidence_refs` 与已提交的 executor/reviewer 两份保持同一约定，而不是单独改成能通过 `freshness` 的写法——否则三份产物约定分裂，属于比原缺陷更差的修法。
+
 ## 五、结论
 
 **ACCEPT WITH CONDITIONS**
