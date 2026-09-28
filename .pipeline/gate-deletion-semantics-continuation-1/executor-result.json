@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics-continuation-1",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "PENDING_EXECUTION_COMMIT",
+    "head": "PENDING_EXECUTION_COMMIT",
+    "branch": "gate-deletion-semantics-continuation-1",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics-continuation-1"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-declared-expected-exit-code-allows-nonzero-result",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-gate-rejects-boolean-expected-exit-code",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-evidence-block-parses-with-other-code-fences",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-delete-non-retained-evidence-is-not-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    }
+  ],
+  "full_suite": {
+    "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
+    "ran": 275,
+    "result": "OK",
+    "exit_code": 0,
+    "duration_s": 187.571
+  },
+  "verified_facts": [
+    "12e302c: core.py:252 `deleting = status.startswith(\"D\")`, core.py:263 `if retained == deleting:`",
+    "89835f0: 4 commands[] entries restored with expected_exit_code in review-report.md and final-check.md",
+    "89835f0/b7ae0cc: expected_exit_code validated at core.py:435-439 and core.py:1581-1590",
+    "89835f0: first closing fence via next(...) at core.py:343-346 and reconcile.py:25",
+    "b7ae0cc: bool guard core.py:437 and core.py:1583",
+    ".gitattributes present with 4 rules matching the task sheet",
+    "8d677b0: 16 files touched (1 .gitattributes + 15 tracked .pipeline/ files)"
+  ],
+  "unverified": [
+    "independent review",
+    "main-agent final check",
+    "merge to main",
+    "post-merge gate",
+    ".gitattributes line-ending effect requires a fresh clone to validate end-to-end"
+  ]
+}
