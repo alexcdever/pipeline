@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "task_id": "status-vocabulary-unification",
+  "role": "reviewer",
+  "status": "pass",
+  "identity": {
+    "product_head": "92ef2489ed5fb89862652c0d0767b0bcb332b3b0",
+    "head": "0b5c8fb50594ea18a1106ffc986e17c990745127",
+    "branch": "status-vocabulary-unification",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/status-vocabulary-unification",
+    "baseline": "82d4827",
+    "convention": "product_head = last commit that changed non-evidence files (92ef248); head = the HEAD this reviewer evidence was generated against, which includes the executor evidence commit 0b5c8fb."
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-markdown-report-status-normalized",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-machine-result-status-normalized",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-result-verify-accepts-final-role",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-legacy-status-values-normalized",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-legacy-report-status-value-normalized",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-status-vocabulary-documented",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    }
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "conditions": [
+    "tests/test_acceptance_id_and_template_compliance.py defines test_references_document_one_status_vocabulary twice (lines 61 and 70); remove the dead first definition"
+  ],
+  "unverified": [
+    "the 'main' alias of resolve_result_role on a real final-check chain",
+    "cross-task metrics growth trend",
+    "whether identity.head in executor-result.json should name the evidence commit rather than the execution commit"
+  ],
+  "recommendation": "ready_for_final_check"
+}
