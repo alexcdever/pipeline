@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "task_id": "task-ref-verifiability",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "8376061b70343df5d6ac44d8a3c317847d8d2b74",
+    "head": "a0d089b3397af4ea1f5817b009092a31456808ea",
+    "branch": "task-ref-verifiability",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/task-ref-verifiability"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-planner-rejects-test-ref-outside-allowed-paths",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-planner-accepts-test-ref-inside-allowed-paths",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-generator-blocks-out-of-scope-test-ref",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-gate-rejects-absent-test-ref-method",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-test-ref-rules-documented",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    }
+  ],
+  "full_suite": {
+    "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
+    "ran": 285,
+    "result": "OK",
+    "exit_code": 0,
+    "duration_s": 204.967
+  },
+  "verified_facts": [
+    "8376061: pipeline_tools/planning.py _validate_test_ref_placement narrows to _shares_test_root; counterexample test_task_plan_rejects_test_ref_in_same_test_dir_but_not_owned proves the narrowed rule still covers out-of-scope refs",
+    "8376061: pipeline_tools/core.py _acceptance_test_ref_position_errors verifies test_ref file existence and symbol presence at gate time",
+    "8376061: 8 modified files + 3 evidence files; 477 insertions, 31 deletions",
+    "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests => Ran 285 tests, OK (executed before full-suite.log was committed)",
+    "Targeted 6 tests (5 task-sheet acceptance tests + 1 counterexample) => Ran 6 tests, OK",
+    "git show 7184450:docs/tasks/task-ref-verifiability.md | sha256sum == current sheet sha256 (b8d196da40a0c8a746f1ffd25c1b3c86ed647b793255e8cf9c7caf8c89574adb): frozen sheet unchanged",
+    "Strict-rule probe reproduced by stubbing _shares_test_root: original tree 41 failures, current tree 22 failures (in-process probe reaches 37/18; the 4 test_cli.py cases run in a subprocess and are not intercepted by the stub)"
+  ],
+  "unverified": [
+    "independent review already completed by reviewer (a0d089b)",
+    "main-agent final check",
+    "merge to main",
+    "post-merge gate",
+    "the four test_cli.py strict-rule failures were not independently reproduced by an in-process probe; numbers rely on the reviewer's subprocess-capable measurement"
+  ]
+}
