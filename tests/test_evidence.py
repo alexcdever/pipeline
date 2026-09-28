@@ -525,6 +525,61 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn('evidence_only', acceptance)
         self.assertIn('evidence_only', execution)
 
+    def test_gate_rejects_acceptance_test_ref_method_absent_from_named_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            (root / 'tests').mkdir()
+            (root / 'tests' / 'test_present.py').write_text(
+                'class PresentTests(unittest.TestCase):\n'
+                '    def test_present(self):\n'
+                '        pass\n',
+                encoding='utf-8',
+            )
+            contract = {
+                'schema': 2, 'task_id': 'demo', 'task_type': 'repair',
+                'implement_plan': {'path': 'implement-plan.md'},
+                'allowed_paths': ['tests/test_present.py'], 'forbidden_paths': [],
+                'operations': [{'id': 'op', 'kind': 'validate', 'scope': 'task',
+                                'acceptance_tests': ['acceptance-test-1']}],
+                'chain': {name: ['src/app.py'] for name in (
+                    'entry', 'interaction', 'application', 'domain',
+                    'persistence', 'readback', 'recovery')},
+                'dependencies': [],
+                'acceptance_tests': [{
+                    'id': 'acceptance-test-1', 'evidence_level': 2,
+                    'test_ref': 'tests/test_present.py: PresentTests.test_absent',
+                    'command_ref': 'python -m unittest',
+                }],
+                'required_evidence_levels': [2],
+            }
+            sheet = root / 'docs' / 'tasks' / 'demo.md'
+            sheet.parent.mkdir(parents=True)
+            sheet.write_text(
+                '<!-- Task ID: demo -->\n```pipeline-contract\n'
+                + json.dumps(contract) + '\n```\n',
+                encoding='utf-8',
+            )
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertTrue(
+                any('acceptance-test-1' in error and 'absent' in error for error in errors),
+                errors,
+            )
+
+            contract['acceptance_tests'][0]['test_ref'] = (
+                'tests/test_present.py: PresentTests.test_present'
+            )
+            sheet.write_text(
+                '<!-- Task ID: demo -->\n```pipeline-contract\n'
+                + json.dumps(contract) + '\n```\n',
+                encoding='utf-8',
+            )
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertFalse(
+                any('test_ref' in error and 'absent' in error for error in errors),
+                errors,
+            )
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):

@@ -1076,6 +1076,92 @@ def _task_sheet_contract(root: Path, task_id: str | None) -> dict[str, Any] | No
     return None if errors or not isinstance(contract, dict) else contract
 
 
+def _acceptance_test_ref_target(value: Any) -> tuple[str, str | None] | None:
+    """Split a test_ref into its file path and optional Class.method target.
+
+    The accepted grammar is ``path/to/file.py: Class.method``.  A bare path is
+    valid and carries no position claim; only the text after the first colon is
+    treated as a symbol target.
+    """
+    if not isinstance(value, str):
+        return None
+    head, separator, tail = value.partition(":")
+    path = head.strip().replace(chr(92), "/")
+    if not path:
+        return None
+    if not separator:
+        return path, None
+    target = tail.strip()
+    if not target:
+        return path, None
+    target = target.split()[0].rstrip("().,;")
+    return path, target or None
+
+
+def _python_symbols(text: str) -> tuple[set[str], set[str]]:
+    """Return the class names and ``Class.method`` pairs declared in source."""
+    import ast
+
+    classes: set[str] = set()
+    methods: set[str] = set()
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return classes, methods
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            classes.add(node.name)
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    methods.add(f"{node.name}.{child.name}")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            methods.add(node.name)
+    return classes, methods
+
+
+def _acceptance_test_ref_position_errors(root: Path, contract: dict[str, Any]) -> list[str]:
+    """Verify the test_ref of every acceptance test names a real symbol.
+
+    A test_ref that names a method must resolve to a declaration that exists in
+    the named file; a test_ref that names only a path makes no position claim
+    and is left to the planning-time placement check.
+    """
+    errors: list[str] = []
+    tests = contract.get("acceptance_tests")
+    if not isinstance(tests, list):
+        return errors
+    for index, item in enumerate(tests, start=1):
+        if not isinstance(item, dict):
+            continue
+        target = _acceptance_test_ref_target(item.get("test_ref"))
+        if target is None:
+            continue
+        path, symbol = target
+        test_id = item.get("id") if isinstance(item.get("id"), str) else f"#{index}"
+        if symbol is None:
+            continue
+        candidate = (root / path).resolve()
+        try:
+            candidate.relative_to(root.resolve())
+        except ValueError:
+            errors.append(f"acceptance test {test_id} test_ref {path} escapes the project root")
+            continue
+        if not candidate.is_file():
+            errors.append(f"acceptance test {test_id} test_ref file does not exist: {path}")
+            continue
+        classes, methods = _python_symbols(candidate.read_text(encoding="utf-8", errors="replace"))
+        if "." in symbol:
+            if symbol not in methods:
+                errors.append(
+                    f"acceptance test {test_id} test_ref method is absent from {path}: {symbol}"
+                )
+        elif symbol not in classes and symbol not in methods:
+            errors.append(
+                f"acceptance test {test_id} test_ref method is absent from {path}: {symbol}"
+            )
+    return errors
+
+
 def write_dispatch(root: Path, dispatch: dict[str, Any], output: Path) -> Path:
     """Validate and atomically write a structured executor/reviewer dispatch."""
     required = ("schema", "task_id", "role", "round", "root", "worktree", "branch", "evidence_dir", "permissions", "output")
@@ -1567,6 +1653,7 @@ def gate_check(
         errors.extend(plan_errors)
         if unverified is not None:
             unverified.extend(plan_unverified)
+        errors.extend(_acceptance_test_ref_position_errors(root, contract))
     reports: dict[str, dict[str, Any]] = {}
     for name in REPORT_NAMES:
         value, parse_errors = _read_machine_evidence(directory / name)

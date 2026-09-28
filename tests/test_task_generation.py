@@ -20,10 +20,10 @@ def make_inputs(root, task_ids=("task-a", "task-b")):
     (root / "src").mkdir(exist_ok=True)
     (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
     acceptance = [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: test", "command_ref": "python -m unittest tests.test_task_generation -v"}]
-    project = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
+    project = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "resources": [{"id": "resource", "path": "src/app.py"}, {"id": "resource-tests", "path": "tests/test_task_generation.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
     requirements = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance}
-    tasks = [{"id": task_id, "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"} for task_id in task_ids]
-    plan = {"schema": 1, "non_goals": ["本任务不扩展用户可见范围"], "requirements": ["requirement"], "resources": ["resource"], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": tasks}
+    tasks = [{"id": task_id, "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource", "resource-tests"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"} for task_id in task_ids]
+    plan = {"schema": 1, "non_goals": ["本任务不扩展用户可见范围"], "requirements": ["requirement"], "resources": ["resource", "resource-tests"], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": tasks}
     return project, requirements, plan
 
 
@@ -173,9 +173,9 @@ class TaskGenerationTests(unittest.TestCase):
             operation = {"id": "batch-resources", "kind": "batch-resource-operation", "resources": ["resource", "resource-db"], "resource_mode": "batch", "acceptance_tests": ["acceptance-test-1"]}
             project["operations"] = [operation]
             requirements["operations"] = [operation]
-            plan["resources"] = ["resource", "resource-db"]
+            plan["resources"] = ["resource", "resource-db", "resource-tests"]
             plan["operations"] = [operation]
-            plan["tasks"][0].update({"resources": ["resource", "resource-db"], "operations": ["batch-resources"]})
+            plan["tasks"][0].update({"resources": ["resource", "resource-db", "resource-tests"], "operations": ["batch-resources"]})
             make_repo(root)
             result = self.run_generation(root, project, requirements, plan, run_id="batch-run")
             self.assertEqual(result["status"], "pass", result)
@@ -324,10 +324,11 @@ class TaskGenerationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             project, requirements, plan = make_inputs(root, ("evidence-task",))
-            plan["resources"] = [".pipeline/evidence-task/"]
-            plan["tasks"][0]["resources"] = [".pipeline/evidence-task/"]
+            plan["resources"] = [".pipeline/evidence-task/", "tests/test_task_generation.py"]
+            plan["tasks"][0]["resources"] = [".pipeline/evidence-task/", "tests/test_task_generation.py"]
             plan["operations"][0]["resources"] = [".pipeline/evidence-task/"]
-            project["resources"] = [{"id": ".pipeline/evidence-task/", "path": ".pipeline/evidence-task/"}]
+            project["resources"] = [{"id": ".pipeline/evidence-task/", "path": ".pipeline/evidence-task/"}, {"id": "resource-tests", "path": "tests/test_task_generation.py"}]
+            (root / ".pipeline" / "evidence-task").mkdir(parents=True)
             make_repo(root)
             result = self.run_generation(root, project, requirements, plan, run_id="evidence-run")
             self.assertEqual(result["status"], "pass", result)
@@ -335,11 +336,26 @@ class TaskGenerationTests(unittest.TestCase):
             contract = json.loads(
                 sheet.read_text(encoding="utf-8").split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0]
             )
-            self.assertEqual(contract["allowed_paths"], [".pipeline/evidence-task/"])
+            self.assertEqual(contract["allowed_paths"], [".pipeline/evidence-task/", "tests/test_task_generation.py"])
             self.assertNotIn(".pipeline/** existing history", contract["forbidden_paths"])
             self.assertIn("goal.md", contract["forbidden_paths"])
             self.assertIn("IDEA.md", contract["forbidden_paths"])
             self.assertEqual(validate_task(sheet), [])
+
+    def test_generate_task_sheets_blocks_out_of_scope_acceptance_test_ref(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("scope-task",))
+            for collection in (project, requirements, plan):
+                collection["acceptance_tests"] = [
+                    dict(item, test_ref="tests/test_evidence.py: EvidenceTests.test_all_reports_require_machine_evidence")
+                    for item in collection["acceptance_tests"]
+                ]
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="scope-run")
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("outside" in error for error in result["errors"]), result["errors"])
+            self.assertFalse((root / "docs" / "tasks" / "scope-task.md").exists())
 
 
 if __name__ == "__main__":

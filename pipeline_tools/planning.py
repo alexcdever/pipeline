@@ -643,6 +643,73 @@ def _acceptance_id(value: Any) -> str | None:
     return None
 
 
+def _test_ref_path(value: Any) -> str | None:
+    """Return the project-relative file path named by an acceptance test_ref.
+
+    The accepted grammar is ``path/to/file.py: Class.method``; only the path
+    before the first colon is position-bearing, and a bare path is valid.
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.split(":", 1)[0].strip().replace("\\", "/")
+    return candidate or None
+
+
+def _covers_path(allowed: str, candidate: str) -> bool:
+    allowed = allowed.strip().replace("\\", "/")
+    if not allowed:
+        return False
+    if allowed.endswith("/"):
+        return candidate.startswith(allowed)
+    if allowed.endswith("/*"):
+        return candidate.startswith(allowed[:-1])
+    return candidate == allowed or candidate.startswith(allowed + "/")
+
+
+def _shares_test_root(allowed: str, candidate: str) -> bool:
+    """Return whether a resource path shares the test_ref's top-level directory."""
+    normalized = allowed.strip().replace("\\", "/")
+    root = candidate.split("/", 1)[0]
+    return bool(root) and normalized.startswith(root + "/")
+
+
+def _validate_test_ref_placement(
+    declared: set[str],
+    records: dict[str, dict[str, Any]],
+    allowed_paths: list[str],
+    errors: list[str],
+    *,
+    task_id: str,
+) -> None:
+    """Reject an acceptance test_ref that points outside the task's resources.
+
+    The check only applies to a test file that shares a directory with a
+    declared task resource: that is the case where the task claims ownership of
+    the surrounding tree and the test must therefore live inside it.  A task
+    that declares no resource in the test's directory makes no such claim, so
+    its acceptance record is left to the other structural checks.
+    """
+    for test_id in sorted(declared):
+        record = records.get(test_id)
+        if not isinstance(record, dict):
+            continue
+        path = _test_ref_path(record.get("test_ref"))
+        if path is None:
+            continue
+        claimed = [
+            item for item in allowed_paths
+            if _covers_path(item, path) or _shares_test_root(item, path)
+        ]
+        if not claimed:
+            continue
+        if any(_covers_path(item, path) for item in allowed_paths):
+            continue
+        errors.append(
+            f"task {task_id} acceptance test {test_id} test_ref {path} is outside "
+            "the task's allowed paths"
+        )
+
+
 def _validate_acceptance_records(
     records: Any,
     errors: list[str],
@@ -1066,12 +1133,39 @@ def validate_task_plan(
         if task_type not in TASK_TYPES:
             errors.append(f"task {identifier} has invalid task type")
         floor = evidence_floor(plan_risk, plan_project_type, task_type)
+        declared = {
+            test_id
+            for operation_id in task.get("operations", [])
+            for test_id in operation_records.get(operation_id, {}).get("acceptance_tests", [])
+        }
+        accepted_records = {
+            item.get("id"): item
+            for item in plan.get("acceptance_tests", [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+        try:
+            task_allowed_paths = _task_allowed_paths(task)
+        except ValueError:
+            task_allowed_paths = []
+        resource_paths: dict[str, str] = {}
+        for source in (plan, project_facts, requirement_facts):
+            if not isinstance(source, dict):
+                continue
+            for entity in source.get("resources", []) or []:
+                if (
+                    isinstance(entity, dict)
+                    and isinstance(entity.get("id"), str)
+                    and isinstance(entity.get("path"), str)
+                ):
+                    resource_paths.setdefault(entity["id"], entity["path"])
+        task_allowed_paths = [
+            resource_paths.get(item, item) for item in task_allowed_paths
+        ]
+        if task_allowed_paths:
+            _validate_test_ref_placement(
+                declared, accepted_records, task_allowed_paths, errors, task_id=identifier
+            )
         if floor is not None:
-            declared = {
-                test_id
-                for operation_id in task.get("operations", [])
-                for test_id in operation_records.get(operation_id, {}).get("acceptance_tests", [])
-            }
             for test_id in sorted(declared):
                 level = acceptance_levels.get(test_id)
                 if isinstance(level, bool) or not isinstance(level, int):

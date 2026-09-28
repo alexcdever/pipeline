@@ -62,7 +62,7 @@ class PlanningTests(unittest.TestCase):
             root = Path(d)
             project = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "resources": [{"id": "resource", "path": "src/app.py"}], "operations": [{"id": "op", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_planning.py", "command_ref": "python -m unittest"}], "chain": chain()}
             requirements = {"schema": 1, "sources": [{"id": "source", "path": "implement-plan.md"}], "requirements": [{"id": "req", "source_refs": ["source"]}], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"]}
-            plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["resource"], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "current-task", "type": "prerequisite", "requirements": ["req"], "resources": ["resource"], "operations": ["op"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"}]}
+            plan = {"schema": 1, "non_goals": ["本任务不扩展范围"], "requirements": ["req"], "resources": ["resource", "tests/test_planning.py"], "operations": project["operations"], "acceptance_tests": project["acceptance_tests"], "tasks": [{"id": "current-task", "type": "prerequisite", "requirements": ["req"], "resources": ["resource", "tests/test_planning.py"], "operations": ["op"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"}]}
             (root / "implement-plan.md").write_text("current target", encoding="utf-8")
             (root / "src").mkdir(); (root / "src" / "app.py").write_text("app", encoding="utf-8")
             subprocess.run(["git", "init", "-q"], cwd=root, check=True); subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True); subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True); subprocess.run(["git", "add", "."], cwd=root, check=True); subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
@@ -197,7 +197,7 @@ class PlanningTests(unittest.TestCase):
             ],
             'tasks': [{
                 'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                'resources': ['src/app.py'], 'operations': ['create'],
+                'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                 'chain': chain(), 'depends_on': [],
             }],
         }
@@ -215,7 +215,7 @@ class PlanningTests(unittest.TestCase):
             'schema': 1, 'requirements': ['r1'], 'resources': ['src/app.py'],
             'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                        'chain': chain(), 'depends_on': []}],
         }
         errors = validate_task_plan(plan)
@@ -223,13 +223,13 @@ class PlanningTests(unittest.TestCase):
 
     def test_task_plan_requires_complete_top_level_acceptance_records(self):
         base = {
-            'schema': 1, 'non_goals': ['本任务不扩展范围'], 'requirements': ['r1'], 'resources': ['src/app.py'],
+            'schema': 1, 'non_goals': ['本任务不扩展范围'], 'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
             'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
                                   'test_ref': 'tests/test_planning.py',
                                   'command_ref': 'python -m unittest'}],
             'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                        'chain': chain(), 'depends_on': []}],
         }
         for bad in (
@@ -289,7 +289,7 @@ class PlanningTests(unittest.TestCase):
             'schema': 1,
             'non_goals': ['本任务不扩展范围'],
             'requirements': ['r1'],
-            'resources': ['src/app.py'],
+            'resources': ['src/app.py', 'tests/test_planning.py'],
             'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{
                 'id': 'acceptance-test-1', 'evidence_level': 2,
@@ -298,7 +298,7 @@ class PlanningTests(unittest.TestCase):
             }],
             'tasks': [{
                 'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                'resources': ['src/app.py'], 'operations': ['create'],
+                'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                 'chain': chain(), 'depends_on': [],
             }],
         }
@@ -528,12 +528,12 @@ class PlanningTests(unittest.TestCase):
             return {
                 'schema': 1, 'risk': risk, 'project_type': project_type,
                 'non_goals': ['本任务不扩展范围'],
-                'requirements': ['r1'], 'resources': ['src/app.py'],
+                'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
                 'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
                 'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': level,
                                       'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
                 'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                           'resources': ['src/app.py'], 'operations': ['create'],
+                           'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                            'chain': chain_value, 'depends_on': []}],
             }
 
@@ -545,12 +545,12 @@ class PlanningTests(unittest.TestCase):
     def test_task_plan_requires_explicit_non_goals(self):
         base = {
             'schema': 1, 'non_goals': ['本任务不扩展范围'],
-            'requirements': ['r1'], 'resources': ['src/app.py'],
+            'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
             'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
                                   'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
             'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                        'chain': chain(), 'depends_on': []}],
         }
         self.assertEqual(validate_task_plan(base), [])
@@ -563,12 +563,12 @@ class PlanningTests(unittest.TestCase):
         def plan_with(operation):
             return {
                 'schema': 1, 'non_goals': ['本任务不扩展范围'],
-                'requirements': ['r1'], 'resources': ['src/app.py'],
+                'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
                 'operations': [operation],
                 'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
                                       'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
                 'tasks': [{'id': 't1', 'type': 'prerequisite', 'requirements': ['r1'],
-                           'resources': ['src/app.py'], 'operations': ['create'],
+                           'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                            'depends_on': []}],
             }
 
@@ -584,12 +584,12 @@ class PlanningTests(unittest.TestCase):
             return {
                 'schema': 1, 'non_goals': ['本任务不扩展范围'],
                 'requirements': ['r1'],
-                'resources': ['src/app.py', 'src/db.py'],
+                'resources': ['src/app.py', 'src/db.py', 'tests/test_planning.py'],
                 'operations': [operation],
                 'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
                                       'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
                 'tasks': [{'id': 't1', 'type': 'prerequisite', 'requirements': ['r1'],
-                           'resources': ['src/app.py', 'src/db.py'], 'operations': ['create'],
+                           'resources': ['src/app.py', 'src/db.py', 'tests/test_planning.py'], 'operations': ['create'],
                            'depends_on': []}],
             }
 
@@ -613,12 +613,12 @@ class PlanningTests(unittest.TestCase):
     def test_task_plan_rejects_invalid_risk_and_project_type(self):
         base = {
             'schema': 1, 'non_goals': ['本任务不扩展范围'],
-            'requirements': ['r1'], 'resources': ['src/app.py'],
+            'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
             'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
             'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
                                   'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
             'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
-                       'resources': ['src/app.py'], 'operations': ['create'],
+                       'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
                        'chain': chain(), 'depends_on': []}],
         }
         self.assertEqual(validate_task_plan(base), [])
@@ -689,6 +689,54 @@ class PlanningTests(unittest.TestCase):
             subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
             result = planning_preflight(root)
             self.assertNotIn("isolated worktree is orphaned", result["errors"], result)
+
+    def test_task_plan_rejects_acceptance_test_ref_outside_task_resources(self):
+        plan = {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'], 'resources': ['tests/test_planning.py'],
+            'operations': [{'id': 'create', 'resources': ['tests/test_planning.py'],
+                            'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                  'test_ref': 'tests/test_evidence.py: EvidenceTests.test_all_reports_require_machine_evidence',
+                                  'command_ref': 'python -m unittest'}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['tests/test_planning.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        errors = validate_task_plan(plan)
+        self.assertTrue(any('outside' in error for error in errors), errors)
+
+    def test_task_plan_accepts_acceptance_test_ref_inside_task_resources(self):
+        plan = {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'],
+                            'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                  'test_ref': 'tests/test_planning.py: PlanningTests.test_task_plan_validation',
+                                  'command_ref': 'python -m unittest'}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        self.assertEqual(validate_task_plan(plan), [])
+
+    def test_task_plan_rejects_test_ref_in_same_test_dir_but_not_owned(self):
+        plan = {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'], 'resources': ['tests/test_evidence.py'],
+            'operations': [{'id': 'create', 'resources': ['tests/test_evidence.py'],
+                            'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2,
+                                  'test_ref': 'tests/test_acceptance_id_and_template_compliance.py: '
+                                              'AcceptanceIdAndTemplateComplianceTests.test_template_and_evidence_example_use_complete_format',
+                                  'command_ref': 'python -m unittest'}],
+            'tasks': [{'id': 't1', 'type': 'vertical-feature', 'requirements': ['r1'],
+                       'resources': ['tests/test_evidence.py'], 'operations': ['create'],
+                       'chain': chain(), 'depends_on': []}],
+        }
+        errors = validate_task_plan(plan)
+        self.assertTrue(any('outside' in error for error in errors), errors)
 
 
 if __name__ == '__main__': unittest.main()

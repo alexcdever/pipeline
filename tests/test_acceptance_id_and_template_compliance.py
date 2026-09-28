@@ -271,6 +271,19 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         for test in contract["acceptance_tests"]:
             self.assertIn(test["id"], text)
 
+    def test_references_task_design_documents_test_ref_placement_and_position_rules(self):
+        task_design = (ROOT / "references/task-design.md").read_text(encoding="utf-8")
+        acceptance = (ROOT / "references/acceptance-evidence.md").read_text(encoding="utf-8")
+        for text in (task_design, acceptance):
+            self.assertIn("test_ref", text)
+            self.assertIn("allowed_paths", text)
+            self.assertIn("planning.py", text)
+            self.assertIn("core.py", text)
+        self.assertIn("`test_ref` 的位置规则", task_design)
+        self.assertIn("类名.方法名", acceptance)
+        self.assertIn("is outside the task's allowed paths", task_design)
+        self.assertIn("absent", task_design)
+
 
 if __name__ == "__main__":
     unittest.main()
