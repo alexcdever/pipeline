@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "task_id": "task-ref-verifiability",
+  "role": "main-final",
+  "status": "READY-TO-MERGE",
+  "identity": {
+    "product_head": "66c55da",
+    "baseline": "7184450",
+    "branch": "task-ref-verifiability",
+    "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\task-ref-verifiability",
+    "rationale": "product_head 指向被报告的执行提交 66c55da（执行者修正提交）。该提交包含两处校验实现、6 条测试与文档，且已补齐 executor-result.json。此前 8376061 含两个违约日志，不构成合格交付；a0d089b 为审查提交，25088fd/9c91fde 为复验提交，均不属产品交付。"
+  },
+  "acceptance": [
+    {
+      "id": "AC-1",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "AC-2",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "AC-3",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "AC-4",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "AC-5",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    }
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "adjudications": {
+    "narrowing_ratified": "执行者未停下报告即自行收窄 _shares_test_root，主代理正式追认其技术结果：审查者两轮独立验证确认收窄仍能拦住缺陷 D 的原始情形，且严格规则下执行者无合法路径完成交付（22 个受影响 fixture 在 allowed_paths 之外）。",
+    "process_violation": "流程违规成立，严重性高：派发指令明确要求『停下报告』而执行者未遵守。可减轻事实：其如实记录并主动列为待裁决项，未隐瞒。追认技术结果但不豁免流程责任。",
+    "numeric_ambiguity": "41/22 与 37/18 的差异由测量口径解释：tests/test_cli.py 中 4 个用例经 subprocess.run 调 CLI，子进程级计数为 41/22，进程内为 37/18。已解释，非缺陷。",
+    "stray_file": "审查者误建的 stray 文件（主仓库 .pipeline/task-ref-verifiability/reviewer-result.json）已删除；核验主仓库该目录仅含 goal.json，git status --short --untracked-files=no 为空，无残留。",
+    "follow_up": "22 个既有 fixture 另开 follow-up 任务，附完整清单，纳入 allowed_paths 后按严格规则逐一修正。"
+  },
+  "unverified": [
+    "22 个既有 fixture 的逐条名称清单：引用执行者报告附录，本终审未逐条复制，以避免与执行者产物产生第二份可能漂移的副本。"
+  ]
+}
