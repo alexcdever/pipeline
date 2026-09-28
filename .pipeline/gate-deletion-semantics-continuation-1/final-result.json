@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics-continuation-1",
+  "role": "main-final",
+  "status": "PASS",
+  "round": 1,
+  "worktree": ".worktrees/gate-deletion-semantics-continuation-1",
+  "branch": "gate-deletion-semantics-continuation-1",
+  "identity": {
+    "product_head": "5bf40a3b0971d0a6dbb1ca07aff864f348660f74",
+    "head": "9f0e6cc539f9028d6ca2a6efd6196ddadeb1f28f",
+    "branch": "gate-deletion-semantics-continuation-1",
+    "basis": "product_head points at the reported execution commit 5bf40a3, not at HEAD. Verified independently: git diff 5bf40a3 9f0e6cc --name-only lists exactly one file (executor-result.json, inside the evidence directory) and git merge-base --is-ancestor 5bf40a3 HEAD exits 0. Requiring product_head == HEAD is self-referential, because the commit that writes the identity would itself move HEAD; F2 is therefore adjudicated ACCEPTABLE."
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-declared-expected-exit-code-allows-nonzero-result",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md", "review-report.md", "final-check.md"]
+    },
+    {
+      "id": "acceptance-test-gate-rejects-boolean-expected-exit-code",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md", "review-report.md", "final-check.md"]
+    },
+    {
+      "id": "acceptance-test-evidence-block-parses-with-other-code-fences",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md", "review-report.md", "final-check.md"]
+    },
+    {
+      "id": "acceptance-test-delete-non-retained-evidence-is-not-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md", "review-report.md", "final-check.md"]
+    }
+  ],
+  "verdict": "ACCEPT",
+  "adjudications": {
+    "F1-freshness": {
+      "finding": "The freshness check is blocked at exit 3. Independently re-run: at HEAD ba5e8bb it reports two errors, [product/test HEAD drifted, evidence artifact missing], with evidence_only false. The reviewer reproduced a single error at 9f0e6cc; the extra error comes from the review commit ba5e8bb adding two .pipeline/metrics/ files that fall outside the evidence directory.",
+      "root_cause_a": "core.py:1403 resolves acceptance[].evidence_refs against the repository root (candidate = root / reference) and core.py:1407 reports evidence artifact missing, while core.py:313-325 _evidence_file_exists resolves commands[].evidence_ref against the evidence directory. One field name, two bases.",
+      "root_cause_b": "core.py:1391-1393 requires every path in product_head..HEAD to sit inside the evidence directory; it does not exempt .pipeline/metrics/, although core.py:277-281 treats metrics as workflow metadata. The review commit therefore trips a self-referential false positive.",
+      "pre_existing": "Both defects exist before baseline c92788c and are not introduced by this task; this task is read-only and its allowed_paths exclude pipeline_tools/**.",
+      "non_blocking": "gate pre-merge does not consume freshness; gate_check (core.py:1534) never calls evidence_freshness.",
+      "ruling": "Do NOT judge freshness as passing based on the executor report. The executor omitted this failure from both executor-report.md and executor-result.json, which is a report-completeness gap. The finding is recorded and does not block this record task."
+    },
+    "F2-product-head": {
+      "finding": "identity.product_head = 5bf40a3, HEAD = 9f0e6cc. git diff 5bf40a3 9f0e6cc --name-only lists exactly one file; git merge-base --is-ancestor 5bf40a3 HEAD exits 0.",
+      "logic": "evidence_only is computed at core.py:1386-1393 inside evidence_freshness; at 9f0e6cc it is true because the only change lies inside the evidence directory.",
+      "ruling": "ACCEPTABLE. evidence_only true is empirically established, and requiring product_head == HEAD is self-referential because the commit that writes the identity moves HEAD."
+    },
+    "forbidden_paths": {
+      "finding": "The contract lists .pipeline/** in forbidden_paths while every deliverable of this record task lives under .pipeline/<task-id>/.",
+      "evidence": "gate_check (core.py:1534) does not call scope_check; its call list is evidence_verify, implement_plan_status, _read_machine_evidence, _machine_result_errors, git diff --check, git ls-files -u, git rev-parse, _post_merge_reverified_in_main_worktree. The scope check subcommand requires --allowed explicitly (_add_scope_args, __main__.py:76-78).",
+      "ruling": "CONTRACT DESIGN DEFECT. It does not block today because the gate never consumes forbidden_paths, but it must be escalated as a known item: either let the gate consume the contract scope, or define an evidence-directory allowlist for record tasks."
+    },
+    "evidence_refs-fix-ownership": {
+      "finding": "allowed_paths has exactly three entries and none is pipeline_tools/**; non_goals item 4 forbids modifying pipeline_tools/ semantics or implementation.",
+      "ruling": "The user-adjudicated fix (unify evidence_refs on the evidence directory) is OUT OF SCOPE and must be carried by a separate derived task, exactly as the parent task handled the --since semantics defect."
+    }
+  },
+  "reports": {
+    "executor-report.md": "present, non-empty, identity correct; contains one pipeline-evidence block with 12 commands; omits the freshness failure",
+    "review-report.md": "present, non-empty, identity correct; verdict ACCEPT WITH CONDITIONS",
+    "final-check.md": "present, non-empty, identity correct; role main-final"
+  },
+  "full_suite": {
+    "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
+    "ran": 275,
+    "result": "OK",
+    "exit_code": 0,
+    "duration_s": 200.718
+  },
+  "gate": {
+    "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools --format json gate pre-merge .pipeline/gate-deletion-semantics-continuation-1 --task-id gate-deletion-semantics-continuation-1",
+    "status": "pass",
+    "exit_code": 0
+  },
+  "task_sheet_sha256": "1721091c5a2d7bb8776cce38e9c7bd9560e6d9f99ed6ca5198d9ca2b839b8129",
+  "unverified": [
+    ".gitattributes line-ending effect requires a fresh clone to validate end-to-end",
+    "the freshness root-cause fixes are not implemented; out of scope for this task",
+    "expansions 1, 5 and 6 have no existing test and are recorded by commit hash only",
+    "merge to main and post-merge gate are not performed in this round"
+  ]
+}
