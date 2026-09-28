@@ -1197,10 +1197,10 @@ def compare_task_plan_contract(
         return {"schema": 1, "status": "fail", "task_id": task_id, "conflicts": errors,
                 "errors": [item["reason"] for item in errors], "next_actions": ["do not freeze or dispatch"]}
     task = tasks[0]
-    plan_acceptance = {item.get("id"): item for item in task_plan.get("acceptance_tests", []) if isinstance(item, dict)}
     task_operation_ids = task.get("operations", [])
     operations = [item for item in task_plan.get("operations", []) if isinstance(item, dict) and item.get("id") in task_operation_ids]
-    expected_tests = [plan_acceptance[test_id] for operation in operations for test_id in operation.get("acceptance_tests", []) if test_id in plan_acceptance]
+    referenced_test_ids = {test_id for operation in operations for test_id in operation.get("acceptance_tests", [])}
+    expected_tests = [item for item in task_plan.get("acceptance_tests", []) if isinstance(item, dict) and item.get("id") in referenced_test_ids]
 
     def expected_operation(item: dict[str, Any]) -> dict[str, Any]:
         record: dict[str, Any] = {
