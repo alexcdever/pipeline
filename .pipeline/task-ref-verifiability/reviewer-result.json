@@ -2,10 +2,10 @@
   "schema": 1,
   "task_id": "task-ref-verifiability",
   "role": "reviewer",
-  "status": "fail",
+  "status": "pass",
   "identity": {
-    "product_head": "8376061b70343df5d6ac44d8a3c317847d8d2b74",
-    "head": "8376061b70343df5d6ac44d8a3c317847d8d2b74"
+    "product_head": "66c55da10c1187485ec71985ade57fbc2b920fab",
+    "head": "66c55da10c1187485ec71985ade57fbc2b920fab"
   },
   "acceptance": [
     {
@@ -39,19 +39,24 @@
       "evidence_refs": ["review-report.md"]
     }
   ],
-  "verdict": "REJECT",
+  "verdict": "ACCEPT WITH CONDITIONS",
   "verdict_reasons": [
-    "current HEAD full suite is RED: Ran 285 tests, FAILED (failures=1)",
-    "failure caused by executor committing non-retained evidence files .pipeline/task-ref-verifiability/full-suite.log and targeted-acceptance.log, violating RETAINED_EVIDENCE_NAMES",
-    "executor-result.json is missing, violating the pre-merge required machine results"
+    "second-round recheck: current HEAD full suite is GREEN - Ran 285 tests in 212.934s, OK (root cause of first-round REJECT eliminated)",
+    "the two non-retained evidence logs full-suite.log and targeted-acceptance.log are removed from the git index (git ls-files shows 0 matches); test_tracked_pipeline_evidence_contains_only_retained_names now passes standalone",
+    "executor-result.json now present, valid JSON, role=executor, 5 acceptance entries, bare evidence_refs that exist",
+    "evidence directory holds exactly the 4 retained files (executor 2 + reviewer 2)",
+    "task sheet sha256 unchanged b8d196da40a0c8a746f1ffd25c1b3c86ed647b793255e8cf9c7caf8c89574adb; non-evidence changes remain within the 8 allowed_paths",
+    "gate errors reduced from 3 to 2, remaining only the finalization artifacts missing final-check.md and missing final-result.json (produced at finalization, not by executor)",
+    "pre-merge gate still blocked until finalization artifacts exist; executor deliverable itself is accepted"
   ],
   "conditions": [
-    "main agent must explicitly ratify the _shares_test_root narrowing and open a follow-up task for the 22 strict-rule fixtures in test_cli.py, test_planning_dispatch_integration.py and test_task_plan_contract_consistency.py",
-    "the two non-retained evidence logs must be removed (executor artifact, reviewer may not edit)",
-    "executor-result.json must be produced or the executor delivery judged incomplete"
+    "main agent must keep the ratified _shares_test_root narrowing and open a follow-up task for the 22 strict-rule fixtures in test_cli.py, test_planning_dispatch_integration.py and test_task_plan_contract_consistency.py",
+    "the executor process violation (narrowing a just-established mechanical gate without stopping to report) stays recorded in task history as a formal adjudication; mitigation is that the executor disclosed it",
+    "gate pre-merge remains blocked (exit 3) solely on missing final-check.md and final-result.json; finalization must produce them"
   ],
   "unverified": [
     "freshness observed.evidence_only (command blocked before producing the observation)",
-    "exact per-file mapping of the 19 allowed-path fixtures eliminated on the unmigrated tree"
+    "exact per-file mapping of the 19 allowed-path fixtures eliminated on the unmigrated tree",
+    "the four test_cli.py strict-rule failures were not independently reproduced by the executor's in-process probe; the 41/22 numbers rely on the reviewer's subprocess-capable measurement (executor self-disclosed this in unverified)"
   ]
 }
