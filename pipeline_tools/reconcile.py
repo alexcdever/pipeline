@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .contract import load_contract
-from .core import evidence_freshness, evidence_readiness, evidence_verify
+from .core import POST_MERGE_REPORT_STATUSES, evidence_freshness, evidence_readiness, evidence_verify, normalize_status
 
 _REPORTS = ("executor-report.md", "review-report.md", "final-check.md")
 _RESULTS = ("executor-result.json", "reviewer-result.json", "final-result.json")
@@ -85,7 +85,7 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     direct_pass = (not contract_errors and not report_errors and not identity_errors and not verify_errors
                    and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
-                   and all(status in {"PASS", "READY-TO-MERGE", "MERGED"} for status in statuses))
+                   and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
     status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
     output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,
               "identity": identity, "result": {name: value.get("status") for name, value in results.items()},

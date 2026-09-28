@@ -27,6 +27,18 @@ RETAINED_EVIDENCE_NAMES = REPORT_NAMES + MACHINE_RESULT_NAMES + ("finalization.j
 CONFIDENCES = {"observed", "derived", "reported"}
 METRIC_RESULTS = {"pass", "passed", "fail", "failed", "blocked", "flaky", "unknown"}
 BLOCKER_CLASSES = {"product", "environment", "permission", "evidence", "dependency", "workflow", None}
+# One shared read-side normalization table.  Markdown evidence blocks are written
+# in upper case and machine result JSON in lower case, so neither spelling can be
+# made canonical without rewriting history.  Both readers instead normalize what
+# they read onto the canonical spelling of their own vocabulary.
+REPORT_STATUSES = ("PASS", "FAIL", "BLOCKED", "FLAKY", "EXPLORATORY_ONLY", "READY-TO-MERGE", "MERGED")
+PRE_MERGE_REPORT_STATUSES = ("PASS", "READY-TO-MERGE")
+POST_MERGE_REPORT_STATUSES = ("PASS", "READY-TO-MERGE", "MERGED")
+RESULT_STATUSES = ("pass", "fail", "blocked", "flaky")
+ACCEPTANCE_STATUSES = ("pass", "fail", "blocked", "flaky", "unverified")
+# The only status spelling that ever shipped but belongs to neither vocabulary.
+LEGACY_STATUS_ALIASES = {"pass_with_conditions": "pass"}
+RESULT_ROLE_ALIASES = {"main": "main-final", "final": "main-final"}
 
 _SECRET_RE = re.compile(
     r"(?i)\b(password|passwd|token|secret|authorization|api[_-]?key|cvc)\b"
@@ -34,6 +46,38 @@ _SECRET_RE = re.compile(
 )
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z]:[\\/]|/(?:Users|home|tmp|var|opt|private|etc|root)(?:/|$)|/)[^\r\n\t\s,;]*")
+
+
+def _status_key(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    key = value.strip().lower().replace("-", "_")
+    return key or None
+
+
+def normalize_status(value: Any, vocabulary: tuple[str, ...]) -> str | None:
+    """Return ``value`` rewritten as the matching entry of ``vocabulary``.
+
+    Matching ignores case and treats ``-`` and ``_`` as the same separator, so a
+    status written in the other side's case is still read.  The single legacy
+    spelling ``pass_with_conditions`` folds onto ``pass``.  A value that matches
+    no entry -- including after aliasing -- returns ``None`` and stays invalid.
+    """
+    key = _status_key(value)
+    if key is None:
+        return None
+    key = LEGACY_STATUS_ALIASES.get(key, key)
+    for candidate in vocabulary:
+        if _status_key(candidate) == key:
+            return candidate
+    return None
+
+
+def resolve_result_role(role: Any) -> Any:
+    """Map a caller-facing role name onto the role a machine result records."""
+    if not isinstance(role, str):
+        return role
+    return RESULT_ROLE_ALIASES.get(role.strip().lower(), role)
 
 
 def redact(value: Any) -> str:
@@ -361,15 +405,6 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
     directory = _canonical_evidence_dir(directory)
     errors: list[str] = []
     reports: dict[str, dict[str, Any]] = {}
-    valid_statuses = {
-        "PASS",
-        "FAIL",
-        "BLOCKED",
-        "FLAKY",
-        "EXPLORATORY_ONLY",
-        "READY-TO-MERGE",
-        "MERGED",
-    }
     expected_roles = {
         "executor-report.md": "executor",
         "review-report.md": "reviewer",
@@ -419,7 +454,7 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
             errors.append(f"{name} worktree must be non-empty")
         if isinstance(value.get("round"), bool) or not isinstance(value.get("round"), int) or value.get("round", 0) < 1:
             errors.append(f"{name} round must be a positive integer")
-        if value.get("status") not in valid_statuses:
+        if normalize_status(value.get("status"), REPORT_STATUSES) is None:
             errors.append(f"{name} status is invalid")
 
         commands = value.get("commands")
@@ -1195,9 +1230,9 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
         errors.append("schema must be 1")
     if value.get("task_id") != expected_task_id:
         errors.append("task identity mismatch")
-    if value.get("role") != expected_role:
+    if resolve_result_role(value.get("role")) != resolve_result_role(expected_role):
         errors.append("role mismatch")
-    if value.get("status") not in {"pass", "fail", "blocked", "flaky"}:
+    if normalize_status(value.get("status"), RESULT_STATUSES) is None:
         errors.append("invalid status")
     if not isinstance(value.get("acceptance"), list) or not value.get("acceptance"):
         errors.append("acceptance must be a non-empty array")
@@ -1210,7 +1245,7 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
         for field in ("id", "status", "exit_code", "evidence_refs"):
             if field not in item:
                 errors.append(f"acceptance {index} missing field: {field}")
-        if item.get("status") not in {"pass", "fail", "blocked", "flaky", "unverified"}:
+        if normalize_status(item.get("status"), ACCEPTANCE_STATUSES) is None:
             errors.append(f"acceptance {index} has invalid status")
         if not isinstance(item.get("evidence_refs"), list):
             errors.append(f"acceptance {index} evidence_refs must be an array")
@@ -1667,9 +1702,9 @@ def gate_check(
     for name, value in reports.items():
         status = value.get("status")
         if phase == "pre-merge" and name in {"executor-report.md", "review-report.md", "final-check.md"}:
-            if status not in {"PASS", "READY-TO-MERGE"}:
+            if normalize_status(status, PRE_MERGE_REPORT_STATUSES) is None:
                 errors.append(f"{name} status is not mergeable")
-        if phase == "post-merge" and name != "executor-report.md" and status not in {"PASS", "READY-TO-MERGE", "MERGED"}:
+        if phase == "post-merge" and name != "executor-report.md" and normalize_status(status, POST_MERGE_REPORT_STATUSES) is None:
             errors.append(f"{name} status is not post-merge passing")
         for command in value.get("commands", []):
             if not isinstance(command, dict):

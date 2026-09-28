@@ -56,6 +56,25 @@
 
 `evidence_freshness` 用 `evidence_only` 判断 `product_head..HEAD` 的改动是否全部落在证据目录内。`.pipeline/metrics/` 是工作流元数据（见 `references/metrics-contract.md`），始终豁免：`is_metrics_path` 命中的路径不破坏 `evidence_only`，与 `scope_check` 口径一致。否则任何跑过 pipeline-tools 的任务都会因 metrics 事件翻转为 `evidence_only: false` 并误报 `product/test HEAD drifted`。产品代码、测试或证据目录之外的其它改动仍照常触发 `product/test HEAD drifted`。
 
+## 状态词表与读取侧归一
+
+markdown 证据块与机器结果 JSON 各有自己的规范拼写：markdown 侧用大写（`PASS`、`READY-TO-MERGE`、`MERGED`），JSON 侧用小写（`pass`、`fail`、`blocked`、`flaky`）。历史证据里两侧都是各自的大多数派，因此词表本身保持不变，归一发生在**读取侧**。
+
+`pipeline_tools/core.py` 单点定义共享归一表：
+
+- `REPORT_STATUSES` / `PRE_MERGE_REPORT_STATUSES` / `POST_MERGE_REPORT_STATUSES`：markdown 侧规范形式（大写）。
+- `RESULT_STATUSES` / `ACCEPTANCE_STATUSES`：JSON 侧规范形式（小写）。
+- `normalize_status(value, vocabulary)`：大小写与 `-`/`_` 不敏感，把读到的值折叠到该词表内的规范形式；不在词表内的值仍返回 `None`，照旧判 invalid，不会变成「什么都接受」。
+- `LEGACY_STATUS_ALIASES`：唯一的遗留拼写 `pass_with_conditions`（及其大写 `PASS_WITH_CONDITIONS`）一律归一到 `pass`，JSON 侧与 markdown 侧都覆盖。
+- `resolve_result_role(role)`：把调用方角色名映射到机器结果记录的角色名（`final` / `main` → `main-final`）。
+
+两侧读取入口都走同一套归一：
+
+- markdown 侧：`evidence_verify` 与 `gate_check` 的 pre-merge / post-merge 收窄，以及 `reconcile.py` 的直接通过判定。
+- JSON 侧：`verify_structured_result` 的顶层 `status` 与 `acceptance[].status`。
+
+`result verify --role` 接受 `executor`、`reviewer`、`final`；`final` 经 `resolve_result_role` 映射到 `main-final`，因此终审的机器结果也能被校验。
+
 ## 证据等级
 
 1. 领域/算法单元测试；

@@ -347,7 +347,7 @@ def _build_parser() -> argparse.ArgumentParser:
     result_verify = result_sub.add_parser("verify")
     result_verify.add_argument("path", type=Path)
     result_verify.add_argument("--task-id", required=True)
-    result_verify.add_argument("--role", required=True, choices=("executor", "reviewer"))
+    result_verify.add_argument("--role", required=True, choices=("executor", "reviewer", "final"))
     result_verify.add_argument("--run-id")
     freshness = groups.add_parser("freshness", help="evidence freshness checks")
     freshness.add_argument("root", type=Path)

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline_tools.core import evidence_freshness, evidence_verify, gate_check
+from pipeline_tools.core import evidence_freshness, evidence_verify, gate_check, verify_structured_result
 
 
 def report(role, task_id='demo', branch='feature/demo', status='PASS'):
@@ -579,6 +579,98 @@ class EvidenceTests(unittest.TestCase):
                 any('test_ref' in error and 'absent' in error for error in errors),
                 errors,
             )
+
+
+    def _status_report_directory(self, root, statuses):
+        directory = root / '.pipeline' / 'demo'
+        directory.mkdir(parents=True)
+        (directory / 'test.log').write_text('observed test output', encoding='utf-8')
+        roles = {
+            'executor-report.md': 'executor',
+            'review-report.md': 'reviewer',
+            'final-check.md': 'main-final',
+        }
+        for name, role in roles.items():
+            (directory / name).write_text(report(role, status=statuses[role]), encoding='utf-8')
+        return directory
+
+    def _result(self, directory, status, acceptance_status):
+        value = {
+            'schema': 1,
+            'task_id': 'demo',
+            'role': 'executor',
+            'status': status,
+            'acceptance': [
+                {
+                    'id': 'acceptance-test-1',
+                    'status': acceptance_status,
+                    'exit_code': 0,
+                    'evidence_refs': ['test.log'],
+                }
+            ],
+            'unverified': [],
+        }
+        path = directory / 'executor-result.json'
+        path.write_text(json.dumps(value), encoding='utf-8')
+        return path
+
+    def test_gate_accepts_normalized_report_statuses(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._status_report_directory(root, {
+                'executor': 'pass',
+                'reviewer': 'ready-to-merge',
+                'main-final': 'Pass',
+            })
+            self.assertEqual(evidence_verify(directory, 'demo', 'feature/demo'), [])
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertFalse(any('status is invalid' in error for error in errors), errors)
+            self.assertFalse(any('not mergeable' in error for error in errors), errors)
+
+    def test_result_verify_accepts_normalized_result_statuses(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            (directory / 'test.log').write_text('observed test output', encoding='utf-8')
+            path = self._result(directory, 'PASS', 'Pass')
+            self.assertEqual(verify_structured_result(path, 'demo', 'executor'), [])
+
+    def test_result_verify_accepts_legacy_pass_with_conditions(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            (directory / 'test.log').write_text('observed test output', encoding='utf-8')
+            path = self._result(directory, 'pass_with_conditions', 'pass_with_conditions')
+            self.assertEqual(verify_structured_result(path, 'demo', 'executor'), [])
+
+    def test_gate_accepts_legacy_pass_with_conditions_in_report(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._status_report_directory(root, {
+                'executor': 'PASS_WITH_CONDITIONS',
+                'reviewer': 'PASS_WITH_CONDITIONS',
+                'main-final': 'PASS_WITH_CONDITIONS',
+            })
+            self.assertEqual(evidence_verify(directory, 'demo', 'feature/demo'), [])
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertFalse(any('not mergeable' in error for error in errors), errors)
+
+    def test_unknown_report_status_stays_invalid(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._status_report_directory(root, {
+                'executor': 'PASS',
+                'reviewer': 'NOT_A_STATUS',
+                'main-final': 'PASS',
+            })
+            errors = evidence_verify(directory, 'demo', 'feature/demo')
+            self.assertTrue(any('review-report.md status is invalid' in error for error in errors), errors)
+
+    def test_unknown_result_status_stays_invalid(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            (directory / 'test.log').write_text('observed test output', encoding='utf-8')
+            path = self._result(directory, 'NOT_A_STATUS', 'pass')
+            errors = verify_structured_result(path, 'demo', 'executor')
+            self.assertIn('invalid status', errors)
 
 
 class MachineResultGateTests(unittest.TestCase):

@@ -67,6 +67,36 @@ class CLITests(unittest.TestCase):
             verified = run_cli(['evidence', 'verify', str(evidence), '--task-id', 'demo', '--branch', 'feature/demo', '--phase', 'finalized'])
             self.assertEqual(verified.returncode, 0, (verified.stdout, verified.stderr))
 
+    def test_result_verify_cli_accepts_final_role(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            path = root / 'final-result.json'
+            path.write_text(json.dumps({
+                'schema': 1,
+                'task_id': 'demo',
+                'role': 'main-final',
+                'status': 'pass',
+                'acceptance': [{'id': 'acceptance-test-1', 'status': 'pass', 'exit_code': 0, 'evidence_refs': ['test.log']}],
+                'unverified': [],
+            }), encoding='utf-8')
+            verified = run_cli(['result', 'verify', str(path), '--task-id', 'demo', '--role', 'final'])
+            self.assertEqual(verified.returncode, 0, (verified.stdout, verified.stderr))
+
+    def test_result_verify_cli_accepts_reviewer_role(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            path = root / 'reviewer-result.json'
+            path.write_text(json.dumps({
+                'schema': 1,
+                'task_id': 'demo',
+                'role': 'reviewer',
+                'status': 'pass_with_conditions',
+                'acceptance': [{'id': 'acceptance-test-1', 'status': 'pass', 'exit_code': 0, 'evidence_refs': ['test.log']}],
+                'unverified': [],
+            }), encoding='utf-8')
+            verified = run_cli(['result', 'verify', str(path), '--task-id', 'demo', '--role', 'reviewer'])
+            self.assertEqual(verified.returncode, 0, (verified.stdout, verified.stderr))
+
     def test_help(self):
         p = run_cli(['--help'])
         self.assertEqual(p.returncode, 0)

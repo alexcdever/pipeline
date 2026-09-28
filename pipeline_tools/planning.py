@@ -25,7 +25,14 @@ from .contract import (
     load_contract,
     validate_task,
 )
-from .core import RETAINED_EVIDENCE_NAMES
+from .core import (
+    ACCEPTANCE_STATUSES,
+    POST_MERGE_REPORT_STATUSES,
+    RESULT_STATUSES,
+    RETAINED_EVIDENCE_NAMES,
+    normalize_status,
+    resolve_result_role,
+)
 from .layout import (
     LEGACY_PIPELINE_DIR_NAME,
     PIPELINE_DIR_NAME,
@@ -2085,7 +2092,7 @@ def _validate_finalization_report(path: Path, task_id: str, expected_role: str) 
         and isinstance(value.get("round"), int)
         and not isinstance(value.get("round"), bool)
         and value.get("round", 0) >= 1
-        and str(value.get("status", "")).upper() in {"PASS", "READY-TO-MERGE", "MERGED"}
+        and normalize_status(value.get("status"), POST_MERGE_REPORT_STATUSES) is not None
         and isinstance(value.get("commands"), list)
         and bool(value.get("commands"))
         and isinstance(value.get("assertions"), list)
@@ -2105,7 +2112,7 @@ def _validate_finalization_acceptance(value: Any) -> bool:
             return False
         if not isinstance(item.get("id"), str) or not item["id"].strip():
             return False
-        if str(item.get("status", "")).lower() != "pass":
+        if normalize_status(item.get("status"), ACCEPTANCE_STATUSES) != "pass":
             return False
         if isinstance(item.get("exit_code"), bool) or item.get("exit_code") != 0:
             return False
@@ -2121,13 +2128,12 @@ def _validate_result(path: Path, task_id: str, expected_role: str) -> bool:
         return False
     if not isinstance(value, dict):
         return False
-    role = value.get("role")
-    role_ok = role in {expected_role, "main-final"} if expected_role == "main" else role == expected_role
+    role_ok = resolve_result_role(value.get("role")) == resolve_result_role(expected_role)
     return (
         value.get("schema") == 1
         and value.get("task_id") == task_id
         and role_ok
-        and str(value.get("status", "")).lower() == "pass"
+        and normalize_status(value.get("status"), RESULT_STATUSES) == "pass"
         and isinstance(value.get("acceptance"), list)
         and isinstance(value.get("unverified"), list)
     )
