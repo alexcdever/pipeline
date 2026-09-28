@@ -4,8 +4,8 @@
   "role": "executor",
   "status": "pass",
   "identity": {
-    "product_head": "PENDING_EXECUTION_COMMIT",
-    "head": "PENDING_EXECUTION_COMMIT",
+    "product_head": "5bf40a3b0971d0a6dbb1ca07aff864f348660f74",
+    "head": "5bf40a3b0971d0a6dbb1ca07aff864f348660f74",
     "branch": "gate-deletion-semantics-continuation-1",
     "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics-continuation-1"
   },
