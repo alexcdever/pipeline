@@ -24,5 +24,15 @@
     "merge to main",
     "metrics growth across tasks",
     "contract resources path mismatch adjudication pending final review"
+  ],
+  "resolved": [
+    {
+      "id": "acceptance-test-metrics-tracked-not-ignored",
+      "issue": "test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt depended on ambient global git identity",
+      "root_cause": "tests/test_git_checks.py:167 method did not set local user.email/user.name before git commit",
+      "reproduce": "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null -> pre-fix exit 1, post-fix exit 0",
+      "fix": "tests/test_git_checks.py: added local git config user.email/user.name after git init",
+      "status": "fixed"
+    }
   ]
 }

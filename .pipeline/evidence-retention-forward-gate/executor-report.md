@@ -140,3 +140,47 @@ OK
 - 合并到主分支未执行，且按非目标不自动执行。
 - `.pipeline/metrics/` 的长期增长趋势（`assumption-metrics-untracked-count-grows`）未做跨任务验证。
 - 9 个历史进度日志提交仍留在 `origin/main`，未触碰（非目标）。
+
+## 七、追加：测试 7 偶发失败的根因排查与修复
+
+### 根因（已确定性复现）
+
+验收测试 7 `acceptance-test-metrics-tracked-not-ignored` 由两个方法组成，其中方法 B `tests/test_git_checks.py:167` `test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt` 在第 169 行 `git init` 后**未设置本地 git identity**，却在第 174 行以 `check=True` 提交：
+
+```python
+169  p = Path(d); subprocess.run(['git', 'init'], cwd=p, capture_output=True)
+174  subprocess.run(['git', 'commit', '-qm', 'historical metrics'], cwd=p, check=True)
+```
+
+当运行环境缺少可解析的全局 `user.email`/`user.name` 时，`git commit` 退出 128，`check=True` 抛 `CalledProcessError`，unittest 记为 `ERROR`，整个方法失败 → 该条 `FAILED (errors=1)` / exit 1。
+
+同文件内其余 8 处需要 commit 的方法（行 20-21、40-41、118-119、136-137、150-151、193-194、254-255、276-277）都显式设置了本地 identity，**只有该方法遗漏**，属实现缺陷，非环境噪声。
+
+### 复现方式
+
+剥离全局/系统 git 配置后运行该方法（这正是原失败的触发条件）：
+
+```
+GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 \
+  python -m unittest tests.test_git_checks.GitChecks.test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt
+```
+
+- 修复前：`FAILED (errors=1)`，**exit 1**，报 `CalledProcessError: ... 'git', 'commit', '-qm', 'historical metrics' ... returned non-zero exit status 128`
+- 修复后：`OK`，**exit 0**
+
+在 identity 正常的环境下该方法稳定通过（90 次批量 + 25 次单跑全绿），故此前表现为偶发。
+
+### 修复内容
+
+`tests/test_git_checks.py` 在 `git init` 之后、`metrics = p / '.pipeline' / 'metrics'` 之前补两行，与同文件既有约定完全一致：
+
+```python
+subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+```
+
+修复后该方法不再依赖机器全局 git 配置。
+
+### 触发瞬态无法归因
+
+确定性复现的是「全局 identity 缺失 → 该方法必失败」这一模式；但**那次偶发失败发生时全局 identity 为何一时不可用，未能复现，无法归因**。可能与本机并发的全局 git 配置写入、`HOME`/`GIT_CONFIG_GLOBAL` 被临时覆盖或竞争进程有关，均无证据，不猜。修复从根上消除了对该外部状态的依赖，故瞬态成因不再影响该方法。

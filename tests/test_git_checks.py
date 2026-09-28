@@ -167,6 +167,8 @@ class GitChecks(unittest.TestCase):
     def test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d); subprocess.run(['git', 'init'], cwd=p, capture_output=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
             metrics = p / '.pipeline' / 'metrics'
             metrics.mkdir(parents=True)
             (metrics / 'historical.json').write_text('{}')
