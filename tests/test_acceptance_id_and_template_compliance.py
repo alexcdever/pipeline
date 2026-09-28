@@ -238,6 +238,16 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("RETAINED_EVIDENCE_NAMES", metrics)
         self.assertIn("--since", metrics)
 
+    def test_references_acceptance_evidence_documents_deletion_semantics(self):
+        acceptance = (ROOT / "references/acceptance-evidence.md").read_text(encoding="utf-8")
+        self.assertIn("commit_history_check", acceptance)
+        self.assertIn("保留集", acceptance)
+        self.assertIn("`A`", acceptance)
+        self.assertIn("`D`", acceptance)
+        deletion_rule = [line for line in acceptance.splitlines() if "`D`" in line and "保留集" in line]
+        self.assertTrue(deletion_rule, acceptance)
+        self.assertTrue(any("删除" in line for line in deletion_rule), deletion_rule)
+
     def test_validate_task_sheet_script_accepts_schema4_sheet(self):
         from scripts.validate_task_sheet import validate
 

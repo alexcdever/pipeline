@@ -158,8 +158,57 @@ class GitChecks(unittest.TestCase):
             metrics = p / '.pipeline' / 'metrics'; metrics.mkdir(parents=True); (metrics / 'event.json').write_text('{}')
             subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'metrics'], cwd=p, check=True)
             violations = commit_history_check(p, '.pipeline/demo')
-            self.assertEqual(len(violations), 2)
-            self.assertTrue(all('demo' in value for value in violations))
+            self.assertEqual(len(violations), 1, violations)
+            self.assertIn('raw.log', violations[0])
+            self.assertIn(' A ', violations[0])
+
+    def test_delete_non_retained_evidence_is_not_a_violation(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d); subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'src').mkdir(); (p / 'src' / 'app.py').write_text('x')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'base'], cwd=p, check=True)
+            evidence = p / '.pipeline' / 'demo'; evidence.mkdir(parents=True)
+            (evidence / 'scratch.log').write_text('raw')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'scratch evidence'], cwd=p, check=True)
+            baseline = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=p, text=True).strip()
+            (evidence / 'scratch.log').unlink()
+            subprocess.run(['git', 'add', '-A'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'clean scratch'], cwd=p, check=True)
+            self.assertEqual(commit_history_check(p, '.pipeline/demo', since=baseline), [])
+
+    def test_delete_retained_evidence_is_a_violation(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d); subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'src').mkdir(); (p / 'src' / 'app.py').write_text('x')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'base'], cwd=p, check=True)
+            evidence = p / '.pipeline' / 'demo'; evidence.mkdir(parents=True)
+            (evidence / 'executor-report.md').write_text('report')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'retained evidence'], cwd=p, check=True)
+            baseline = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=p, text=True).strip()
+            (evidence / 'executor-report.md').unlink()
+            subprocess.run(['git', 'add', '-A'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'delete retained'], cwd=p, check=True)
+            violations = commit_history_check(p, '.pipeline/demo', since=baseline)
+            self.assertEqual(len(violations), 1, violations)
+            self.assertIn('executor-report.md', violations[0])
+            self.assertIn(' D ', violations[0])
+
+    def test_add_non_retained_evidence_still_violates(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d); subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'src').mkdir(); (p / 'src' / 'app.py').write_text('x')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'base'], cwd=p, check=True)
+            evidence = p / '.pipeline' / 'demo'; evidence.mkdir(parents=True)
+            (evidence / 'raw.log').write_text('raw')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True); subprocess.run(['git', 'commit', '-qm', 'bad evidence'], cwd=p, check=True)
+            violations = commit_history_check(p, '.pipeline/demo')
+            self.assertEqual(len(violations), 1, violations)
+            self.assertIn('raw.log', violations[0])
+            self.assertIn(' A ', violations[0])
 
     def test_commit_history_evidence_path_guard(self):
         self.test_commit_history_check_evidence_path_guard()

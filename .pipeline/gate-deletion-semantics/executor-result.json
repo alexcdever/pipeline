@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "692ee6387ea2e60d53d63680235906096ed90903",
+    "head": "692ee6387ea2e60d53d63680235906096ed90903",
+    "commit": "97c953b6fc796d53a195553ac490d02e0203fc4b",
+    "branch": "gate-deletion-semantics",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-delete-non-retained-evidence-not-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md#三验收测试运行记录"]
+    },
+    {
+      "id": "acceptance-test-delete-retained-evidence-is-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md#三验收测试运行记录"]
+    },
+    {
+      "id": "acceptance-test-add-non-retained-evidence-still-violates",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md#三验收测试运行记录"]
+    },
+    {
+      "id": "acceptance-test-forward-gate-guard-migrated",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md#四迁移的既有测试"]
+    },
+    {
+      "id": "acceptance-test-retention-gate-docs-aligned",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md#三验收测试运行记录"]
+    }
+  ],
+  "full_suite": {
+    "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
+    "ran": 268,
+    "result": "OK",
+    "exit_code": 0
+  },
+  "unverified": [
+    "independent review",
+    "final-check",
+    "merge to main",
+    "post-merge gate"
+  ]
+}

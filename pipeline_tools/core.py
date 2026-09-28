@@ -227,8 +227,11 @@ def commit_history_check(
 ) -> list[str]:
     """Reject commits that touched active evidence, except metrics.
 
-    ``since`` bounds the scan to ``<since>..HEAD``; when it is omitted the whole
-    reachable history is scanned, exactly as before.
+    Additions and modifications violate when the basename is outside the
+    retained set; deletions only violate when they remove a retained file, so
+    cleaning up scratch evidence is not itself drift. ``since`` bounds the scan
+    to ``<since>..HEAD``; when it is omitted the whole reachable history is
+    scanned, exactly as before.
     """
     evidence_root = _normalize_path(evidence_root)
     metrics_root = _normalize_path(metrics_root)
@@ -246,14 +249,19 @@ def commit_history_check(
         if len(parts) < 2:
             continue
         status, paths = parts[0], parts[1:]
+        deleting = status.startswith("D")
         for path in paths:
             normalized = _normalize_path(path)
             in_evidence = normalized == evidence_root or normalized.startswith(evidence_root.rstrip("/") + "/")
             in_metrics = normalized == metrics_root or normalized.startswith(metrics_root.rstrip("/") + "/")
             if is_progress_log_path(normalized):
                 violations.append(f"{current_commit}: {status} {normalized} (progress log must not enter Git)")
-            elif in_evidence and not in_metrics and Path(normalized).name not in RETAINED_EVIDENCE_NAMES:
-                violations.append(f"{current_commit}: {status} {normalized}")
+            elif in_evidence and not in_metrics:
+                # Removing a retained file is drift; removing scratch evidence is
+                # the cleanup the retention contract asks for.
+                retained = Path(normalized).name in RETAINED_EVIDENCE_NAMES
+                if retained == deleting:
+                    violations.append(f"{current_commit}: {status} {normalized}")
     return violations
 
 

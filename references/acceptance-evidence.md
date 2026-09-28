@@ -92,7 +92,7 @@
 
 这 7 个名字是**唯一的保留集**，由 `pipeline_tools/core.py` 的 `RETAINED_EVIDENCE_NAMES` 单点定义，`commit_history_check` 和 `finalize_evidence` 共用同一常量。新增或删减保留文件必须改这一处，不允许在两个模块里各写一份硬编码清单。
 
-`commit_history_check` 对 `.pipeline/<task-id>/` 下的提交逐条扫描：文件名不在保留集内即报违规，`-progress.jsonl` 进度日志额外单独报 `progress log must not enter Git`。`.pipeline/metrics/` 的指标事件始终豁免——它们是可审查的流水线历史，规则见 `references/metrics-contract.md`。
+`commit_history_check` 对 `.pipeline/<task-id>/` 下的提交逐条扫描，并按 Git 状态区分方向：新增（`A`）和修改（`M`）的文件名不在保留集内即报违规；删除（`D`）只在被删文件**属于保留集**时报违规——清理非保留证据是契约要求的动作，删除保留文件才是不可接受的漂移。`-progress.jsonl` 进度日志无论方向都额外单独报 `progress log must not enter Git`。`.pipeline/metrics/` 的指标事件始终豁免——它们是可审查的流水线历史，规则见 `references/metrics-contract.md`。
 
 ## 前向基线闸门
 
