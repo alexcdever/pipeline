@@ -1,6 +1,0 @@
-
-=== result-verify-postcommit ===
-$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/planning-run-lifecycle/reviewer-result.json --task-id planning-run-lifecycle --role reviewer --run-id planning-run-lifecycle
-PASS
-
-EXIT_CODE=0

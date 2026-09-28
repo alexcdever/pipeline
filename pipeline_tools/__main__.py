@@ -203,6 +203,7 @@ def _build_parser() -> argparse.ArgumentParser:
     history.add_argument("root", type=Path)
     history.add_argument("--evidence-root", required=True)
     history.add_argument("--metrics-root", default=".pipeline/metrics")
+    history.add_argument("--since")
 
     command = groups.add_parser("command", help="run a bounded command")
     command_sub = command.add_subparsers(dest="action", required=True)
@@ -1008,7 +1009,7 @@ def _main(argv: list[str] | None = None) -> int:
         if args.group == "task" and args.action in {"preflight", "freeze-check"}:
             return _run_task_lifecycle(args)
         if args.group == "scope" and args.action == "history":
-            bad = commit_history_check(args.root, args.evidence_root, metrics_root=args.metrics_root)
+            bad = commit_history_check(args.root, args.evidence_root, metrics_root=args.metrics_root, since=args.since)
             if args.format == "json":
                 _emit(_envelope("scope.history", "pass" if not bad else "drift", errors=bad, observed=[{"evidence_root": args.evidence_root}]), args)
             else:

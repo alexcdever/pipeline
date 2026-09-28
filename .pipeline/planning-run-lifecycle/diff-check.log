@@ -1,5 +1,0 @@
-
-=== diff-check ===
-$ git diff --check
-
-EXIT_CODE=0

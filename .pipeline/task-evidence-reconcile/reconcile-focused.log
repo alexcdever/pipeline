@@ -1,3 +1,0 @@
-Focused unittest: 5 tests ran, OK.
-Command: PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest -v tests.test_task_evidence_reconcile
-Exit code: 0

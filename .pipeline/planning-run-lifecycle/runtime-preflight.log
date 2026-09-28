@@ -1,6 +1,0 @@
-
-=== runtime-preflight ===
-$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools runtime preflight . --task-id planning-run-lifecycle --run-id planning-run-lifecycle
-{"blocker_class": null, "checks": {"git": "2.55.0", "node": "22.23.2", "pnpm": "10.27.0"}, "errors": [], "status": "pass"}
-
-EXIT_CODE=0

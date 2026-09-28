@@ -307,5 +307,40 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertEqual(validate_task(sheet), [])
 
 
+    def test_generated_schema4_forbidden_paths_do_not_contradict_task_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("outside-task",))
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="outside-run")
+            self.assertEqual(result["status"], "pass", result)
+            sheet = root / "docs" / "tasks" / "outside-task.md"
+            contract = json.loads(
+                sheet.read_text(encoding="utf-8").split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0]
+            )
+            self.assertIn(".pipeline/** existing history", contract["forbidden_paths"])
+            self.assertNotIn(".pipeline/** existing history", contract["allowed_paths"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("evidence-task",))
+            plan["resources"] = [".pipeline/evidence-task/"]
+            plan["tasks"][0]["resources"] = [".pipeline/evidence-task/"]
+            plan["operations"][0]["resources"] = [".pipeline/evidence-task/"]
+            project["resources"] = [{"id": ".pipeline/evidence-task/", "path": ".pipeline/evidence-task/"}]
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="evidence-run")
+            self.assertEqual(result["status"], "pass", result)
+            sheet = root / "docs" / "tasks" / "evidence-task.md"
+            contract = json.loads(
+                sheet.read_text(encoding="utf-8").split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0]
+            )
+            self.assertEqual(contract["allowed_paths"], [".pipeline/evidence-task/"])
+            self.assertNotIn(".pipeline/** existing history", contract["forbidden_paths"])
+            self.assertIn("goal.md", contract["forbidden_paths"])
+            self.assertIn("IDEA.md", contract["forbidden_paths"])
+            self.assertEqual(validate_task(sheet), [])
+
+
 if __name__ == "__main__":
     unittest.main()

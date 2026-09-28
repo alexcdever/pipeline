@@ -1,1 +1,0 @@
-acceptance test 3 passed: planning_to_dispatch facts envelope propagation and conflict blocking.

@@ -20,6 +20,10 @@ from .contract import load_contract, validate_task
 PASS, FAIL, CONFIG, BLOCKED, DRIFT = 0, 1, 2, 3, 4
 REPORT_NAMES = ("executor-report.md", "review-report.md", "final-check.md")
 MACHINE_RESULT_NAMES = ("executor-result.json", "reviewer-result.json", "final-result.json")
+# The only evidence files a successfully finalized task directory keeps. Both
+# the history gate (this module) and evidence finalization (planning) read this
+# one source so the retained set can never drift apart.
+RETAINED_EVIDENCE_NAMES = REPORT_NAMES + MACHINE_RESULT_NAMES + ("finalization.json",)
 CONFIDENCES = {"observed", "derived", "reported"}
 METRIC_RESULTS = {"pass", "passed", "fail", "failed", "blocked", "flaky", "unknown"}
 BLOCKER_CLASSES = {"product", "environment", "permission", "evidence", "dependency", "workflow", None}
@@ -214,11 +218,22 @@ def _status_paths(output: str) -> list[str]:
     return sorted(paths)
 
 
-def commit_history_check(root: Path, evidence_root: str, *, metrics_root: str = ".pipeline/metrics") -> list[str]:
-    """Reject historical commits that touched active evidence, except metrics."""
+def commit_history_check(
+    root: Path,
+    evidence_root: str,
+    *,
+    metrics_root: str = ".pipeline/metrics",
+    since: str | None = None,
+) -> list[str]:
+    """Reject commits that touched active evidence, except metrics.
+
+    ``since`` bounds the scan to ``<since>..HEAD``; when it is omitted the whole
+    reachable history is scanned, exactly as before.
+    """
     evidence_root = _normalize_path(evidence_root)
     metrics_root = _normalize_path(metrics_root)
-    rc, output = git(root, "log", "--all", "--format=%H", "--name-status", redact_output=False)
+    revision_range = f"{since}..HEAD" if since else "--all"
+    rc, output = git(root, "log", revision_range, "--format=%H", "--name-status", redact_output=False)
     if rc:
         return [output or "unable to inspect commit history"]
     violations: list[str] = []
@@ -235,10 +250,9 @@ def commit_history_check(root: Path, evidence_root: str, *, metrics_root: str = 
             normalized = _normalize_path(path)
             in_evidence = normalized == evidence_root or normalized.startswith(evidence_root.rstrip("/") + "/")
             in_metrics = normalized == metrics_root or normalized.startswith(metrics_root.rstrip("/") + "/")
-            retained = {"executor-report.md", "review-report.md", "final-check.md", "executor-result.json", "reviewer-result.json", "final-result.json", "finalization.json"}
             if is_progress_log_path(normalized):
                 violations.append(f"{current_commit}: {status} {normalized} (progress log must not enter Git)")
-            elif in_evidence and not in_metrics and Path(normalized).name not in retained:
+            elif in_evidence and not in_metrics and Path(normalized).name not in RETAINED_EVIDENCE_NAMES:
                 violations.append(f"{current_commit}: {status} {normalized}")
     return violations
 

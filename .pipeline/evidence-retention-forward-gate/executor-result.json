@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "task_id": "evidence-retention-forward-gate",
+  "role": "executor",
+  "status": "pass",
+  "identity": {
+    "product_head": "cdf55e9b9ec7b1322d66790e3d2fee244ffe22fa",
+    "head": "cdf55e9b9ec7b1322d66790e3d2fee244ffe22fa"
+  },
+  "acceptance": [
+    {"id": "acceptance-test-retained-evidence-contract", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-repository-evidence-only-retained", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-since-baseline-ignores-earlier-history", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-default-history-scan-unchanged", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-scope-history-cli-since", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-references-evidence-contract-aligned", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-metrics-tracked-not-ignored", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-task-sheet-script-schema4", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]},
+    {"id": "acceptance-test-forbidden-paths-scope-consistent", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md#三验收测试运行记录"]}
+  ],
+  "unverified": [
+    "independent review",
+    "final-check",
+    "merge to main",
+    "metrics growth across tasks",
+    "contract resources path mismatch adjudication pending final review"
+  ]
+}

@@ -1,6 +1,0 @@
-
-=== freshness-postcommit ===
-$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/planning-run-lifecycle --result .pipeline/planning-run-lifecycle/reviewer-result.json --run-id planning-run-lifecycle
-PASS evidence.freshness
-
-EXIT_CODE=0

@@ -285,6 +285,45 @@ class CLITests(unittest.TestCase):
             p = run_cli(['scope', 'check', str(repo), '--allowed', 'src/**', '--allowed', 'docs/**'])
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
 
+    def test_scope_history_cli_since_passes_baseline_and_reports_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo, _ = make_repo(d)
+            evidence = repo / '.pipeline' / 'demo'
+            evidence.mkdir(parents=True)
+            (evidence / 'historical-raw.log').write_text('raw', encoding='utf-8')
+            subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True, capture_output=True)
+            subprocess.run(['git', '-C', str(repo), 'commit', '-qm', 'historical evidence'],
+                           check=True, capture_output=True)
+            baseline = subprocess.check_output(
+                ['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True
+            ).strip()
+
+            without_since = run_cli(['scope', 'history', str(repo), '--evidence-root', '.pipeline/demo'])
+            self.assertEqual(without_since.returncode, 4, (without_since.stdout, without_since.stderr))
+
+            bounded = run_cli([
+                '--format', 'json', 'scope', 'history', str(repo),
+                '--evidence-root', '.pipeline/demo', '--since', baseline,
+            ])
+            self.assertEqual(bounded.returncode, 0, (bounded.stdout, bounded.stderr))
+            envelope = json.loads(bounded.stdout)
+            self.assertEqual(envelope['command'], 'scope.history')
+            self.assertEqual(envelope['status'], 'pass')
+
+            (evidence / 'fresh-raw.log').write_text('raw', encoding='utf-8')
+            subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True, capture_output=True)
+            subprocess.run(['git', '-C', str(repo), 'commit', '-qm', 'fresh evidence'],
+                           check=True, capture_output=True)
+            drifted = run_cli([
+                '--format', 'json', 'scope', 'history', str(repo),
+                '--evidence-root', '.pipeline/demo', '--since', baseline,
+            ])
+            self.assertEqual(drifted.returncode, 4, (drifted.stdout, drifted.stderr))
+            drift = json.loads(drifted.stdout)
+            self.assertEqual(drift['status'], 'drift')
+            self.assertTrue(any('fresh-raw.log' in error for error in drift['errors']), drift)
+            self.assertFalse(any('historical-raw.log' in error for error in drift['errors']), drift)
+
     def test_metrics_roundtrip_and_purge(self):
         with tempfile.TemporaryDirectory() as d:
             root, _head = make_repo(d)

@@ -1,6 +1,11 @@
 import subprocess, tempfile, unittest
 from pathlib import Path
-from pipeline_tools.core import commit_history_check, freeze_check, scope_check
+from pipeline_tools.core import (
+    RETAINED_EVIDENCE_NAMES,
+    commit_history_check,
+    freeze_check,
+    scope_check,
+)
 
 class GitChecks(unittest.TestCase):
     def test_untracked_forbidden_is_detected(self):
@@ -139,7 +144,7 @@ class GitChecks(unittest.TestCase):
             event.write_text('{"changed":true}')
             self.assertEqual(scope_check(p,['src/**'],[]),[])
 
-    def test_commit_history_evidence_path_guard(self):
+    def test_commit_history_check_evidence_path_guard(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d); subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
             subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
@@ -155,6 +160,9 @@ class GitChecks(unittest.TestCase):
             violations = commit_history_check(p, '.pipeline/demo')
             self.assertEqual(len(violations), 2)
             self.assertTrue(all('demo' in value for value in violations))
+
+    def test_commit_history_evidence_path_guard(self):
+        self.test_commit_history_check_evidence_path_guard()
 
     def test_repository_evidence_hygiene_keeps_only_canonical_metrics_exempt(self):
         with tempfile.TemporaryDirectory() as d:
@@ -231,5 +239,63 @@ class GitChecks(unittest.TestCase):
             )
             second = freeze_check(p, head, task_sheet=sheet)
             self.assertIn('task sheet changed after freeze', second, second)
+
+    def test_commit_history_check_keeps_exactly_the_documented_retained_names(self):
+        documented = {
+            'executor-report.md', 'review-report.md', 'final-check.md',
+            'executor-result.json', 'reviewer-result.json', 'final-result.json',
+            'finalization.json',
+        }
+        self.assertEqual(set(RETAINED_EVIDENCE_NAMES), documented)
+        self.assertEqual(len(RETAINED_EVIDENCE_NAMES), len(set(RETAINED_EVIDENCE_NAMES)))
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'src').mkdir(); (p / 'src' / 'app.py').write_text('x')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=p, check=True)
+            evidence = p / '.pipeline' / 'demo'
+            evidence.mkdir(parents=True)
+            for name in sorted(documented):
+                (evidence / name).write_text('{}' if name.endswith('.json') else 'report')
+            (evidence / 'raw.log').write_text('raw')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'evidence'], cwd=p, check=True)
+            violations = commit_history_check(p, '.pipeline/demo')
+            self.assertEqual(len(violations), 1, violations)
+            self.assertIn('raw.log', violations[0])
+            for name in sorted(documented):
+                self.assertNotIn(name, violations[0])
+
+    def test_scope_history_since_baseline_ignores_earlier_violations(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=p, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=p, check=True)
+            (p / 'src').mkdir(); (p / 'src' / 'app.py').write_text('x')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=p, check=True)
+            evidence = p / '.pipeline' / 'demo'
+            evidence.mkdir(parents=True)
+            (evidence / 'historical-raw.log').write_text('raw')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'historical evidence'], cwd=p, check=True)
+            baseline = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=p, text=True).strip()
+            (p / 'src' / 'app.py').write_text('y')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'clean work'], cwd=p, check=True)
+            self.assertEqual(len(commit_history_check(p, '.pipeline/demo')), 1)
+            self.assertEqual(commit_history_check(p, '.pipeline/demo', since=baseline), [])
+            (evidence / 'new-raw.log').write_text('raw')
+            subprocess.run(['git', 'add', '.'], cwd=p, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'new evidence'], cwd=p, check=True)
+            after = commit_history_check(p, '.pipeline/demo', since=baseline)
+            self.assertEqual(len(after), 1, after)
+            self.assertIn('new-raw.log', after[0])
+            self.assertNotIn('historical-raw.log', after[0])
+
 
 if __name__=='__main__': unittest.main()

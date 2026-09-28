@@ -6,12 +6,14 @@ sections of a task sheet and delegates every ``pipeline-contract`` concern to
 ``pipeline_tools.contract.load_contract``. The real machine gate is
 ``pipeline-tools task validate``.
 
-For schema 3, process records no longer belong in the task sheet: task
+For schema 3 and 4, process records no longer belong in the task sheet: task
 anchors, the acceptance ledger, the execution log and the final result live
 in the task's ``.pipeline/<task-id>/`` progress logs and stage reports, and
-their headings are rejected by this checker. Schema 1 and 2 sheets stay
-read-only compatible: for them those same headings and the merge-commit
-field are still required, exactly as before.
+their headings are rejected by this checker. Schema 4 sheets are generated
+from the task plan and carry only the machine-bound acceptance fields
+(``测试``/``命令``/``证据等级``); the prose fields stay required for schema
+1-3. Schema 1 and 2 sheets stay read-only compatible: for them those same
+headings and the merge-commit field are still required, exactly as before.
 """
 
 from __future__ import annotations
@@ -41,8 +43,8 @@ REQUIRED_HEADINGS = (
     "### 最终结果",
 )
 
-# Schema 3 moved process records out of the task sheet entirely.
-FORBIDDEN_SCHEMA3_HEADINGS = (
+# Schema 3 and 4 moved process records out of the task sheet entirely.
+FORBIDDEN_PROCESS_RECORD_HEADINGS = (
     "## 任务级进度",
     "### 任务锚点",
     "### 验收台账",
@@ -65,6 +67,15 @@ REQUIRED_ACCEPTANCE_FIELDS = (
     "- 验收模式：",
     "- 证据等级：",
     "- 结果要求：",
+)
+
+# Schema 4 sheets are generated from the task plan and carry only the
+# machine-bound acceptance fields; the prose fields stay required for
+# schema 1-3 sheets.
+REQUIRED_SCHEMA4_ACCEPTANCE_FIELDS = (
+    "- 测试：",
+    "- 命令：",
+    "- 证据等级：",
 )
 
 CONTRACT_PLACEHOLDERS = (
@@ -95,10 +106,10 @@ def validate(path: Path) -> list[str]:
 
     schema = contract.get("schema") if isinstance(contract, dict) else None
 
-    if schema == 3:
-        for heading in FORBIDDEN_SCHEMA3_HEADINGS:
+    if schema in (3, 4):
+        for heading in FORBIDDEN_PROCESS_RECORD_HEADINGS:
             if heading in text:
-                errors.append(f"schema 3 task sheet must not contain heading: {heading}")
+                errors.append(f"schema {schema} task sheet must not contain heading: {heading}")
     else:
         for heading in REQUIRED_HEADINGS:
             if heading not in text:
@@ -124,7 +135,10 @@ def validate(path: Path) -> list[str]:
                 else len(text)
             )
             section = text[match.start():end]
-            for field in REQUIRED_ACCEPTANCE_FIELDS:
+            required_fields = (
+                REQUIRED_SCHEMA4_ACCEPTANCE_FIELDS if schema == 4 else REQUIRED_ACCEPTANCE_FIELDS
+            )
+            for field in required_fields:
                 if field not in section:
                     errors.append(f"acceptance test {index} is missing field: {field}")
             if not re.search(

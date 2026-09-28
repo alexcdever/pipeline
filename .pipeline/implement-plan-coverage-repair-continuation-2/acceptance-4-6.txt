@@ -1,1 +1,0 @@
-acceptance tests 4 through 6 passed: CLI facts gate and automatic metrics exit boundaries.

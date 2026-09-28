@@ -25,6 +25,7 @@ from .contract import (
     load_contract,
     validate_task,
 )
+from .core import RETAINED_EVIDENCE_NAMES
 from .layout import (
     LEGACY_PIPELINE_DIR_NAME,
     PIPELINE_DIR_NAME,
@@ -1547,6 +1548,38 @@ def _task_allowed_paths(task: dict[str, Any]) -> list[str]:
     return paths
 
 
+def _task_forbidden_paths(task: dict[str, Any], plan: dict[str, Any]) -> list[str]:
+    """Derive forbidden_paths so they never contradict the task's own scope.
+
+    ``.pipeline/** existing history`` guards the retained evidence history, so a
+    task that already owns resources inside ``.pipeline/`` must not carry it.
+    """
+    forbidden = [GOAL_DOCUMENT_NAME, LEGACY_PLAN_DOCUMENT_NAME, "IDEA.md"]
+    candidates: list[str] = []
+    for value in task.get("resources") or []:
+        if isinstance(value, str):
+            candidates.append(value)
+    operation_ids = task.get("operations") or []
+    for operation in plan.get("operations", []) or []:
+        if not isinstance(operation, dict) or operation.get("id") not in operation_ids:
+            continue
+        for value in operation.get("resources") or []:
+            if isinstance(value, str):
+                candidates.append(value)
+    for entity in plan.get("resources", []) or []:
+        if isinstance(entity, dict):
+            identifier, path = entity.get("id"), entity.get("path")
+            if isinstance(identifier, str) and isinstance(path, str) and identifier in candidates:
+                candidates.append(path)
+    touches_pipeline = any(
+        normalized in {".pipeline"} or normalized.startswith(".pipeline/")
+        for normalized in (candidate.replace("\\", "/") for candidate in candidates)
+    )
+    if not touches_pipeline:
+        forbidden.append(".pipeline/** existing history")
+    return forbidden
+
+
 def _task_sheet_text(
     task: dict[str, Any],
     plan: dict[str, Any],
@@ -1579,7 +1612,7 @@ def _task_sheet_text(
         "project_type": plan.get("project_type", DEFAULT_PROJECT_TYPE),
         "non_goals": non_goals,
         "allowed_paths": _task_allowed_paths(task),
-        "forbidden_paths": [GOAL_DOCUMENT_NAME, LEGACY_PLAN_DOCUMENT_NAME, "IDEA.md", ".pipeline/** existing history"],
+        "forbidden_paths": _task_forbidden_paths(task, plan),
         "requirements": task.get("requirements", []),
         "resources": task.get("resources", []),
         "operations": [
@@ -2112,7 +2145,7 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
         "review-report.md", "reviewer-result.json",
         "final-check.md", "final-result.json",
     ]
-    retained = required + ["finalization.json"]
+    retained = list(RETAINED_EVIDENCE_NAMES)
     if not _evidence_directory_identity(directory, task_id):
         return {"status": "blocked", "missing": ["evidence directory identity"], "finalization": None}
     marker = directory / "finalization.json"

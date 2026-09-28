@@ -85,3 +85,17 @@
 状态：`PASS`、`FAIL`、`BLOCKED`、`FLAKY`、`EXPLORATORY_ONLY`。重试后通过是 `FLAKY` 不是干净 `PASS`；缺真实 API 是 `BLOCKED`，不是降级断言后的 `PASS`。
 
 证据最终化必须先将待清理 raw evidence 移入同目录临时暂存区，完成清理并移除暂存区后，才可原子写入 `finalization.json`。任何清理异常都必须回滚暂存移动、删除临时 marker、返回 `blocked`，并保留 raw evidence 的路径与字节；相同故障重试不得留下 marker，故障解除后重试才可完成且重复成功幂等。
+
+## 保留证据集
+
+一个成功完成并已最终化的任务目录，只保留 7 个文件：`executor-report.md`、`review-report.md`、`final-check.md`、`executor-result.json`、`reviewer-result.json`、`final-result.json`、`finalization.json`。其余过程产物（原始命令输出、acceptance 日志、握手 JSON、探针脚本等）在最终化时清理，不留在任务目录里。
+
+这 7 个名字是**唯一的保留集**，由 `pipeline_tools/core.py` 的 `RETAINED_EVIDENCE_NAMES` 单点定义，`commit_history_check` 和 `finalize_evidence` 共用同一常量。新增或删减保留文件必须改这一处，不允许在两个模块里各写一份硬编码清单。
+
+`commit_history_check` 对 `.pipeline/<task-id>/` 下的提交逐条扫描：文件名不在保留集内即报违规，`-progress.jsonl` 进度日志额外单独报 `progress log must not enter Git`。`.pipeline/metrics/` 的指标事件始终豁免——它们是可审查的流水线历史，规则见 `references/metrics-contract.md`。
+
+## 前向基线闸门
+
+历史里已存在的漂移证据不重写 Git 历史。`scope history` 子命令默认扫描全部可达历史（等价 `--all`），可选用 `--since <commit>` 把扫描范围收窄到 `<since>..HEAD`：基线之前的违规不再报告，基线之后新引入的违规照常报告。
+
+`--since` 是**前向闸门**，不是豁免：省略时行为与旧版本完全一致，逐条扫描全部历史。`pipeline-tools scope history <root> --evidence-root <path> [--since <commit>]`；存在违规时退出码 4（`DRIFT`），干净时退出码 0（`PASS`）。

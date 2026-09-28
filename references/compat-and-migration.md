@@ -13,12 +13,13 @@
 
 - 已存在的 `.pipeline/` 目录结构完全兼容新版本
 - 旧版握手 JSON 文件（如果存在）不影响新版本工作流，主代理使用环境检查列表机制
-- 已保存的证据文件（包括成功时的原始输出）可保留作为历史记录，新任务按新规则执行
+- 成功任务目录只保留 7 个最终化文件（`RETAINED_EVIDENCE_NAMES`），其余过程产物由 `finalize_evidence` 清理；历史里遗留的漂移证据不重写 Git 历史，改用 `scope history --since <commit>` 前向基线闸门约束新提交，规则见 `references/acceptance-evidence.md`
 
 ### 升级建议
 
 - 更新技能版本后，主代理在下次任务启动时自动使用新的环境检查列表机制
 - 不需要手动清理旧版握手 JSON 文件或证据文件，但可选择清理成功任务的原始输出以节省空间
+- 历史提交里的旧证据保留在原处；新提交按保留集和前向基线闸门审查，不追溯重写
 - `.pipeline/metrics/` 是指标历史，必须纳入 Git 追踪，不应加入项目 `.gitignore`
 - 角色进度日志 `.pipeline/*/*-progress.jsonl` 是过程记录，由项目根目录 `.gitignore` 规则排除，不得进入 Git
 
@@ -29,11 +30,11 @@
 主代理在任务启动的「恢复核对」阶段执行以下优化操作（除注明外均为主代理职责，不是 `pipeline_tools` 的自动行为）：
 
 - **清理已合并的 worktree**：任务成功合并后由主代理删除该任务的 worktree（包括其中的原始输出）；`pipeline_tools` 只创建和校验 worktree，没有自动清理命令
-- **应用新证据策略**：新任务执行时按"失败保存、成功不保存"规则处理证据文件，由 `pipeline-tools planning evidence-finalize` 机械执行
+- **应用新证据策略**：新任务执行时按"失败保存、成功不保存"规则处理证据文件，由 `pipeline-tools planning evidence-finalize` 机械执行；成功任务的保留集见 `references/acceptance-evidence.md`
 - **环境检查升级**：主代理在派发子代理前使用模板化环境检查列表，替代旧版握手机制，见 `SKILL.md` 的「机械工具与项目级反馈」一节
 - **目录结构校验**：主代理确认 `.pipeline/` 目录结构符合当前版本要求；旧 `.workflow/` 目录由 `pipeline_tools` 首次访问时自动迁移，规则见上文
 
-`.pipeline/` 的内容分工：`.pipeline/metrics/` 纳入 Git 追踪；`.pipeline/<task-id>/` 存放阶段报告与机器结果；角色进度日志 `.pipeline/*/*-progress.jsonl` 由项目 `.gitignore` 排除，不得进入 Git。
+`.pipeline/` 的内容分工：`.pipeline/metrics/` 纳入 Git 追踪；`.pipeline/<task-id>/` 存放阶段报告与机器结果，成功任务最终化后只保留 7 个保留文件；角色进度日志 `.pipeline/*/*-progress.jsonl` 由项目 `.gitignore` 排除，不得进入 Git。
 
 提交顺序遵循 `SKILL.md`「标准生命周期」的合并复验一步：在 worktree 中提交实现代码和报告文档，再合并到主分支，合并成功后清理 worktree。
 

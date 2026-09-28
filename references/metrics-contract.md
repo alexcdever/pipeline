@@ -113,6 +113,12 @@
 
 两者不要混：把进度日志提交进 Git 是违规，把 `.pipeline/metrics/` 加进 `.gitignore` 同样是违规。
 
+## 保留集与前向基线
+
+`commit_history_check` 只承认 7 个保留文件名：`executor-report.md`、`review-report.md`、`final-check.md`、`executor-result.json`、`reviewer-result.json`、`final-result.json`、`finalization.json`。它们由 `pipeline_tools/core.py` 的 `RETAINED_EVIDENCE_NAMES` 单点定义，`.pipeline/metrics/` 下的指标事件独立豁免。
+
+历史里已经存在的漂移证据不重写 Git 历史；`pipeline-tools scope history` 支持可选 `--since <commit>`，把扫描范围收窄到 `<since>..HEAD`。省略 `--since` 时行为与旧版本一致，扫描全部可达历史；`--since` 是前向基线，不是豁免。详细规则见 `references/acceptance-evidence.md` 的「保留证据集」和「前向基线闸门」两节。
+
 ## 反馈边界
 
 统计只能生成后续优化问题，不得自动：

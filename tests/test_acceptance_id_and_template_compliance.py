@@ -201,6 +201,66 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         for heading in ("## 任务级进度", "### 任务锚点", "### 验收台账", "### 执行记录", "### 最终结果"):
             self.assertNotIn(heading, text, heading)
 
+    def test_tracked_pipeline_evidence_contains_only_retained_names(self):
+        from pipeline_tools.core import RETAINED_EVIDENCE_NAMES
+
+        retained = set(RETAINED_EVIDENCE_NAMES)
+        completed = subprocess.run(
+            ["git", "ls-files", ".pipeline"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        tracked = [
+            line.strip()
+            for line in completed.stdout.splitlines()
+            if line.strip() and not line.strip().startswith(".pipeline/metrics/")
+        ]
+        self.assertTrue(tracked)
+        offenders = [path for path in tracked if Path(path).name not in retained]
+        self.assertEqual(offenders, [], offenders)
+        progress_logs = [path for path in tracked if path.endswith("-progress.jsonl")]
+        self.assertEqual(progress_logs, [], progress_logs)
+
+    def test_references_evidence_retention_contract_matches_forward_gate(self):
+        from pipeline_tools.core import RETAINED_EVIDENCE_NAMES
+
+        acceptance = (ROOT / "references/acceptance-evidence.md").read_text(encoding="utf-8")
+        metrics = (ROOT / "references/metrics-contract.md").read_text(encoding="utf-8")
+        for name in RETAINED_EVIDENCE_NAMES:
+            self.assertIn(name, acceptance, name)
+        self.assertIn("RETAINED_EVIDENCE_NAMES", acceptance)
+        self.assertIn("--since", acceptance)
+        self.assertIn("scope history", acceptance)
+        for name in ("executor-report.md", "final-result.json", "finalization.json"):
+            self.assertIn(name, metrics, name)
+        self.assertIn("RETAINED_EVIDENCE_NAMES", metrics)
+        self.assertIn("--since", metrics)
+
+    def test_validate_task_sheet_script_accepts_schema4_sheet(self):
+        from scripts.validate_task_sheet import validate
+
+        sheet = ROOT / "docs/tasks/evidence-retention-forward-gate.md"
+        text = sheet.read_text(encoding="utf-8")
+        self.assertIn('"schema": 4', text)
+        self.assertEqual(validate(sheet), [])
+
+        poisoned = self._write_temp(text + "\n## 任务级进度\n\n### 执行记录\n")
+        try:
+            errors = validate(poisoned)
+        finally:
+            poisoned.unlink(missing_ok=True)
+        self.assertTrue(any("任务级进度" in error for error in errors), errors)
+
+        contract = json.loads(
+            re.search(r"```pipeline-contract\n(.*?)\n```", text, re.DOTALL).group(1)
+        )
+        self.assertNotIn("- 触发：", text)
+        self.assertNotIn("- 断言：", text)
+        for test in contract["acceptance_tests"]:
+            self.assertIn(test["id"], text)
+
 
 if __name__ == "__main__":
     unittest.main()

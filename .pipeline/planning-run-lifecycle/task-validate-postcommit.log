@@ -1,6 +1,0 @@
-
-=== task-validate-postcommit ===
-$ env PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools task validate docs/tasks/planning-run-lifecycle.md
-PASS
-
-EXIT_CODE=0

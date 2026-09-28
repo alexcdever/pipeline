@@ -1,1 +1,0 @@
-acceptance tests 1 and 2 passed: validate_task_plan fail-closed top-level acceptance coverage.

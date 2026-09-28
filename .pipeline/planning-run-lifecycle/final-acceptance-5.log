@@ -1,6 +1,0 @@
-test_successful_finalize_cannot_bypass_generated_phase (tests.test_planning_lifecycle.PlanningLifecycleTests.test_successful_finalize_cannot_bypass_generated_phase) ... ok
-
-----------------------------------------------------------------------
-Ran 1 test in 2.944s
-
-OK
