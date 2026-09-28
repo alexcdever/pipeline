@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "task_id": "test-ref-narrowing-followup",
+  "role": "reviewer",
+  "round": 1,
+  "status": "pass",
+  "worktree": ".worktrees/test-ref-narrowing-followup",
+  "branch": "test-ref-narrowing-followup",
+  "identity": {
+    "product_head": "5a41b87b1749e08f0a2e3911786192518503314b",
+    "head": "04dc81b010b0679d7dfd4109f624d2c4cdda0e73",
+    "basis": "product_head is the product-code commit (5a41b87); head is the review-time HEAD (04dc81b, the executor evidence commit). The executor-result recorded head=5a41b87 because it was written before its own evidence commit; product_head semantics are unaffected since 04dc81b only adds evidence files."
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-planner-rejects-out-of-scope-test-ref",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-planner-rejects-unowned-test-ref-in-shared-root",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-cli-generate-task-sheets-lifecycle-passes",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-cli-contract-consistency-schema2-passes",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-dispatch-valid-run-reaches-identity-verified-dispatch",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-dispatch-conflict-fails-closed",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-contract-consistency-matching-plan-and-schema2-pass",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-strict-test-ref-placement-documented",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    }
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "conditions": [
+    "C1: executor-report.md section 11.2 records the pre-merge gate output as missing executor-report.md/executor-result.json; that was a stale snapshot taken before the evidence files landed. Independent re-run shows only review-report.md, final-check.md, reviewer-result.json and final-result.json missing. Non-blocking, recommend annotating in final check.",
+    "C2: executor-result.json identity.head records 5a41b87 while HEAD at review is 04dc81b; product_head=5a41b87 remains the correct product baseline. Non-blocking.",
+    "C3: _shares_test_root (pipeline_tools/planning.py:669) is now dead code; the task explicitly preserves it unchanged, so cleanup is out of scope. Non-blocking.",
+    "C4: executor-result.json uses upper-case status values ('READY-TO-MERGE'/'PASS'), which result verify rejects (it requires lower-case pass/fail/blocked/flaky). The executor never ran result verify on its own result. The reviewer-result.json follows the lower-case machine-result convention; the markdown pipeline-evidence block keeps upper-case because gate pre-merge requires PASS/READY-TO-MERGE there. Non-blocking for this task's product code, but the executor evidence is not result-verify clean."
+  ],
+  "unverified": [
+    "unknown-historic-41-count: historical 41/22 vs 37/18 discrepancy could not be independently reproduced; in-process intermediate measurement is 22 narrowing failures, consistent with 22",
+    "final check (final-result.json)",
+    "merge to main"
+  ],
+  "recommendation": "ready_for_final_check"
+}
