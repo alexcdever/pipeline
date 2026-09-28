@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics",
+  "role": "reviewer",
+  "status": "pass",
+  "identity": {
+    "product_head": "692ee6387ea2e60d53d63680235906096ed90903",
+    "head": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
+    "reviewed_commit": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
+    "branch": "gate-deletion-semantics",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-delete-non-retained-evidence-not-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md#f-5-条-acceptance-独立验证"]
+    },
+    {
+      "id": "acceptance-test-delete-retained-evidence-is-a-violation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md#f-5-条-acceptance-独立验证"]
+    },
+    {
+      "id": "acceptance-test-add-non-retained-evidence-still-violates",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md#f-5-条-acceptance-独立验证"]
+    },
+    {
+      "id": "acceptance-test-forward-gate-guard-migrated",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md#d-迁移的既有测试"]
+    },
+    {
+      "id": "acceptance-test-retention-gate-docs-aligned",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md#e-四条新测试"]
+    }
+  ],
+  "full_suite": {
+    "command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests",
+    "ran": 268,
+    "result": "OK",
+    "exit_code": 0,
+    "duration_s": 212.499
+  },
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "conditions": [
+    "executor-result.json identity.head/commit point at the pre-amend 692ee63/97c953b instead of the final 12e302c; main agent to adjudicate whether regeneration is required",
+    "references/metrics-contract.md:118 still omits the deletion-direction semantics; recommend a separate documentation-alignment task"
+  ],
+  "unverified": [
+    "final-check by main agent",
+    "merge to main",
+    "post-merge gate",
+    "executor-result.json freshness after amend"
+  ]
+}
