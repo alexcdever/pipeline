@@ -347,6 +347,48 @@ from .core import POST_MERGE_REPORT_STATUSES, evidence_freshness, evidence_readi
 - 未验证 `resolve_result_role` 对 `main` 别名在真实终审链路上的端到端行为（仅有 `planning.py` 静态调用点证据）。
 - 未在删除重复方法后重跑**契约要求的那 6 条**之外的全量计数比对之外的项；本条已由 `Ran 294 tests ... OK` 覆盖。
 
+## 十四、product_head 裁决修正记录（2026-09-29）
+
+### 事实
+
+终审实测 `freshness` 为 `blocked`，`errors: ["product/test HEAD drifted"]`、`observed.evidence_only: false`、退出码 3。
+
+根因：`.pipeline/status-vocabulary-unification/executor-result.json` 的 `identity.product_head` 记的是 `92ef248`（原始执行提交）。但裁决后的修正提交 `548a1ae` 也改了 `tests/test_acceptance_id_and_template_compliance.py`（非证据路径），使「最后一个改非证据路径的提交」前移到 `548a1ae`，于是 `product_head..HEAD` 包含了 `tests/` 的改动 → `evidence_only: false` → 判漂移。
+
+### 性质
+
+这是**修正动作的合法副作用，不是产品缺陷**。`product_head` 的语义由 `pipeline_tools/core.py:1468` 的 `evidence_freshness` 定义：比较 `product_head..HEAD` 的改动路径，要求全部落在证据目录内（`core.py:1511-1516` 的 `evidence_only` 判定）。该值随修正前移是正确的，需要更新的是记录，不是实现。
+
+### 授权来源
+
+主代理（用户明确裁决「修正 product_head」）。
+
+### 改了什么
+
+只改 `identity.product_head` 一个字段；`status`（保持小写 `pass`）、`acceptance` 条目集合、`commands`/`assertions`/`unverified`/`evidence_refs`、`identity` 的其他字段（`head`、`branch`、`worktree`、`baseline`、`convention`）一律未动。
+
+| 文件 | 改前 product_head | 改后 product_head |
+|---|---|---|
+| `executor-result.json` | `92ef2489ed5fb89862652c0d0767b0bcb332b3b0` | `548a1ae8ba91494b51b0f53c8aec61485a580d60` |
+| `reviewer-result.json` | `92ef2489ed5fb89862652c0d0767b0bcb332b3b0` | `548a1ae8ba91494b51b0f53c8aec61485a580d60` |
+| `final-result.json` | 已是 `548a1ae8ba91494b51b0f53c8aec61485a580d60` | 未改动 |
+
+依据（实测，非转述）：`git log --format='%H %s'` + `git show --name-only` 确认改过非证据路径的提交只有 `92ef248`（`pipeline_tools/__main__.py`、`core.py`、`planning.py`、`reconcile.py`、`references/acceptance-evidence.md`、`tests/test_acceptance_id_and_template_compliance.py`、`test_cli.py`、`test_evidence.py`）与 `548a1ae`（`tests/test_acceptance_id_and_template_compliance.py`）；`0b5c8fb`、`7bcebcc`、`2cd8d15` 只改证据目录与 metrics。故最后一个改非证据路径的提交是 `548a1ae`。
+
+`identity.head` 未改：它记录「本份证据生成时的 HEAD」，`executor-result.json` 的 `92ef248`、`reviewer-result.json` 的 `0b5c8fb` 在各自生成时刻都是真实的。
+
+### 未改
+
+三份历史产物（`.pipeline/gate-deletion-semantics/final-result.json`、`.pipeline/evidence-retention-forward-gate/reviewer-result.json`、`.pipeline/evidence-retention-forward-gate/review-report.md`）一律未动，哈希与基线一致。
+
+### 复核
+
+三份 `freshness` 全部 `pass`、`errors: []`、`observed.evidence_only: true`；`product_head..HEAD` 的 `changed_paths` 只剩 `.pipeline/status-vocabulary-unification/final-check.md`、`final-result.json` 与两个 metrics 事件。三份 `result verify` 全 `pass`；全量测试 `Ran 294 tests ... OK`。
+
+### 遗留
+
+`gate` 与 `freshness` 是两个独立闸门——`gate_check` 不调用 `evidence_freshness`（`reconcile.py:83` 单独调用）。这一事实尚未写进 `references/`，值得后续单独处理：否则「gate 的判定」与「freshness 的判定」会被反复误读为互相矛盾。
+
 ```pipeline-evidence
 {
   "schema": 1,

@@ -4,7 +4,7 @@
   "role": "executor",
   "status": "pass",
   "identity": {
-    "product_head": "92ef2489ed5fb89862652c0d0767b0bcb332b3b0",
+    "product_head": "548a1ae8ba91494b51b0f53c8aec61485a580d60",
     "head": "92ef2489ed5fb89862652c0d0767b0bcb332b3b0",
     "branch": "status-vocabulary-unification",
     "worktree": "D:/Projects/Skills/pipeline/.worktrees/status-vocabulary-unification",
