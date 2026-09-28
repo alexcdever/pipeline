@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "task_id": "evidence-retention-forward-gate",
+  "role": "final",
+  "status": "pass",
+  "identity": {
+    "product_head": "cdf55e9b9ec7b1322d66790e3d2fee244ffe22fa",
+    "head": "e58ff37898640516de2969499a87cbc4cff19a08"
+  },
+  "acceptance": [
+    {"id": "acceptance-test-retained-evidence-contract", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "executor-report.md#三验收测试运行记录", "review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-repository-evidence-only-retained", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "executor-report.md#三验收测试运行记录", "review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-since-baseline-ignores-earlier-history", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#四--since-语义问题诊断重要", "final-check.md#五对执行与审查两阶段的总体确认", "review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-default-history-scan-unchanged", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-scope-history-cli-since", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-references-evidence-contract-aligned", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "executor-report.md#三验收测试运行记录", "review-report.md#二逐条验收测试的独立验证"]},
+    {"id": "acceptance-test-metrics-tracked-not-ignored", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#裁定-3未跟踪-metrics-文件--提交", "executor-report.md#七追加测试-7-偶发失败的根因排查与修复", "review-report.md#g-测试-7-修复"]},
+    {"id": "acceptance-test-task-sheet-script-schema4", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "review-report.md#e-scriptsvalidate_task_sheetpy-的-schema-4-支持"]},
+    {"id": "acceptance-test-forbidden-paths-scope-consistent", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md#五对执行与审查两阶段的总体确认", "review-report.md#f-forbidden_paths-条件化"]}
+  ],
+  "verdict": "ACCEPT",
+  "adjudications": [
+    {
+      "id": "out-of-scope-deletion-11-files",
+      "decision": "ACCEPT_NO_ROLLBACK",
+      "issue": "87 个删除中 11 个来自 .pipeline/pipeline-tools-v1-continuation-1/，不在 op-delete-drifted-evidence.resources 与 allowed_paths 内（两者列的是 ...-continuation-1-repair-continuation-1/，前缀互不覆盖）",
+      "reason": "契约目录内确无非保留文件可删，按字面执行会使需求目标落空；被删 11 个是真实漂移过程产物，非用户代码、非冻结文件、非 .pipeline/metrics/；内容仍存于 cdf55e9 历史可恢复；执行者已在 executor-report.md 第四节显式留痕。",
+      "verification": "本轮实测 --since cdf55e9 输出 87 条全为 D 状态，其中该目录 11 条已逐一列举计数复核；87 个删除中保留名零命中、metrics 删除数为 0。"
+    },
+    {
+      "id": "delegation-baseline-expectation-corrected",
+      "decision": "ACCEPT_REVIEWER_CORRECTION",
+      "issue": "主代理委派预期 '--since cdf55e9 应 pass'，与契约语义不符",
+      "reason": "契约定义 --since 扫描 <commit>..HEAD，而 d238ba2 正是清理提交、cdf55e9 是其父，cdf55e9..HEAD 必然包含清理提交自身的删除，报违规是正确行为。--since d238ba2 实测 exit 0 PASS，证明前向闸门按设计工作。属委派方基线选取错误，非执行者缺陷、非产品缺陷。",
+      "verification": "--since cdf55e9 -> exit 4；--since d238ba2 -> exit 0 PASS；默认全量 -> exit 4。"
+    },
+    {
+      "id": "untracked-metrics-event-commit",
+      "decision": "COMMIT_NOT_DELETE_NOT_IGNORE",
+      "issue": "工作树有一个未跟踪文件 .pipeline/metrics/1790562083290856600-dbba344fab424851b68bf7e2c0aae892.json（审查者跑测试时产生）",
+      "reason": "按 references/metrics-contract.md，.pipeline/metrics/ 有意纳入 Git 追踪；该文件记录真实观察的 command_run 事件，应提交。不删除、不加 .gitignore。",
+      "verification": "文件内容经读取确认 schema 1、event command_run、result fail、head c27b7c7a2a04；本轮 git add 后随终审证据一并提交。"
+    }
+  ],
+  "observations": [
+    {
+      "id": "since-gate-cannot-distinguish-deletion-from-addition",
+      "kind": "design-defect",
+      "location": "pipeline_tools/core.py:245-256",
+      "finding": "commit_history_check 逐行解析 --name-status 后取出 status，但第 249-256 行判定完全不使用 status；D/A/M 走同一路径。删除一个非保留证据文件（朝正确方向的清理动作）被与新增违规文件判为同一结果。",
+      "impact": "本任务 op-delete-drifted-evidence 的全部目标就是删除漂移证据，删除完成后 --since cdf55e9 反报 87 条违规，闸门对『执行其自身需求的提交』不具备可通行性。",
+      "not_blocking": "不影响 9 条验收测试任何一条，不影响前向闸门在正确基线下的工作能力（--since d238ba2 exit 0）。",
+      "recommendation": "建议另开任务，为判定加入方向性：D 状态仅当被删文件属于保留集时判违规，A/M 保持现有判定。本轮不修改代码（未授权，且超出冻结契约 op-add-since-baseline-gate 的范围）。"
+    },
+    {
+      "id": "planning-side-resources-path-typo",
+      "kind": "planning-defect",
+      "location": "docs/tasks/evidence-retention-forward-gate.md:32,59,77",
+      "finding": "冻结契约 resources 与 allowed_paths 把漂移证据目录写成 .pipeline/pipeline-tools-v1-continuation-1-repair-continuation-1/，真实漂移产物在 .pipeline/pipeline-tools-v1-continuation-1/。",
+      "attribution": "规划阶段路径笔误，非执行者过错。执行者面对『按字面执行需求落空』与『按真实集合执行超出 allowed_paths』两难，选择后者并如实留痕。",
+      "recommendation": "建议另开 derived 任务，使 op-delete-drifted-evidence.resources 的枚举来自实际扫描到的漂移文件集合，而非硬编码目录名。不在本任务范围内。"
+    },
+    {
+      "id": "lifecycle-status-evidence-arg-usage",
+      "kind": "operator-note",
+      "finding": "以 --evidence .pipeline 调用 lifecycle status 返回 phase=executor 且三份报告均 false；改用 --evidence .pipeline/evidence-retention-forward-gate（任务证据目录本身）后报告均为 true、phase 正确跃迁到 final-check。",
+      "conclusion": "参数用法错误（把证据根传成任务目录的父目录），非产品缺陷。真实用法经 --help 确认为 lifecycle status <root> --task-id <id> --evidence <evidence-dir>。"
+    }
+  ],
+  "unverified": [
+    "merge to main（goal.md:26 非目标，合并是人类开发者动作，本轮不执行、不 push、不 checkout main、不删 worktree）",
+    "adjudication on whether to open a separate task for the --since deletion-direction semantics",
+    "adjudication on whether to open a derived task for the planning-side resources path typo",
+    "metrics growth across tasks（assumption-metrics-untracked-count-grows）",
+    "transient cause of the earlier flaky run（执行者已声明无法归因，本轮亦无法归因，不猜）"
+  ],
+  "evidence_refs": [
+    ".pipeline/evidence-retention-forward-gate/final-check.md",
+    ".pipeline/evidence-retention-forward-gate/final-result.json",
+    ".pipeline/evidence-retention-forward-gate/executor-report.md",
+    ".pipeline/evidence-retention-forward-gate/review-report.md"
+  ]
+}
