@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "task_id": "status-vocabulary-unification",
+  "role": "main-final",
+  "status": "pass",
+  "identity": {
+    "product_head": "548a1ae8ba91494b51b0f53c8aec61485a580d60",
+    "head": "548a1ae8ba91494b51b0f53c8aec61485a580d60",
+    "branch": "status-vocabulary-unification",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/status-vocabulary-unification",
+    "baseline": "82d4827",
+    "convention": "product_head = the last commit that changed non-evidence files. The authorised correction commit 548a1ae touched tests/test_acceptance_id_and_template_compliance.py, so the accurate product_head for this final round is 548a1ae, not the 92ef248 recorded earlier in executor-result.json. head names the HEAD this evidence was generated against, before the final evidence commit itself."
+  },
+  "acceptance": [
+    {"id": "acceptance-test-markdown-report-status-normalized", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-machine-result-status-normalized", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-result-verify-accepts-final-role", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-legacy-status-values-normalized", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-legacy-report-status-value-normalized", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-status-vocabulary-documented", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "adjudications": [
+    "Correction verified: the duplicated test method test_references_document_one_status_vocabulary is gone (grep -c = 1), no duplicate method names remain, and the preserved definition carries the stronger extra assertIn(\"pass\", reference).",
+    "Full-suite count unchanged at Ran 294 tests, OK: a shadowed same-name method was always collected once, so removing the duplicate could not move the count.",
+    "Executor misstatement 1 (corrected): the claim of 9 new tests was really 8 independent plus 1 duplicated definition.",
+    "Executor misstatement 2 (corrected): the report claimed 6 missing gate artifacts; the true final-state count is 2 (final-check.md and final-result.json), and the reviewer measured 4 at review time. This is the third occurrence of stale gate output being recorded as a terminal result; judged an evidence-timing/recording-habit problem, not fabrication.",
+    "Honest self-correction (different in kind): the executor briefly changed 9/294 to 8/293, then recognised the reasoning error and reverted to 9/294, documenting the mistaken correction in the report. This is proactive and transparent and is credited.",
+    "Gate not relaxed: unknown statuses are still rejected in the machine-result JSON (top level and acceptance) and in the markdown report block; the vocabulary constants match the baseline literal sets member for member; executor and reviewer were not widened.",
+    "Deviation from dispatch prediction: freshness returns blocked (product/test HEAD drifted), because the authorised correction commit 548a1ae moved product_head off the recorded 92ef248. No historical artifact was modified to hide this."
+  ],
+  "unverified": [
+    "independent review is complete (review-report.md / reviewer-result.json at commit 7bcebcc) but its full internal reasoning was not re-derived by this final round",
+    "merge to main, push, and worktree deletion (human-only actions)",
+    "freshness reaching pass (measured blocked; human adjudication of the product_head drift is required)",
+    "the main alias of resolve_result_role on a real final-check chain",
+    "cross-task metrics growth trend"
+  ],
+  "recommendation": "ready_for_human_merge_decision"
+}
