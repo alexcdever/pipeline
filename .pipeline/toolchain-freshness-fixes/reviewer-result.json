@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "task_id": "toolchain-freshness-fixes",
+  "role": "reviewer",
+  "status": "pass",
+  "identity": {
+    "product_head": "6994f7ba20375e5c7bc8f5dc2da9ed0b308690a0",
+    "head": "b18faa4843027e8e0804a62f4664cb2c34895b90"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-acceptance-evidence-refs-resolve-from-evidence-directory",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-acceptance-evidence-refs-still-reject-absolute-and-traversal",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-metrics-commit-keeps-evidence-only",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-product-drift-still-blocks",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    },
+    {
+      "id": "acceptance-test-freshness-docs-aligned",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["review-report.md"]
+    }
+  ],
+  "verdict": "ACCEPT WITH CONDITIONS",
+  "conditions": [
+    "Open a derived planning task to fix the frozen contract's acceptance_tests[4].test_ref/command_ref, which points at tests/test_acceptance_id_and_template_compliance.py outside allowed_paths; no mechanical gate compares test_ref to the real test location, so the mismatch cannot be caught automatically."
+  ],
+  "unverified": [
+    "the frozen contract's test_ref for acceptance test 5 points outside allowed_paths; resolving it requires a derived planning task, not this round",
+    "main-agent final check and finalization are not performed by this reviewer round"
+  ]
+}
