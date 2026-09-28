@@ -145,6 +145,35 @@
 2. **迁移与实现必须同提交**。先改判定再改测试会造成中间态红；本次在同一提交内完成，并额外断言 ` A ` 方向以区分新旧行为。
 3. **`--since` 基线不得改动**。`revision_range` 与 `since` 参数完全未触碰，仅改内层方向判定。
 
+## 九、证据块解析与预期非零 exit_code 的裁决（本轮追加）
+
+### 为何改
+
+- 上一提交（`116b30c`）为让 `gate pre-merge` 通过，代价是删除了 `commands[]` 中 4 条记录（review 的默认全量 exit 4、`--since 692ee63` exit 0；final 的默认全量 exit 4、`freshness` exit 3）。其中 1 条 exit 0 属无必要删除。
+- 根因有二：`pipeline_tools/core.py` 的 `_read_machine_evidence` 要求开标记之后全文**只能有一行** ` ``` `，迫使证据块只能放文件末尾；`gate_check` 硬性拒绝**任何**非零 `exit_code`，迫使执行者删除真实证据。
+
+### 授权来源
+
+主代理（用户明确裁决「补回全部 + 改 gate」「改解析逻辑」）。
+
+### 改了什么
+
+- `pipeline_tools/core.py` 的 `_read_machine_evidence`：闭标记由「开标记后恰好一行 ` ``` `」改为「开标记后**第一个** ` ``` `」；未找到时报 `pipeline-evidence block is not closed`。
+- `pipeline_tools/core.py` 的 `evidence_verify`：新增校验 `commands[].expected_exit_code` 必须是整数（非整数报错）。
+- `pipeline_tools/core.py` 的 `gate_check`：`exit_code` 校验改为——未声明 `expected_exit_code` 时仍必须为 `0`；声明了则必须等于它，不等报错。
+- `pipeline_tools/reconcile.py` 的 `_machine_block`：与 `core.py` 同步改为取第一个闭标记。
+- 三份报告：补回 4 条被删命令（默认全量 exit 4 两条�� `expected_exit_code: 4`；`--since 692ee63` exit 0 一条不加；`freshness` exit 3 一条加 `expected_exit_code: 3`），并在正文各补一段说明。
+- `templates/pipeline-evidence.json` 与 `references/acceptance-evidence.md`：补 `expected_exit_code` 字段示例与语义说明。
+- `tests/test_evidence.py`：新增 6 条测试。
+
+### 未改
+
+- **未放宽**「未声明 `expected_exit_code` 时 `exit_code` 必须为 0」——这是闸门核心价值。
+- **未修** `evidence-retention-forward-gate` 的报告（该前例在未修改代码下仍报 `is not closed exactly once`；本轮修复的是 worktree 内的 `core.py`，主仓库代码未改，故前例的块检查报错在主仓库运行时仍在）。
+
+### 遗留
+
+- `evidence-retention-forward-gate` 的报告可能仍因 status 值、缺 `evidence_ref` 等原因 blocked；其块检查报错需待代码合并到主仓库后才消失。
 
 ```pipeline-evidence
 {

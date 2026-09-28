@@ -52,6 +52,7 @@
     "independent review",
     "final-check",
     "merge to main",
-    "post-merge gate"
+    "post-merge gate",
+    "evidence-retention-forward-gate report block check (main repo code unmodified)"
   ]
 }

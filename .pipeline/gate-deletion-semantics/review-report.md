@@ -232,6 +232,9 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
 - 未触碰冻结文件、未删 metrics、amend 未越界、stash 无残留。
 - 条件：`executor-result.json` 身份陈旧（建议终审裁定）；`metrics-contract.md:118` 文档方向表述缺失（建议另开任务）。
 
+### 关于 `commands[]` 中默认全量 exit 4
+
+`commands[]` 里 `scope history . --evidence-root .pipeline`（默认全量）标了 `exit_code: 4, expected_exit_code: 4`。这个非零结果是**预期**的：它证明闸门未被整体放宽，只收紧了删除方向——`--since cdf55e9` 由修复前的 4 变 0，而默认全量仍为 4。按 gate 约定，非零 exit_code 必须在 `commands[]` 里显式声明 `expected_exit_code` 才能合法记录，故保留该条而非删除。
 
 ```pipeline-evidence
 {
@@ -245,6 +248,8 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
   "commands": [
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since 8f1f1e0", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline", "exit_code": 4, "expected_exit_code": 4, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since 692ee63", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_non_retained_evidence_is_not_a_violation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_retained_evidence_is_a_violation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_add_non_retained_evidence_still_violates", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},

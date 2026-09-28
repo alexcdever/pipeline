@@ -180,6 +180,9 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
 - 本任务的 `finalization.json` 未生成（证据最终化未做）。
 - 主工作树对合并后依赖/生成物的加载复验未做。
 
+### 关于 `commands[]` 中的预期非零结果
+
+`commands[]` 里默认全量 `scope history`（`exit_code: 4, expected_exit_code: 4`）与 `freshness`（`exit_code: 3, expected_exit_code: 3`）是**预期**的非零结果。默认全量 exit 4 证明闸门未被整体放宽；`freshness` exit 3 是本终审判定 `executor-result.json` 需修的直接证据。按 gate 约定，非零 exit_code 必须在 `commands[]` 里显式声明 `expected_exit_code` 才能合法记录，故保留这两条而非删除。
 
 ```pipeline-evidence
 {
@@ -195,8 +198,10 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_commit_history_check_evidence_path_guard", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_acceptance_evidence_documents_deletion_semantics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline", "exit_code": 4, "expected_exit_code": 4, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
     {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/gate-deletion-semantics/executor-result.json --task-id gate-deletion-semantics --role executor", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/gate-deletion-semantics --result .pipeline/gate-deletion-semantics/executor-result.json", "exit_code": 3, "expected_exit_code": 3, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
     {"command": "git worktree list --porcelain && git rev-parse main", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline", "evidence_ref": "final-check.md"}
   ],
   "assertions": [

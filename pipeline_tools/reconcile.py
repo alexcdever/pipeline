@@ -20,11 +20,13 @@ def _machine_block(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
     except OSError:
         return None, ["unreadable"]
     starts = [i for i, line in enumerate(lines) if line.strip() == "```pipeline-evidence"]
-    ends = [i for i in range(starts[0] + 1, len(lines)) if lines[i].strip() == "```"] if len(starts) == 1 else []
-    if len(starts) != 1 or len(ends) != 1:
+    if len(starts) != 1:
         return None, ["missing or duplicate pipeline-evidence block"]
+    end = next((i for i in range(starts[0] + 1, len(lines)) if lines[i].strip() == "```"), None)
+    if end is None:
+        return None, ["pipeline-evidence block is not closed"]
     try:
-        value = json.loads("\n".join(lines[starts[0] + 1 : ends[0]]))
+        value = json.loads("\n".join(lines[starts[0] + 1 : end]))
     except json.JSONDecodeError:
         return None, ["pipeline-evidence JSON is invalid"]
     return (value, []) if isinstance(value, dict) else (None, ["pipeline-evidence must be an object"])

@@ -363,6 +363,76 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual([error for error in errors if 'implement-plan' in error], [], errors)
             self.assertEqual(unverified, [])
 
+    def test_evidence_block_parses_when_body_contains_other_code_fences(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'demo'
+            p.mkdir()
+            for name, role in (
+                ('executor-report.md', 'executor'),
+                ('review-report.md', 'reviewer'),
+                ('final-check.md', 'main-final'),
+            ):
+                text = report(role) + '\n## body\n\n```python\nprint(1)\n```\n'
+                (p / name).write_text(text, encoding='utf-8')
+            errors = evidence_verify(p, 'demo', 'feature/demo')
+            self.assertFalse(any('closed' in error for error in errors), errors)
+
+    def test_evidence_block_without_closing_fence_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'demo'
+            p.mkdir()
+            for name, role in (
+                ('executor-report.md', 'executor'),
+                ('review-report.md', 'reviewer'),
+                ('final-check.md', 'main-final'),
+            ):
+                block = report(role)
+                (p / name).write_text(block[: block.rindex('```')], encoding='utf-8')
+            errors = evidence_verify(p, 'demo', 'feature/demo')
+            self.assertTrue(any('not closed' in error for error in errors), errors)
+
+    def test_declared_expected_exit_code_allows_nonzero_result(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            text = report('reviewer').replace(
+                '"exit_code": 0', '"exit_code": 4, "expected_exit_code": 4'
+            )
+            (directory / 'review-report.md').write_text(text, encoding='utf-8')
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertFalse(any('exit_code' in error for error in errors), errors)
+
+    def test_undeclared_nonzero_exit_code_is_still_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            text = report('reviewer').replace('"exit_code": 0', '"exit_code": 4')
+            (directory / 'review-report.md').write_text(text, encoding='utf-8')
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertTrue(any('non-zero' in error for error in errors), errors)
+
+    def test_expected_exit_code_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            text = report('reviewer').replace(
+                '"exit_code": 0', '"exit_code": 4, "expected_exit_code": 3'
+            )
+            (directory / 'review-report.md').write_text(text, encoding='utf-8')
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertTrue(any('expected_exit_code' in error for error in errors), errors)
+
+    def test_non_integer_expected_exit_code_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._make_evidence_dir(root)
+            text = report('reviewer').replace(
+                '"exit_code": 0', '"exit_code": 0, "expected_exit_code": "zero"'
+            )
+            (directory / 'review-report.md').write_text(text, encoding='utf-8')
+            errors = evidence_verify(directory, 'demo', 'feature/demo')
+            self.assertTrue(any('expected_exit_code' in error for error in errors), errors)
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):

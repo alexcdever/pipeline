@@ -340,14 +340,13 @@ def _read_machine_evidence(path: Path) -> tuple[dict[str, Any] | None, list[str]
     if len(starts) != 1:
         return None, ["missing or duplicate pipeline-evidence block"]
     start = starts[0]
-    ends = [
-        index
-        for index in range(start + 1, len(lines))
-        if lines[index].strip() == "```"
-    ]
-    if len(ends) != 1:
-        return None, ["pipeline-evidence block is not closed exactly once"]
-    body = "\n".join(lines[start + 1 : ends[0]])
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].strip() == "```"),
+        None,
+    )
+    if end is None:
+        return None, ["pipeline-evidence block is not closed"]
+    body = "\n".join(lines[start + 1 : end])
     try:
         value = json.loads(body)
     except json.JSONDecodeError:
@@ -433,6 +432,11 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
                     continue
                 if not isinstance(command.get("command"), str) or not command.get("command"):
                     errors.append(f"{name} command {index} has no command")
+                expected = command.get("expected_exit_code")
+                if expected is not None and (
+                    isinstance(expected, bool) or not isinstance(expected, int)
+                ):
+                    errors.append(f"{name} command {index} expected_exit_code must be an integer")
                 if isinstance(command.get("exit_code"), bool) or not isinstance(command.get("exit_code"), int):
                     errors.append(f"{name} command {index} has no numeric exit_code")
                 elif not _evidence_file_exists(directory, command.get("evidence_ref")):
@@ -1571,8 +1575,15 @@ def gate_check(
         if phase == "post-merge" and name != "executor-report.md" and status not in {"PASS", "READY-TO-MERGE", "MERGED"}:
             errors.append(f"{name} status is not post-merge passing")
         for command in value.get("commands", []):
-            if isinstance(command, dict) and command.get("exit_code") != 0:
-                errors.append(f"{name} contains a non-zero command exit_code")
+            if not isinstance(command, dict):
+                continue
+            exit_code = command.get("exit_code")
+            expected = command.get("expected_exit_code")
+            if expected is None:
+                if exit_code != 0:
+                    errors.append(f"{name} contains a non-zero command exit_code")
+            elif exit_code != expected:
+                errors.append(f"{name} command exit_code does not match declared expected_exit_code")
 
     if (root / ".git").exists() or (root / ".git").is_file():
         rc, _ = git(root, "diff", "--check")
