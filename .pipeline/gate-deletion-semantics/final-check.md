@@ -1,29 +1,5 @@
 # 主代理最终检查：gate-deletion-semantics
 
-```json
-{
-  "task_id": "gate-deletion-semantics",
-  "role": "final",
-  "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
-  "branch": "gate-deletion-semantics",
-  "round": 1,
-  "baseline_head": "692ee6387ea2e60d53d63680235906096ed90903",
-  "reviewed_commit": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
-  "review_evidence_head": "f15e77ece6d8d2edc53407c0291e70fb2d3f5fa3",
-  "test_count": 268,
-  "commands": [
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_non_retained_evidence_is_not_a_violation tests.test_git_checks.GitChecks.test_delete_retained_evidence_is_a_violation tests.test_git_checks.GitChecks.test_add_non_retained_evidence_still_violates", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_commit_history_check_evidence_path_guard", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_acceptance_evidence_documents_deletion_semantics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline", "exit_code": 4, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/gate-deletion-semantics/executor-result.json --task-id gate-deletion-semantics --role executor", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools freshness . .pipeline/gate-deletion-semantics --result .pipeline/gate-deletion-semantics/executor-result.json", "exit_code": 3, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "git worktree list --porcelain && git rev-parse main", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline"}
-  ]
-}
-```
 
 ## 一、identity 字段约定的裁定（本次终审首要问题）
 
@@ -203,3 +179,36 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
 - 合并到 main、post-merge gate（`merge-and-recovery.md:39` 要求主工作树复验）未执行。
 - 本任务的 `finalization.json` 未生成（证据最终化未做）。
 - 主工作树对合并后依赖/生成物的加载复验未做。
+
+
+```pipeline-evidence
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
+  "branch": "gate-deletion-semantics",
+  "role": "main-final",
+  "round": 1,
+  "status": "READY-TO-MERGE",
+  "commands": [
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_non_retained_evidence_is_not_a_violation tests.test_git_checks.GitChecks.test_delete_retained_evidence_is_a_violation tests.test_git_checks.GitChecks.test_add_non_retained_evidence_still_violates", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_commit_history_check_evidence_path_guard", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_acceptance_evidence_documents_deletion_semantics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools result verify .pipeline/gate-deletion-semantics/executor-result.json --task-id gate-deletion-semantics --role executor", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "final-check.md"},
+    {"command": "git worktree list --porcelain && git rev-parse main", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline", "evidence_ref": "final-check.md"}
+  ],
+  "assertions": [
+    "5 条 acceptance 由终审独立实跑 5/5 PASS",
+    "全量 268 条测试 OK",
+    "前向闸门对照成立：--since cdf55e9 exit 0，默认全量 exit 4"
+  ],
+  "evidence_refs": ["final-check.md", "final-result.json"],
+  "unverified": ["merge to main", "post-merge gate", "finalization.json"],
+  "baseline_head": "692ee6387ea2e60d53d63680235906096ed90903",
+  "reviewed_commit": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
+  "review_evidence_head": "f15e77ece6d8d2edc53407c0291e70fb2d3f5fa3",
+  "test_count": 268
+}
+```

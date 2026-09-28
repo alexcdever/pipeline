@@ -1,23 +1,5 @@
 # 执行者报告：gate-deletion-semantics
 
-```json
-{
-  "task_id": "gate-deletion-semantics",
-  "role": "executor",
-  "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
-  "branch": "gate-deletion-semantics",
-  "round": 1,
-  "generated_at": "2026-09-28T03:09:17Z",
-  "baseline_head": "692ee6387ea2e60d53d63680235906096ed90903",
-  "product_head": "692ee6387ea2e60d53d63680235906096ed90903",
-  "test_count": 268,
-  "commands": [
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks tests.test_acceptance_id_and_template_compliance", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"}
-  ]
-}
-```
 
 ## 一、改动概览
 
@@ -162,3 +144,32 @@
 1. **删除方向与保留集的关系容易写反**。初始设想是「删除时若不在保留集则跳过」，实测发现需同时保证「新增保留文件」不误报；最终用 `retained == deleting` 单一表达式统一四个象限，逻辑等价且可读。
 2. **迁移与实现必须同提交**。先改判定再改测试会造成中间态红；本次在同一提交内完成，并额外断言 ` A ` 方向以区分新旧行为。
 3. **`--since` 基线不得改动**。`revision_range` 与 `since` 参数完全未触碰，仅改内层方向判定。
+
+
+```pipeline-evidence
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
+  "branch": "gate-deletion-semantics",
+  "role": "executor",
+  "round": 1,
+  "status": "PASS",
+  "commands": [
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks tests.test_acceptance_id_and_template_compliance", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "executor-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "executor-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "executor-report.md"}
+  ],
+  "assertions": [
+    "删除非保留证据文件不再判违规；新增非保留证据仍判违规；删除保留证据文件仍判违规",
+    "针对性套件与全量测试通过：Ran 268 tests OK",
+    "scope history --since cdf55e9 修复后 exit 0"
+  ],
+  "evidence_refs": ["executor-report.md"],
+  "unverified": ["independent review", "final-check", "merge to main"],
+  "generated_at": "2026-09-28T03:09:17Z",
+  "baseline_head": "692ee6387ea2e60d53d63680235906096ed90903",
+  "product_head": "692ee6387ea2e60d53d63680235906096ed90903",
+  "test_count": 268
+}
+```

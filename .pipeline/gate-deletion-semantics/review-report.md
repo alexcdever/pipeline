@@ -1,31 +1,5 @@
 # 审查报告：gate-deletion-semantics
 
-```json
-{
-  "task_id": "gate-deletion-semantics",
-  "role": "reviewer",
-  "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
-  "branch": "gate-deletion-semantics",
-  "round": 1,
-  "generated_at": "2026-09-28T03:40:00Z",
-  "baseline_head": "692ee6387ea2e60d53d63680235906096ed90903",
-  "product_head": "692ee6387ea2e60d53d63680235906096ed90903",
-  "reviewed_commit": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
-  "test_count": 268,
-  "commands": [
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since 8f1f1e0", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline", "exit_code": 4, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since 692ee63", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_non_retained_evidence_is_not_a_violation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_retained_evidence_is_a_violation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_add_non_retained_evidence_still_violates", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_commit_history_check_evidence_path_guard", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_acceptance_evidence_documents_deletion_semantics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"},
-    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics"}
-  ]
-}
-```
 
 ## 结论摘要
 
@@ -257,3 +231,38 @@ PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests
 - 5 条 acceptance 独立实跑 5/5 PASS；全量 268 条 OK。
 - 未触碰冻结文件、未删 metrics、amend 未越界、stash 无残留。
 - 条件：`executor-result.json` 身份陈旧（建议终审裁定）；`metrics-contract.md:118` 文档方向表述缺失（建议另开任务）。
+
+
+```pipeline-evidence
+{
+  "schema": 1,
+  "task_id": "gate-deletion-semantics",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics",
+  "branch": "gate-deletion-semantics",
+  "role": "reviewer",
+  "round": 1,
+  "status": "READY-TO-MERGE",
+  "commands": [
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since cdf55e9", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m pipeline_tools scope history . --evidence-root .pipeline --since 8f1f1e0", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_non_retained_evidence_is_not_a_violation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_delete_retained_evidence_is_a_violation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_add_non_retained_evidence_still_violates", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_git_checks.GitChecks.test_commit_history_check_evidence_path_guard", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_acceptance_evidence_documents_deletion_semantics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"},
+    {"command": "PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1 python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/gate-deletion-semantics", "evidence_ref": "review-report.md"}
+  ],
+  "assertions": [
+    "四象限真值表与契约一致：新增非保留违规、删除非保留放行、删除保留违规",
+    "5 条 acceptance 由审查者独立实跑 5/5 PASS",
+    "默认全量扫描仍 exit 4，证明闸门未被整体放宽"
+  ],
+  "evidence_refs": ["review-report.md", "reviewer-result.json"],
+  "unverified": ["main final-check", "merge to main", "post-merge gate"],
+  "generated_at": "2026-09-28T03:40:00Z",
+  "baseline_head": "692ee6387ea2e60d53d63680235906096ed90903",
+  "product_head": "692ee6387ea2e60d53d63680235906096ed90903",
+  "reviewed_commit": "12e302cad2a4c6670c4490aa4a4bbde07d3c9440",
+  "test_count": 268
+}
+```
