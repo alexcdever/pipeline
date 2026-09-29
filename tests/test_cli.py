@@ -1,6 +1,8 @@
+import atexit
 import contextlib
+import hashlib
 import io
-import json, os, subprocess, sys, tempfile, unittest
+import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -11,12 +13,50 @@ from pipeline_tools.layout import metrics_dirs
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 
-def run_cli(args, cwd=ROOT, env=None):
+_ISOLATED_METRICS_ROOT: Path | None = None
+
+
+def auto_metrics_requested(env):
+    """Whether an environment mapping leaves automatic metrics collection on."""
+    value = env.get('PIPELINE_TOOLS_DISABLE_AUTO_METRICS', '')
+    return value.strip().lower() not in {'1', 'true', 'yes', 'on'}
+
+
+def isolated_metrics_root():
+    """A throwaway non-repository cwd for runs that enable automatic metrics.
+
+    Automatic collection resolves its project root from the invocation cwd. The
+    suite must never point that at this checkout, or the tracked
+    ``.pipeline/metrics/`` history gains an untracked event on every run.
+    """
+    global _ISOLATED_METRICS_ROOT
+    if _ISOLATED_METRICS_ROOT is None or not _ISOLATED_METRICS_ROOT.is_dir():
+        _ISOLATED_METRICS_ROOT = Path(tempfile.mkdtemp(prefix='pipeline-metrics-isolation-'))
+        atexit.register(shutil.rmtree, _ISOLATED_METRICS_ROOT, ignore_errors=True)
+    return _ISOLATED_METRICS_ROOT
+
+
+def metrics_snapshot(directory):
+    """Name -> content hash for the JSON events in a metrics directory."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        return {}
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in directory.glob('*.json')}
+
+
+def run_cli(args, cwd=None, env=None):
     e = dict(os.environ)
     # These tests cover the legacy command surface. Automatic collection has
     # explicit tests and is disabled here to avoid mutating this checkout.
     e.setdefault('PIPELINE_TOOLS_DISABLE_AUTO_METRICS', '1')
+    # The CLI must import from this checkout even when an isolated cwd is used.
+    e['PYTHONPATH'] = str(ROOT) if not e.get('PYTHONPATH') else str(ROOT) + os.pathsep + e['PYTHONPATH']
     if env: e.update(env)
+    if cwd is None:
+        # A run that genuinely enables automatic metrics must not resolve its
+        # project root to this repository, even when the caller relies on the
+        # default cwd.
+        cwd = isolated_metrics_root() if auto_metrics_requested(e) else ROOT
     return subprocess.run([PY, '-m', 'pipeline_tools', *args], capture_output=True, text=True, cwd=str(cwd), env=e, timeout=60)
 
 def make_repo(tmp):
@@ -554,9 +594,12 @@ class CLITests(unittest.TestCase):
             self.assertIn('automatic_metrics_not_collected', stderr.getvalue())
 
     def test_automatic_metrics_wrapper_preserves_outer_test_command_exit_code(self):
-        command = [PY, '-m', 'pipeline_tools', 'command', 'run', '--cwd', str(ROOT),
-                   '--log', str(Path(tempfile.gettempdir()) / 'pipeline-wrapper-test.log'),
-                   '--timeout', '30', '--', PY, '-c', 'raise SystemExit(7)']
+        isolated = isolated_metrics_root()
+        repo_metrics = ROOT / '.pipeline' / 'metrics'
+        before = metrics_snapshot(repo_metrics)
+        log = isolated / 'pipeline-wrapper-test.log'
+        command = [PY, '-m', 'pipeline_tools', 'command', 'run', '--cwd', str(isolated),
+                   '--log', str(log), '--timeout', '30', '--', PY, '-c', 'raise SystemExit(7)']
         for enabled in ('0', '1'):
             with self.subTest(automatic_metrics=enabled):
                 env = dict(os.environ, PIPELINE_TOOLS_DISABLE_AUTO_METRICS=enabled,
@@ -564,6 +607,44 @@ class CLITests(unittest.TestCase):
                 completed = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
                 self.assertEqual(completed.returncode, 1, (enabled, completed.stdout, completed.stderr))
                 self.assertIn('"exit_code": 7', completed.stdout.replace("'", '"'))
+        # Isolation must not weaken the wrapper: the outer command's real exit
+        # code still propagates, and the enabled run wrote only under the
+        # throwaway root.
+        self.assertEqual(metrics_snapshot(repo_metrics), before)
+        self.assertTrue(metrics_snapshot(isolated / '.pipeline' / 'metrics'))
+
+    def test_cli_suite_leaves_tracked_metrics_unchanged(self):
+        repo_metrics = ROOT / '.pipeline' / 'metrics'
+        before = metrics_snapshot(repo_metrics)
+        isolated = isolated_metrics_root()
+        log = isolated / 'suite-guard.log'
+        command = [PY, '-m', 'pipeline_tools', 'command', 'run', '--cwd', str(isolated),
+                   '--log', str(log), '--timeout', '30', '--', PY, '-c', 'print("ok")']
+        for enabled in ('0', '1'):
+            with self.subTest(automatic_metrics=enabled):
+                env = dict(os.environ, PIPELINE_TOOLS_DISABLE_AUTO_METRICS=enabled,
+                           PYTHONPATH=str(ROOT))
+                completed = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
+                self.assertEqual(completed.returncode, 0, (enabled, completed.stdout, completed.stderr))
+                self.assertEqual(metrics_snapshot(repo_metrics), before, enabled)
+
+    def test_auto_metrics_enabled_run_keeps_metrics_out_of_repository(self):
+        repo_metrics = ROOT / '.pipeline' / 'metrics'
+        before = metrics_snapshot(repo_metrics)
+        isolated = isolated_metrics_root()
+        isolated_metrics = isolated / '.pipeline' / 'metrics'
+        isolated_before = metrics_snapshot(isolated_metrics)
+        # No explicit cwd: an enabled automatic-metrics run resolves its
+        # project root from the harness default and must stay out of the
+        # repository. A malformed top-level invocation still records a
+        # cli_parse_error event, so this genuinely exercises collection.
+        completed = run_cli(['not-a-command'],
+                            env={'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '0'})
+        self.assertEqual(completed.returncode, 2, (completed.stdout, completed.stderr))
+        self.assertEqual(metrics_snapshot(repo_metrics), before)
+        after = metrics_snapshot(isolated_metrics)
+        self.assertEqual(len(after), len(isolated_before) + 1)
+        self.assertTrue(set(after) - set(isolated_before))
 
     def test_planning_cli_rejects_historical_task_as_current_target(self):
         with tempfile.TemporaryDirectory() as d:
