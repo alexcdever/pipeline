@@ -8,7 +8,7 @@ from unittest import mock
 
 from pipeline_tools.__main__ import main
 
-from pipeline_tools.layout import metrics_dirs
+from pipeline_tools.layout import metrics_dirs, temporary_root
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
@@ -1056,11 +1056,11 @@ class CLITests(unittest.TestCase):
             config.write_text(json.dumps({'approval_mode': 'manual'}), encoding='utf-8')
             started = run_cli(['--format', 'json', 'planning', 'run', 'start', str(root), '--run-id', 'cli-project-manual'])
             self.assertEqual(started.returncode, 0, (started.stdout, started.stderr))
-            state = json.loads((root / '.pipeline' / 'planning' / 'cli-project-manual' / 'lifecycle.json').read_text(encoding='utf-8'))
+            state = json.loads((temporary_root(root) / 'planning' / 'cli-project-manual' / 'lifecycle.json').read_text(encoding='utf-8'))
             self.assertEqual(state['approval_mode'], 'manual')
             explicit = run_cli(['--format', 'json', 'planning', 'run', 'start', str(root), '--run-id', 'cli-explicit-automatic', '--approval-mode', 'automatic'])
             self.assertEqual(explicit.returncode, 0, (explicit.stdout, explicit.stderr))
-            explicit_state = json.loads((root / '.pipeline' / 'planning' / 'cli-explicit-automatic' / 'lifecycle.json').read_text(encoding='utf-8'))
+            explicit_state = json.loads((temporary_root(root) / 'planning' / 'cli-explicit-automatic' / 'lifecycle.json').read_text(encoding='utf-8'))
             self.assertEqual(explicit_state['approval_mode'], 'automatic')
 
     def test_planning_to_dispatch_cli_resolves_recorded_then_project_then_explicit(self):

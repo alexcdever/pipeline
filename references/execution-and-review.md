@@ -2,7 +2,7 @@
 
 ## Worktree 身份
 
-主代理在契约提交后创建唯一的 `<仓库根目录>/.worktrees/<task-id>`，并在 dispatch 中传入绝对路径。执行子代理和审查子代理必须先核对该路径、branch、task-id 与 `git worktree list --porcelain` 一致，再在指定 worktree 工作；不得自行运行 `git worktree add`，不得改用仓库同级目录或为同一任务创建第二个 worktree。独立审查上下文不要求新建 Git worktree。工具首次访问任务证据时会自动把 `.workflow/<task-id>/` 迁移为 `.pipeline/<task-id>/`，并核对文件哈希、路径引用和工具测试；若 `.pipeline/` 已存在则报告冲突并停止。迁移完成后不能继续写入旧目录。
+主代理在契约提交后冻结不可变任务单，再创建唯一的 `<仓库根目录>/.worktrees/<task-id>`，并在 dispatch 中传入绝对路径。执行子代理和审查子代理必须先核对该路径、branch、task-id 与 `git worktree list --porcelain` 一致，再在指定 worktree 工作；不得自行运行 `git worktree add`，不得改用仓库同级目录或为同一任务创建第二个 worktree。独立审查上下文不要求新建 Git worktree。工具首次访问任务证据时会自动把 `.workflow/<task-id>/` 迁移为 `.pipeline/<task-id>/`，并核对文件哈希、路径引用和工具测试；若 `.pipeline/` 已存在则报告冲突并停止。迁移完成后不能继续写入旧目录。
 
 ## 执行期 goal 哈希稳定性
 
@@ -24,7 +24,7 @@
 
 ## 执行子代理
 
-收到的是已提交且冻结的任务单，不是可自由重写的目标。标准循环：
+收到的是已提交、冻结且不可变的任务单，不是可自由重写的目标；不得通过编辑任务单或手工写状态推进任务。任务级状态由 lifecycle API/CLI 管理，跨会话恢复优先使用 `lifecycle resume/status/list/inspect`；只有主代理可通过 `role=main-agent` 写入状态。标准循环：
 
 1. 读任务单和项目规则，确认 task-id、branch、worktree 与允许范围。
 2. 每个行为先写失败测试，真实运行确认按预期失败；失败原因不符合预期时先诊断，不进入实现。

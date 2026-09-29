@@ -12,11 +12,15 @@
 默认项目约定：
 
 - 任务单：`docs/tasks/<task-id>.md`
-- 任务证据：`.pipeline/<task-id>/`
+- 正式任务证据：`.pipeline/<task-id>/`（仅阶段报告、机器结果和 `finalization.json`；成功收敛前的临时文件不属于交付）
+- 恢复索引：`.pipeline/recovery-index.json`；规划中间审计和 stage 文件写入系统临时目录 `pipeline-tools/planning/`，项目只保留恢复索引
+- 临时目录与原始日志：系统临时目录下的 `pipeline-tools/`；`command run` 未指定 `--log` 时不会写入仓库
 - 项目级统计：`.pipeline/metrics/`（由工具自动生成；是否纳入 Git 由项目开发者决定）
 - 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
-- 任务契约提交后冻结
-- 任务单只承载冻结契约与人类可读的契约说明；过程记录（任务锚点、验收台账、执行记录、最终结果）写入 `.pipeline/<task-id>/` 的角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 和三份阶段报告（`executor-report.md`、`review-report.md`、`final-check.md`），不另行维护项目级状态文档
+- 任务契约提交后冻结，任务单不可变；需要改变契约时新建 `derived` 任务，不回写原任务单
+- 任务级状态只由 lifecycle API/CLI 管理；状态写入（`transition`、`event`）只允许主代理角色接口（`role=main-agent`），其他角色只能读取或报告 findings
+- 任务单只承载冻结契约与人类可读的契约说明；过程记录和阶段报告写入 `.pipeline/<task-id>/`，不另行维护项目级状态文档
+- 跨会话优先使用 `lifecycle resume/status/list/inspect` 恢复和读取任务状态，不从通知、自然语言报告或项目级状态文件推断
 - 合并前需要执行、独立审查和主代理终检；合并后在主工作树复验
 - 审批策略：`.pipeline/config.json` 的 `approval_mode`（`automatic` | `manual`）是项目级默认，解析顺序为显式参数 → 运行记录 → 项目配置 → 默认 `automatic`；该文件需手工创建，没有命令会写入它
 
@@ -48,7 +52,7 @@ python -m pipeline_tools --help
 python -m pipeline_tools task validate docs/tasks/<task-id>.md
 python -m pipeline_tools task preflight . --contract <frozen-commit> --task-sheet docs/tasks/<task-id>.md
 python -m pipeline_tools scope check . --allowed 'src/**' --forbidden '**/.env'
-python -m pipeline_tools command run --cwd . --log .pipeline/<task-id>/test.log --timeout 180 -- python -m unittest
+python -m pipeline_tools command run --cwd . --timeout 180 -- python -m unittest  # 原始日志默认进入系统临时目录
 python -m pipeline_tools evidence verify .pipeline/<task-id> --task-id <task-id> --branch <branch>
 python -m pipeline_tools gate pre-merge .pipeline/<task-id> --task-id <task-id> --branch <branch>
 python -m pipeline_tools gate post-merge .pipeline/<task-id> --task-id <task-id> --branch <branch>
@@ -81,6 +85,11 @@ python -m pipeline_tools runtime preflight . --node 22.23.2 --pnpm 10.27.0
 python -m pipeline_tools runtime handshake . .pipeline/<task-id> --role reviewer --node 22.23.2 --pnpm 10.27.0
 python -m pipeline_tools runtime role-scope . --role main-agent --product-pattern 'packages/**'
 python -m pipeline_tools --format json --output .pipeline/<task-id>/task-validate.json task validate docs/tasks/<task-id>.md
+python -m pipeline_tools --format json lifecycle resume . --task-id <task-id>
+python -m pipeline_tools --format json lifecycle status . --task-id <task-id>
+python -m pipeline_tools --format json lifecycle list .
+python -m pipeline_tools --format json lifecycle inspect . --task-id <task-id>
+# 兼容旧版证据查询：仍支持 --evidence
 python -m pipeline_tools --format json lifecycle status . --task-id <task-id> --evidence .pipeline/<task-id>
 python -m pipeline_tools dispatch write dispatch.json .pipeline/<task-id>/dispatch.json
 python -m pipeline_tools result verify .pipeline/<task-id>/reviewer-result.json --task-id <task-id> --role reviewer
@@ -94,11 +103,11 @@ python -m pipeline_tools --format json evidence readiness .pipeline/<task-id> --
 
 `runtime handshake` 是可选的能力检查，写入 `<workflow>/capability-handshake.json`，记录仓库可读、workflow 可写、产品代码写权限与 runtime 状态；它不是被移除的那个强制握手机制，新任务不依赖该命令也能完成闭环。版本差异见 `references/compat-and-migration.md`。
 
-角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；`.pipeline/metrics/` 的指标事件不受这条规则约束，是否纳入 Git 由项目开发者决定（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
+角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；规划 stage、规划中间审计和原始日志优先写入系统临时目录 `pipeline-tools/`，项目侧仅保留 `.pipeline/recovery-index.json` 用于恢复索引，不把临时产物当正式 evidence。正式任务 evidence 仍在 `.pipeline/<task-id>/`；`.pipeline/metrics/` 的指标事件不受这条规则约束，是否纳入 Git 由项目开发者决定（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
 
 结构化命令使用统一响应外壳：`schema`、`command`、`status`、`exit_code`、`observed`、`errors`、`blockers`、`artifacts`、`next_actions` 和 `unverified`。JSON 文件是流程编排输入，终端摘要只用于人类查看。
 
-结构化闭环顺序为：`dispatch write` → agent 写入 `executor-result.json`/`reviewer-result.json` → `final-check` → `evidence readiness` → `result verify` → `freshness` → `lifecycle status` → merge gate。Markdown 报告用于人类阅读，JSON 结果用于机械编排。
+结构化闭环顺序为：`dispatch write` → agent 写入 `executor-result.json`/`reviewer-result.json` → `final-check` → `evidence readiness` → `result verify` → `freshness` → `lifecycle status` → merge gate。跨会话恢复时先用 `lifecycle resume/status/list/inspect`，再读取 `.pipeline/recovery-index.json` 和正式 evidence；Markdown 报告用于人类阅读，JSON 结果用于机械编排。
 
 ## 测试
 

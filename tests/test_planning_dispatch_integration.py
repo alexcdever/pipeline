@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pipeline_tools.layout import temporary_root
 from pipeline_tools.planning import planning_run_start, planning_to_dispatch
 
 
@@ -89,10 +90,11 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             result = planning_to_dispatch(root, "dispatch-failure-run", project, requirements, plan, task_id="integration-task", branch="dispatch-failure-branch", baseline=head, approved=True)
             self.assertNotEqual(result["status"], "dispatch-ready")
             self.assertEqual(result["stages"][-1]["name"], "facts-gate")
-            audit = root / ".pipeline" / "planning" / "dispatch-failure-run"
+            audit = temporary_root(root) / "planning" / "dispatch-failure-run"
             self.assertTrue((audit / "01-preflight.json").is_file())
             self.assertTrue((audit / "02-facts-gate.json").is_file())
-            self.assertTrue(all(Path(path).is_file() for path in result["artifacts"]))
+            self.assertTrue(all((temporary_root(root) / ref.removeprefix("temporary://")).is_file() for ref in result["artifacts"]))
+            self.assertFalse((root / ".pipeline" / "planning").exists())
 
     def test_project_approval_mode_is_the_default_and_run_state_wins(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -106,7 +108,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             self.assertFalse((root / ".worktrees" / "integration-task").exists())
             manual_start = planning_run_start(root, "run-manual", approval_mode="manual")
             self.assertEqual(manual_start["status"], "pass")
-            self.assertEqual(manual_start["artifacts"], [str(root / ".pipeline" / "planning" / "run-manual" / "lifecycle.json")])
+            self.assertEqual(manual_start["artifacts"], ["temporary://planning/run-manual/lifecycle.json"])
 
     def test_run_state_approval_mode_takes_precedence_over_project_config(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -116,7 +118,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             config.write_text(json.dumps({"approval_mode": "manual"}), encoding="utf-8")
             started = planning_run_start(root, "recorded-automatic", approval_mode="automatic")
             self.assertEqual(started["status"], "pass")
-            state = json.loads((root / ".pipeline" / "planning" / "recorded-automatic" / "lifecycle.json").read_text(encoding="utf-8"))
+            state = json.loads((temporary_root(root) / "planning" / "recorded-automatic" / "lifecycle.json").read_text(encoding="utf-8"))
             self.assertEqual(state["approval_mode"], "automatic")
             automatic = planning_to_dispatch(root, "recorded-automatic", *self.inputs(), task_id="integration-task", branch="recorded-automatic-branch", baseline=head)
             self.assertEqual(automatic["status"], "dispatch-ready", automatic)
@@ -192,7 +194,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
                 self.assertNotEqual(result["status"], "dispatch-ready")
                 self.assertEqual(result["stages"][-1]["name"], expected)
                 self.assertFalse(any(stage["name"] in {"task-generation", "dispatch-identity", "dispatch"} for stage in result["stages"]))
-                self.assertTrue(all(Path(path).is_file() for path in result["artifacts"]))
+                self.assertTrue(all((temporary_root(root) / path.removeprefix("temporary://")).is_file() for path in result["artifacts"]))
                 self.assertFalse((root / ".worktrees" / "integration-task").exists())
 
     def test_automatic_approval_dispatches_without_explicit_approve(self):
@@ -237,7 +239,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
                 self.assertNotEqual(replay["status"], "dispatch-ready")
                 self.assertTrue(replay["errors"])
                 self.assertEqual(replay["stages"][-1]["name"], "task-generation")
-                self.assertTrue(all(Path(path).is_file() for path in replay["artifacts"]))
+                self.assertTrue(all((temporary_root(root) / path.removeprefix("temporary://")).is_file() for path in replay["artifacts"]))
                 self.assertEqual(sheet.read_bytes(), original if variant != "hash-drift" else original + b"\nretained artifact\n")
                 self.assertEqual(len(list((root / ".worktrees").iterdir())), 1)
 
@@ -257,14 +259,14 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
             self.assertTrue(any(stage["name"] == "task-generation" for stage in replay["stages"]))
             self.assertEqual(retained.read_bytes(), before)
             self.assertEqual(len(list((root / ".worktrees").iterdir())), 1)
-            self.assertTrue(all(Path(path).is_file() for path in replay["artifacts"]))
+            self.assertTrue(all((temporary_root(root) / path.removeprefix("temporary://")).is_file() for path in replay["artifacts"]))
 
     def test_successful_dispatch_after_run_start_leaves_no_lifecycle(self):
         with tempfile.TemporaryDirectory() as directory:
             root, head = self.make_repo(directory)
             started = planning_run_start(root, "dispatch-leak-run")
             self.assertEqual(started["status"], "pass", started)
-            audit = root / ".pipeline" / "planning" / "dispatch-leak-run"
+            audit = temporary_root(root) / "planning" / "dispatch-leak-run"
             self.assertTrue(audit.is_dir())
             project, requirements, plan = self.inputs()
             project.update({"assumptions": [], "unknowns": [], "conflicts": [], "non_goals": ["本任务不扩展用户可见范围"], "decision_blockers": []})
@@ -289,7 +291,7 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
                 baseline=head, approval_mode="automatic",
             )
             self.assertNotEqual(result["status"], "dispatch-ready", result)
-            audit = root / ".pipeline" / "planning" / "dispatch-keep-run"
+            audit = temporary_root(root) / "planning" / "dispatch-keep-run"
             self.assertTrue(audit.is_dir())
             self.assertTrue((audit / "lifecycle.json").is_file())
 

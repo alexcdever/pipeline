@@ -1,7 +1,7 @@
 # 通用任务单
 
 <!-- Task ID: <task-id> -->
-<!-- Contract section is frozen after commit. The task sheet holds only the frozen contract and the human-readable design sections; task anchors, the acceptance ledger, the execution log and the final result live in .pipeline/<task-id>/ progress logs and stage reports. -->
+<!-- Contract section is frozen and immutable after commit. Do not edit the task sheet or its status to reflect execution; change the contract only by recording a decision and creating a derived task. The task sheet holds only the frozen contract and human-readable design sections; task state is managed by the lifecycle API/CLI, while task anchors, the acceptance ledger, execution log and final result live in .pipeline/<task-id>/ progress logs and stage reports. -->
 
 ```pipeline-contract
 {
@@ -48,7 +48,7 @@
 }
 ```
 
-`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 4 with the `goal` field and complete `acceptance-test-*` IDs; schema 1-3 are retained only for deprecated historical reads (they keep the legacy `implement_plan` field). Keep it synchronized with the human-readable contract; after the contract commit it is frozen.
+`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 4 with the `goal` field and complete `acceptance-test-*` IDs; schema 1-3 are retained only for deprecated historical reads (they keep the legacy `implement_plan` field). Keep it synchronized with the human-readable contract before commit; after the contract commit the complete task sheet is frozen and immutable. Use lifecycle API/CLI for task state; do not hand-edit a status line.
 
 Schema 4 rules worth restating here:
 
@@ -68,7 +68,7 @@ Schema 4 rules worth restating here:
 - 任务类型：`<vertical-feature / prerequisite / repair / derived>`
 - 用户结果或系统能力：<one verifiable outcome>
 - 执行 worktree 约定：`<仓库根目录>/.worktrees/<task-id>`，由主代理用 `git worktree add` 创建；不预先 `mkdir`，不创建仓库同级或第二个 worktree
-- 状态：未开始
+- 状态：由 lifecycle API/CLI 管理；此处不手工改写
 
 ## 依赖与范围
 
@@ -153,4 +153,4 @@ Schema 4 rules worth restating here:
 
 ## 过程记录位置
 
-任务锚点、验收台账、执行记录、设计裁决与最终结果不再写入任务单。它们由主代理维护在 `.pipeline/<task-id>/` 下的角色进度日志和阶段报告中；成功最终化后只保留阶段报告、机器结果和最终化标记。
+任务锚点、验收台账、执行记录、设计裁决与最终结果不再写入任务单。任务级状态写入只能通过 `lifecycle transition/event` 的 `role=main-agent` 接口完成；跨会话优先通过 `lifecycle resume/status/list/inspect` 读取。它们由主代理维护在 `.pipeline/<task-id>/` 下的角色进度日志和阶段报告中；规划中间审计与原始日志优先放在系统临时目录，项目仅保留 `.pipeline/recovery-index.json`，正式 evidence 仍在 `.pipeline/<task-id>/`；成功最终化后只保留阶段报告、机器结果和最终化标记。旧版 `lifecycle status --evidence` 继续兼容。

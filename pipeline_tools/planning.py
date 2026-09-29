@@ -39,6 +39,7 @@ from .layout import (
     LegacyPipelineLayoutError,
     active_pipeline_dir,
     migrate_layout,
+    recovery_index_path,
 )
 
 CHAIN = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
@@ -260,44 +261,40 @@ def _worktree_facts(root: Path) -> tuple[dict[str, Any], list[str]]:
 
 
 def _write_preflight_failure(root: Path, value: dict[str, Any]) -> list[str]:
-    """Persist a diagnostic only when doing so cannot overwrite a conflict."""
-    workflow = root / ".workflow"
-    pipeline = root / ".pipeline"
-    if workflow.exists() and pipeline.exists():
-        return []
+    """Write raw diagnostics to the system temp area and index recovery locally."""
     try:
-        if pipeline.is_symlink():
-            return []
-        active_pipeline_dir(root)
-        output = pipeline / "planning" / "preflight-result.json"
-        if not _safe_rel(root, output.relative_to(root).as_posix()):
-            return []
-        output.parent.mkdir(parents=True, exist_ok=True)
-        temporary = output.with_suffix(".tmp")
-        temporary.write_text(json.dumps(value, ensure_ascii=True, indent=2), encoding="utf-8")
-        os.replace(temporary, output)
-        return [str(output)]
+        from .layout import temporary_path
+        raw = temporary_path(suffix="-preflight.json", root=root)
+        raw.write_text(json.dumps(value, ensure_ascii=True, indent=2), encoding="utf-8")
+        index = recovery_index_path(root)
+        index.parent.mkdir(parents=True, exist_ok=True)
+        temporary = index.with_suffix(index.suffix + ".tmp")
+        temporary.write_text(json.dumps({"schema": 1, "status": "blocked", "raw_artifact": _temporary_artifact_ref(raw, root), "kind": "preflight"}, ensure_ascii=True, indent=2), encoding="utf-8")
+        os.replace(temporary, index)
+        return [str(index)]
     except (OSError, ValueError, RuntimeError):
         return []
 
 
 def _clear_stale_preflight_failure(root: Path) -> None:
-    """Drop the diagnostic left by an earlier failed preflight.
-
-    A preflight without a run id files its failure at
-    ``.pipeline/planning/preflight-result.json``.  Nothing removed it, so a
-    single failure kept ``.pipeline/planning/`` alive forever.  A later
-    successful check clears it, which makes the record mean "the last
-    preflight failed" instead of "a preflight failed once".
-    """
+    """Clear only an unscoped preflight marker, preserving run entries."""
     try:
-        output = root / PIPELINE_DIR_NAME / "planning" / "preflight-result.json"
-        if output.is_file():
-            output.unlink()
-        directory = output.parent
-        if directory.is_dir() and not any(directory.iterdir()):
-            directory.rmdir()
-    except OSError:
+        index = recovery_index_path(root)
+        if not index.is_file():
+            return
+        value = json.loads(index.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            return
+        runs = value.get("runs")
+        if isinstance(runs, list):
+            retained = [item for item in runs if isinstance(item, dict) and item.get("run_id")]
+            if retained:
+                index.write_text(json.dumps({"schema": 1, "runs": retained}, ensure_ascii=True, indent=2), encoding="utf-8")
+            else:
+                index.unlink()
+        elif value.get("kind") == "preflight":
+            index.unlink()
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return
 
 
@@ -1575,9 +1572,11 @@ def task_plan_contract_consistency(*args: Any, **kwargs: Any) -> dict[str, Any]:
 def _planning_run_directory(root: Path, run_id: str) -> Path:
     if not _safe_identifier(run_id):
         raise ValueError("invalid planning run id")
-    directory = (root / ".pipeline" / "planning" / run_id).resolve()
-    if not directory.is_relative_to(root.resolve()):
-        raise ValueError("planning audit directory escapes project root")
+    from .layout import temporary_root
+    temp_root = temporary_root(root).resolve()
+    directory = (temp_root / "planning" / run_id).resolve()
+    if not directory.is_relative_to(temp_root):
+        raise ValueError("planning audit directory escapes temporary root")
     return directory
 
 
@@ -1675,7 +1674,7 @@ def planning_run_start(root: Path, run_id: str | None = None, *, approval_mode: 
         # retained for interruption, conflict and failure recovery.
         state = {"schema": 1, **identity, "approval_mode": approval_mode, "phase": "started", "status": "active", "history": [{"phase": "started", "status": "active"}], "artifacts": [], "errors": [], "next_actions": ["preflight"]}
         _write_planning_json(directory / "lifecycle.json", state, create_only=True)
-        return {"status": "pass", "run_id": run_id, "phase": "started", "identity": identity, "artifacts": [str(directory / "lifecycle.json")], "errors": [], "next_actions": ["preflight"]}
+        return {"status": "pass", "run_id": run_id, "phase": "started", "identity": identity, "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "errors": [], "next_actions": ["preflight"]}
     except FileExistsError:
         return {"status": "blocked", "run_id": run_id, "errors": ["planning run already exists"], "artifacts": [], "next_actions": ["recover"]}
     except (OSError, ValueError) as error:
@@ -1691,17 +1690,17 @@ def planning_run_transition(root: Path, run_id: str, phase: str, *, status: str 
         if drift:
             state.update({"status": "conflict", "phase": "conflict", "errors": ["identity drift: " + ", ".join(drift)]})
             _write_planning_json(directory / "lifecycle.json", state)
-            return {"status": "blocked", "run_id": run_id, "phase": "conflict", "errors": state["errors"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["restore bound identity; do not resume"]}
+            return {"status": "blocked", "run_id": run_id, "phase": "conflict", "errors": state["errors"], "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "next_actions": ["restore bound identity; do not resume"]}
         current = state.get("phase")
         if status == "active" and (current not in _PLANNING_PHASES or _PLANNING_PHASES.index(phase) != _PLANNING_PHASES.index(current) + 1):
-            return {"status": "blocked", "run_id": run_id, "phase": current, "errors": ["invalid lifecycle transition"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["recover"]}
+            return {"status": "blocked", "run_id": run_id, "phase": current, "errors": ["invalid lifecycle transition"], "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "next_actions": ["recover"]}
         state["phase"], state["status"] = phase, status
         if error:
             state.setdefault("errors", []).append(error)
         state.setdefault("history", []).append({"phase": phase, "status": status, "error": error})
         state["next_actions"] = [] if status != "active" and phase in _PLANNING_TERMINAL else (["finalize"] if phase == "generated" else ["next phase"])
         _write_planning_json(directory / "lifecycle.json", state)
-        return {"status": "pass" if status == "active" else status, "run_id": run_id, "phase": phase, "artifacts": [str(directory / "lifecycle.json")], "errors": state.get("errors", []), "next_actions": state["next_actions"]}
+        return {"status": "pass" if status == "active" else status, "run_id": run_id, "phase": phase, "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "errors": state.get("errors", []), "next_actions": state["next_actions"]}
     except (OSError, ValueError) as error:
         return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["recover"]}
 
@@ -1754,9 +1753,9 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
                     pass
             return {"schema": 1, "run_id": run_id, "status": "finalized", "requirements_sha256": state.get("requirements_sha256"), "artifacts": [], "errors": [], "next_actions": [], "phase": "finalized"}
         if success and state.get("phase") != "generated":
-            return {"status": "blocked", "run_id": run_id, "phase": state.get("phase"), "errors": ["successful finalization requires generated phase"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["transition to generated before finalizing"]}
+            return {"status": "blocked", "run_id": run_id, "phase": state.get("phase"), "errors": ["successful finalization requires generated phase"], "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "next_actions": ["transition to generated before finalizing"]}
         if success and state.get("approval_mode") == "manual" and not approval:
-            return {"status": "blocked", "run_id": run_id, "errors": ["manual approval required"], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["approve then finalize"]}
+            return {"status": "blocked", "run_id": run_id, "errors": ["manual approval required"], "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "next_actions": ["approve then finalize"]}
         phase = "finalized" if success else "failed"
         result = {
             "schema": 1,
@@ -1769,6 +1768,9 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
             "phase": phase,
         }
         if success:
+            # Retain a recovery proof before removing transient process records.
+            state["phase"], state["status"] = "finalized", "finalized"
+            _write_recovery_index(root, run_id, state, directory)
             # A successful planning run leaves only the frozen task sheets.  The
             # lifecycle, stage and dispatch records are process artifacts and are
             # removed here; failures keep the full audit trail below.
@@ -1784,21 +1786,52 @@ def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: b
         return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["recover"]}
 
 
+def _temporary_artifact_ref(path: Path, root: Path | None = None) -> str:
+    from .layout import temporary_root
+    relative = path.resolve().relative_to(temporary_root(root).resolve()).as_posix()
+    return f"temporary://{relative}"
+
+
+def _write_recovery_index(root: Path, run_id: str, state: dict[str, Any], directory: Path) -> Path:
+    index = recovery_index_path(Path(root))
+    entries: list[dict[str, Any]] = []
+    if index.is_file():
+        try:
+            value = json.loads(index.read_text(encoding="utf-8"))
+            if isinstance(value, dict) and isinstance(value.get("runs"), list):
+                entries = [item for item in value["runs"] if isinstance(item, dict) and item.get("run_id") != run_id]
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            entries = []
+    entries.append({"run_id": run_id, "phase": state.get("phase"), "status": state.get("status"), "directory": _temporary_artifact_ref(directory, root)})
+    index.parent.mkdir(parents=True, exist_ok=True)
+    temporary = index.with_suffix(index.suffix + ".tmp")
+    temporary.write_text(json.dumps({"schema": 1, "runs": entries}, ensure_ascii=True, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(temporary, index)
+    return index
+
+
 def planning_run_recover(root: Path, run_id: str) -> dict[str, Any]:
     try:
         directory = _planning_run_directory(Path(root), run_id)
     except (OSError, ValueError) as error:
         return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["inspect retained failure evidence"]}
     if not directory.is_dir():
-        # A successful planning run leaves only the frozen task sheets; there is
-        # no lifecycle state left to recover.
+        index = recovery_index_path(Path(root))
+        try:
+            value = json.loads(index.read_text(encoding="utf-8")) if index.is_file() else {}
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            value = {}
+        proven = any(isinstance(item, dict) and item.get("run_id") == run_id and item.get("status") in {"finalized", "pass"} for item in value.get("runs", [])) if isinstance(value, dict) and isinstance(value.get("runs"), list) else False
+        if not proven:
+            return {"status": "blocked", "run_id": run_id, "phase": "recovery", "identity": {}, "artifacts": [], "errors": ["unknown planning run; no recovery record proves finalization"], "next_actions": ["inspect recovery index"]}
         return {"status": "finalized", "run_id": run_id, "phase": "finalized", "identity": {}, "artifacts": [], "errors": [], "next_actions": []}
     try:
         directory, state = _read_planning_state(root, run_id)
         drift = _planning_identity_matches(root, state)
         if drift:
-            return {"status": "blocked", "run_id": run_id, "phase": "conflict", "errors": ["identity drift: " + ", ".join(drift)], "artifacts": [str(directory / "lifecycle.json")], "next_actions": ["do not resume"]}
-        return {"status": "pass", "run_id": run_id, "phase": state.get("phase"), "identity": {key: state.get(key) for key in ("root", "head", "branch", "requirements_sha256")}, "artifacts": [str(directory / name) for name in ("lifecycle.json", "result.json") if (directory / name).is_file()], "errors": state.get("errors", []), "next_actions": state.get("next_actions", [])}
+            return {"status": "blocked", "run_id": run_id, "phase": "conflict", "errors": ["identity drift: " + ", ".join(drift)], "artifacts": [_temporary_artifact_ref(directory / "lifecycle.json", root)], "next_actions": ["do not resume"]}
+        index = _write_recovery_index(root, run_id, state, directory)
+        return {"status": "pass", "run_id": run_id, "phase": state.get("phase"), "identity": {key: state.get(key) for key in ("root", "head", "branch", "requirements_sha256")}, "artifacts": [_temporary_artifact_ref(directory / name, root) for name in ("lifecycle.json", "result.json") if (directory / name).is_file()] + [index.relative_to(Path(root).resolve()).as_posix()], "errors": state.get("errors", []), "next_actions": state.get("next_actions", [])}
     except (OSError, ValueError) as error:
         return {"status": "blocked", "run_id": run_id, "errors": [f"{type(error).__name__}: {error}"], "artifacts": [], "next_actions": ["inspect retained failure evidence"]}
 
@@ -2104,12 +2137,8 @@ def planning_to_dispatch(
 ) -> dict[str, Any]:
     """Run the fail-closed planning-to-dispatch orchestration.
 
-    The function is intentionally an orchestration boundary: it records every
-    stage, stops at the first blocked stage, and never starts an executor.  On
-    success it writes no planning product: the stage records and the dispatch
-    payload live only in the returned value, and only the frozen task sheet is
-    persisted.  Failure, interruption and conflict keep the full audit trail
-    under ``.pipeline/planning/<run-id>/``.
+    Stage records are transient process artifacts in the system temporary area;
+    only the recovery index remains in the project for later recovery.
     """
     from .core import create_worktree_dispatch, git
 
@@ -2132,7 +2161,7 @@ def planning_to_dispatch(
         for index, record in enumerate(records, 1):
             path = audit / f"{index:02d}-{record['name']}.json"
             _write_planning_json(path, record)
-            result["artifacts"].append(str(path))
+            result["artifacts"].append(_temporary_artifact_ref(path, root))
 
     def stage(name: str, status: str, value: dict[str, Any]) -> bool:
         record = {"name": name, "status": status, "run_id": run_id,
@@ -2244,6 +2273,7 @@ def planning_to_dispatch(
     result["status"] = "dispatch-ready"
     result["next_actions"] = ["start executor separately; do not infer executor success"]
     result["artifacts"] = []
+    _write_recovery_index(root, run_id, {"phase": "dispatch", "status": "dispatch-ready"}, audit)
     _purge_successful_planning_run(root, run_id)
     return result
 

@@ -34,6 +34,14 @@ from .planning import (
     sync_goal_document,
 )
 from .layout import PIPELINE_DIR_NAMES, migrate_layout
+from .task_lifecycle import (
+    append_event as task_lifecycle_event,
+    lifecycle_status as task_lifecycle_status,
+    inspect_task as task_lifecycle_inspect,
+    list_tasks as task_lifecycle_list,
+    resume_task as task_lifecycle_resume,
+    transition_task as task_lifecycle_transition,
+)
 from .core import (
     BLOCKED,
     CONFIG,
@@ -47,7 +55,7 @@ from .core import (
     metric_event,
     import_opencode_session,
     capability_handshake,
-    lifecycle_status,
+    lifecycle_status as legacy_lifecycle_status,
     evidence_freshness,
     evidence_readiness,
     verify_structured_result,
@@ -209,7 +217,7 @@ def _build_parser() -> argparse.ArgumentParser:
     command_sub = command.add_subparsers(dest="action", required=True)
     runner = command_sub.add_parser("run")
     runner.add_argument("--cwd", type=Path, required=True)
-    runner.add_argument("--log", type=Path, required=True)
+    runner.add_argument("--log", type=Path, default=None)
     runner.add_argument("--timeout", type=float, default=180)
     runner.add_argument("--task-id")
     runner.add_argument("--attempt", type=int, default=0)
@@ -317,8 +325,22 @@ def _build_parser() -> argparse.ArgumentParser:
     status = lifecycle_sub.add_parser("status")
     status.add_argument("root", type=Path)
     status.add_argument("--task-id", required=True)
-    status.add_argument("--evidence", type=Path, required=True)
+    status.add_argument("--evidence", type=Path)
     status.add_argument("--run-id")
+    status.add_argument("--role", default=None)
+    for name in ("list", "resume", "inspect", "transition", "event"):
+        item = lifecycle_sub.add_parser(name)
+        item.add_argument("root", type=Path)
+        if name != "list":
+            item.add_argument("--task-id", required=True)
+        if name in {"transition", "event"}:
+            item.add_argument("--role", required=True)
+        if name == "transition":
+            item.add_argument("target")
+            item.add_argument("--evidence", type=Path)
+        elif name == "event":
+            item.add_argument("event_type")
+            item.add_argument("--data", default="{}")
 
     dispatch = groups.add_parser("dispatch", help="structured agent dispatch checks")
     dispatch_sub = dispatch.add_subparsers(dest="action", required=True)
@@ -394,6 +416,21 @@ def _json_file_for_cli(path: Path) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("JSON input must be an object")
     return value
+
+
+def _status_exit_code(result: dict[str, object]) -> int:
+    status = result.get("status")
+    if status in {"pass", "ready", "dispatch-ready", "finalized"}:
+        return PASS
+    if status == "fail":
+        return FAIL
+    if status == "drift":
+        return DRIFT
+    if status in {"blocked", "not_ready"}:
+        return BLOCKED
+    if status in {"config", "configuration"}:
+        return CONFIG
+    return BLOCKED
 
 
 def _command_result(result: dict[str, object]) -> int:
@@ -945,7 +982,7 @@ def _main(argv: list[str] | None = None) -> int:
                     _emit(value, args)
                 else:
                     print(json.dumps(value, ensure_ascii=True))
-                return PASS if value.get("status") in {"pass", "finalized"} else BLOCKED
+                return _status_exit_code(value)
             if args.action == "task-plan-contract-consistency":
                 value = compare_task_plan_contract(
                     _json_file_for_cli(args.task_plan), args.task_sheet, root=args.root,
@@ -1157,13 +1194,29 @@ def _main(argv: list[str] | None = None) -> int:
             print("PASS")
             return PASS
         if args.group == "lifecycle" and args.action == "status":
-            result = lifecycle_status(args.root, args.task_id, args.evidence)
-            status_code = PASS if result["status"] == "ready" else BLOCKED
+            result = legacy_lifecycle_status(args.root, args.task_id, args.evidence) if args.evidence else task_lifecycle_status(args.root, args.task_id)
+            status_code = _status_exit_code(result)
             if args.format == "json":
                 _emit(result, args)
             else:
-                print(f"{result['status'].upper()} lifecycle.status phase={result['phase']}")
+                print(json.dumps(result, ensure_ascii=True, sort_keys=True))
             return status_code
+        if args.group == "lifecycle" and args.action != "status":
+            if args.action == "list":
+                result = task_lifecycle_list(args.root)
+            elif args.action == "resume":
+                result = task_lifecycle_resume(args.root, args.task_id)
+            elif args.action == "inspect":
+                result = task_lifecycle_inspect(args.root, args.task_id)
+            elif args.action == "transition":
+                result = task_lifecycle_transition(args.root, args.task_id, args.target, evidence=args.evidence, role=args.role)
+            else:
+                result = task_lifecycle_event(args.root, args.task_id, args.event_type, json.loads(args.data), role=args.role)
+            if args.format == "json":
+                _emit(result, args)
+            else:
+                print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+            return _status_exit_code(result)
         if args.group == "dispatch" and args.action == "write":
             dispatch_value = _json_file_for_cli(args.input)
             path = write_dispatch(args.input.parent, dispatch_value, args.output)

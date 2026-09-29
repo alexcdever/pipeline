@@ -178,10 +178,14 @@ class PlanningTests(unittest.TestCase):
             (root / 'goal.md').write_text('real requirements', encoding='utf-8')
             subprocess.run(['git', 'add', '.'], cwd=root, check=True)
             subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
-            recorded = root / '.pipeline' / 'planning' / 'preflight-result.json'
+            from pipeline_tools.layout import recovery_index_path, temporary_root
+            recorded = recovery_index_path(root)
             blocked = planning_preflight(root, expected_requirements_sha256='0' * 64)
             self.assertEqual(blocked['status'], 'blocked')
             self.assertTrue(recorded.is_file())
+            self.assertFalse((root / '.pipeline' / 'planning').exists())
+            self.assertIn('temporary://', recorded.read_text(encoding='utf-8'))
+            self.assertTrue(any(path.name.endswith('-preflight.json') for path in temporary_root(root).iterdir()))
             result = planning_preflight(root)
             self.assertEqual(result['status'], 'pass', result)
             self.assertFalse((root / '.pipeline' / 'planning').exists())

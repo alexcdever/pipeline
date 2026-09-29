@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pipeline_tools.layout import temporary_root
 from pipeline_tools.planning import (
     planning_run_finalize,
     planning_run_recover,
@@ -82,8 +83,11 @@ class PlanningLifecycleTests(unittest.TestCase):
             planning_run_start(root, "failed-test")
             interrupted = planning_run_transition(root, "failed-test", "preflight", status="interrupted", error="cancelled")
             self.assertEqual(interrupted["status"], "interrupted")
-            audit = root / ".pipeline" / "planning" / "failed-test"
+            audit = temporary_root(root) / "planning" / "failed-test"
             self.assertTrue((audit / "lifecycle.json").is_file())
+            recovered_index = planning_run_recover(root, "failed-test")
+            self.assertEqual(recovered_index["status"], "pass")
+            self.assertTrue((root / ".pipeline" / "recovery-index.json").is_file())
             conflict = planning_run_start(root, "conflict-test")
             (root / "goal.md").write_text("drift\n", encoding="utf-8")
             recovered = planning_run_recover(root, "conflict-test")
@@ -114,7 +118,7 @@ class PlanningLifecycleTests(unittest.TestCase):
             self.make_repo(root)
             planning_run_start(root, "failed-finalize")
             planning_run_transition(root, "failed-finalize", "preflight", status="failed", error="planning stopped")
-            audit = root / ".pipeline" / "planning" / "failed-finalize"
+            audit = temporary_root(root) / "planning" / "failed-finalize"
             self.assertTrue((audit / "lifecycle.json").is_file())
             failed = planning_run_finalize(root, "failed-finalize", success=False)
             self.assertEqual(failed["status"], "failed")

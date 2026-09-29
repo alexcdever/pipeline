@@ -6,6 +6,7 @@
 
 ### 目录结构变化
 
+- **v0.12.0 → v0.13.0**：任务单在契约提交后冻结且不可变；任务级状态统一由 lifecycle API/CLI 管理，跨会话优先使用 `resume/status/list/inspect`，状态写入仅允许 `role=main-agent`；原始日志与规划中间审计优先进入系统临时目录，项目只保留 `.pipeline/recovery-index.json`，正式 evidence 仍在 `.pipeline/<task-id>/`。旧 `lifecycle status --evidence` 保持兼容，用于 legacy evidence 查询。
 - **v0.11.0 → v0.12.0**：任务生成失败不保留规划审计；旧 `.workflow` 证据目录首次访问时自动迁移并在冲突时阻塞；证据核对标题改用中文并兼容旧标题；单条命令默认超时统一为 180 秒；自动任务单补充事实、假设、未知、链路、环境前置和决策点章节。
 - **v0.10.0 → v0.11.0**：移除“每个任务必须写握手 JSON 文件”的强制要求，改用模板化环境检查列表；证据文件改为失败时保存，成功时不保存。`pipeline-tools runtime handshake` 命令仍然存在，它是可选的能力检查，写入 `capability-handshake.json`，与已移除的强制握手 JSON 不是同一件事。
 - **旧版本迁移**：`.workflow/<task-id>/` 目录在新版本工具首次发现时自动迁移到 `.pipeline/<task-id>/` 并校验；若 `.pipeline/` 已存在则报告冲突并停止，不覆盖、不双写。迁移由 `pipeline_tools/layout.py` 的 `migrate_layout` 执行，事件契约层面的细节见 `references/metrics-contract.md`。
@@ -14,6 +15,7 @@
 
 - 已存在的 `.pipeline/` 目录结构完全兼容新版本
 - 旧版握手 JSON 文件（如果存在）不影响新版本工作流，主代理使用环境检查列表机制
+- 旧 `lifecycle status --evidence` 命令行调用继续可用；新流程应优先使用任务级 `lifecycle resume/status/list/inspect`，写状态仅使用主代理角色接口
 - 成功任务目录只保留 7 个最终化文件（`RETAINED_EVIDENCE_NAMES`），其余过程产物由 `finalize_evidence` 清理；历史里遗留的漂移证据不重写 Git 历史，改用 `scope history --since <commit>` 前向基线闸门约束新提交，规则见 `references/acceptance-evidence.md`
 
 ### 升级建议
@@ -31,7 +33,7 @@
 主代理在任务启动的「恢复核对」阶段执行以下优化操作（除注明外均为主代理职责，不是 `pipeline_tools` 的自动行为）：
 
 - **清理已合并的 worktree**：任务成功合并后由主代理删除该任务的 worktree（包括其中的原始输出）；`pipeline_tools` 只创建和校验 worktree，没有自动清理命令
-- **应用新证据策略**：新任务执行时按"失败保存、成功不保存"规则处理证据文件，由 `pipeline-tools planning evidence-finalize` 机械执行；成功任务的保留集见 `references/acceptance-evidence.md`
+- **应用新证据策略**：新任务执行时按"失败保存、成功不保存"规则处理证据文件，由 `pipeline-tools planning evidence-finalize` 机械执行；原始日志、规划中间审计和 stage 文件优先写系统临时目录，项目只保留 `.pipeline/recovery-index.json`；正式 evidence 保留在 `.pipeline/<task-id>/`，成功任务的保留集见 `references/acceptance-evidence.md`
 - **环境检查升级**：主代理在派发子代理前使用模板化环境检查列表，替代旧版握手机制，见 `SKILL.md` 的「机械工具与项目级反馈」一节
 - **目录结构校验**：主代理确认 `.pipeline/` 目录结构符合当前版本要求；旧 `.workflow/` 目录由 `pipeline_tools` 首次访问时自动迁移，规则见上文
 

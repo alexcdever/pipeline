@@ -14,7 +14,14 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from .layout import active_pipeline_dir, canonical_evidence_dir, evidence_root, is_metrics_path, metrics_dirs
+from .layout import (
+    active_pipeline_dir,
+    canonical_evidence_dir,
+    evidence_root,
+    is_metrics_path,
+    metrics_dirs,
+    temporary_log_path,
+)
 from .contract import load_contract, validate_task
 
 PASS, FAIL, CONFIG, BLOCKED, DRIFT = 0, 1, 2, 3, 4
@@ -149,8 +156,8 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
         pass
 
 
-def run_command(command: list[str], cwd: Path, log: Path, timeout: float = 180) -> dict[str, Any]:
-    """Run a command without a shell and return a bounded, redacted result."""
+def run_command(command: list[str], cwd: Path, log: Path | None = None, timeout: float = 180) -> dict[str, Any]:
+    """Run a command without a shell and write raw output to a transient log by default."""
     command = list(command)
     if command and command[0] == "--":
         command = command[1:]
@@ -159,7 +166,14 @@ def run_command(command: list[str], cwd: Path, log: Path, timeout: float = 180) 
     if not cwd.is_dir():
         raise ValueError("working directory does not exist")
 
-    log_path = log if log.is_absolute() else cwd / log
+    if log is None:
+        log_path = temporary_log_path(root=cwd)
+    else:
+        log_path = log if log.is_absolute() else cwd / log
+        if log_path.is_symlink():
+            raise ValueError("explicit log path must not be a symlink")
+        if log_path.exists() and log_path.is_symlink():
+            raise ValueError("explicit log path must not be a symlink")
     started = time.monotonic()
     kwargs: dict[str, Any] = {
         "cwd": cwd,

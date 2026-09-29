@@ -320,6 +320,31 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         ):
             self.assertIn(needle, task_design, needle)
 
+    def test_lifecycle_and_evidence_documentation_matches_current_contract(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        template = (ROOT / "templates/task-sheet.md").read_text(encoding="utf-8")
+        acceptance = (ROOT / "references/acceptance-evidence.md").read_text(encoding="utf-8")
+        execution = (ROOT / "references/execution-and-review.md").read_text(encoding="utf-8")
+        recovery = (ROOT / "references/merge-and-recovery.md").read_text(encoding="utf-8")
+        migration = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")
+        for text in (readme, skill, template, acceptance, execution, recovery, migration):
+            self.assertTrue("冻结" in text or "frozen" in text, text)
+            self.assertTrue("不可变" in text or "immutable" in text, text)
+            self.assertIn("lifecycle", text)
+            self.assertIn(".pipeline/<task-id>", text)
+        for text in (readme, skill, template, recovery, migration):
+            self.assertIn("lifecycle", text)
+            for command in ("resume", "status", "list", "inspect"):
+                self.assertIn(command, text)
+            self.assertIn("role=main-agent", text)
+            self.assertIn(".pipeline/recovery-index.json", text)
+        self.assertIn("--evidence", readme)
+        self.assertIn("--evidence", skill)
+        self.assertIn("--evidence", template)
+        self.assertIn("0.13.0", skill)
+        self.assertIn("v0.12.0 → v0.13.0", migration)
+
     def test_references_compat_and_migration_documents_known_items(self):
         reference = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")
         self.assertIn("已知项与后续跟进", reference)

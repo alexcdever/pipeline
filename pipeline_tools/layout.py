@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import tempfile
 from pathlib import Path
+
+
+TEMP_DIR_NAME = "pipeline-tools"
+RECOVERY_INDEX_NAME = "recovery-index.json"
 
 PIPELINE_DIR_NAME = ".pipeline"
 LEGACY_PIPELINE_DIR_NAME = ".workflow"
@@ -12,6 +18,41 @@ LAYOUT_DIR_NAMES = (PIPELINE_DIR_NAME, LEGACY_PIPELINE_DIR_NAME)
 
 class LegacyPipelineLayoutError(ValueError):
     """Raised when legacy and canonical evidence directories conflict."""
+
+
+def temporary_root(root: Path | None = None) -> Path:
+    """Return the shared system temporary directory for transient artifacts."""
+    identity_source = Path(root).resolve() if root is not None else Path.cwd().resolve()
+    identity = hashlib.sha256(str(identity_source).encode("utf-8")).hexdigest()[:12]
+    path = Path(tempfile.gettempdir()) / TEMP_DIR_NAME / identity
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def temporary_path(name: str | None = None, *, suffix: str = "", root: Path | None = None) -> Path:
+    """Allocate a transient path without allowing callers to escape its root."""
+    root = temporary_root(root).resolve()
+    if name is None:
+        return Path(tempfile.mkstemp(prefix="run-", suffix=suffix, dir=root)[1])
+    candidate = (root / name).resolve()
+    if candidate.parent != root or candidate == root:
+        raise ValueError("temporary path must be a direct child of the shared temporary root")
+    return candidate
+
+
+def temporary_log_path(name: str | None = None, *, root: Path | None = None) -> Path:
+    """Return a shared transient log path, preserving explicit names for compatibility."""
+    if name is None:
+        return temporary_path(suffix=".log", root=root)
+    path = Path(name)
+    if path.is_absolute():
+        return path
+    return temporary_path(name, root=root)
+
+
+def recovery_index_path(root: Path) -> Path:
+    """Return the canonical, project-relative index used to recover retained failures."""
+    return active_pipeline_dir(Path(root)) / RECOVERY_INDEX_NAME
 
 
 def migrate_layout(root: Path) -> tuple[int, str]:
@@ -63,6 +104,16 @@ def active_pipeline_dir(root: Path) -> Path:
     if legacy.exists():
         migrate_layout(root)
     return canonical
+
+
+def read_pipeline_dirs(root: Path) -> list[Path]:
+    """Return readable canonical/legacy roots without changing the filesystem."""
+    root = Path(root)
+    canonical = root / PIPELINE_DIR_NAME
+    legacy = root / LEGACY_PIPELINE_DIR_NAME
+    if canonical.exists() and legacy.exists():
+        raise LegacyPipelineLayoutError("both .workflow and .pipeline exist; reconcile before migration")
+    return [canonical] if canonical.exists() else [legacy]
 
 
 def metrics_dirs(root: Path) -> list[Path]:
