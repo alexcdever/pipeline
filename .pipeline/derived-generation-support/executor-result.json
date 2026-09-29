@@ -7,8 +7,8 @@
   "branch": "derived-generation-support",
   "round": 1,
   "identity": {
-    "product_head": "1e580ec",
-    "head": "PENDING_EXECUTOR_COMMIT"
+    "product_head": "19e19fdad58130e2338b57eab7d33aaef30e38db",
+    "head": "19e19fdad58130e2338b57eab7d33aaef30e38db"
   },
   "acceptance": [
     {

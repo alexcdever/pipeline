@@ -227,7 +227,7 @@ SCHEMA: 4 TASK_TYPE: derived
     "freshness 需在执行提交后运行，本轮报告只记录提交前状态"
   ],
   "identity": {
-    "product_head": "1e580ec"
+    "product_head": "19e19fdad58130e2338b57eab7d33aaef30e38db"
   },
   "recommendation": "ready_for_review"
 }
