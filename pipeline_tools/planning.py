@@ -45,7 +45,8 @@ from .layout import (
 CHAIN = ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")
 ROLES = {"executor", "reviewer", "main"}
 TASK_TYPES = {"vertical-feature", "prerequisite", "repair", "derived"}
-GOAL_DOCUMENT_NAME = "goal.md"
+GOAL_DOCUMENT_NAME = "docs/goal.md"
+LEGACY_GOAL_DOCUMENT_NAME = "goal.md"
 LEGACY_PLAN_DOCUMENT_NAME = "implement-plan.md"
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ACCEPTANCE_ID_RE = re.compile(r"acceptance-test-[A-Za-z0-9][A-Za-z0-9._-]*\Z")
@@ -68,33 +69,35 @@ def _sha256(path: Path) -> str:
 
 
 def sync_goal_document(root: Path) -> tuple[Path, str | None]:
-    """Resolve the authoritative requirements document.
+    """Resolve and, when needed, materialize the canonical requirements document.
 
-    ``goal.md`` is authoritative. When only the legacy ``implement-plan.md``
-    exists it is mechanically copied into ``goal.md`` with a source header, so
-    the conversion is a byte-faithful move rather than a semantic rewrite. When
-    neither file exists the caller must ask a human to create ``goal.md``.
+    Resolution is canonical ``docs/goal.md``, legacy root ``goal.md``, then the
+    older root ``implement-plan.md``. A copied legacy document gets a provenance
+    header; canonical content is never overwritten.
     """
     root = Path(root)
     goal = root / GOAL_DOCUMENT_NAME
-    legacy = root / LEGACY_PLAN_DOCUMENT_NAME
+    goal.parent.mkdir(parents=True, exist_ok=True)
     if goal.is_file():
         return goal, None
-    if not legacy.is_file():
-        return goal, f"{GOAL_DOCUMENT_NAME} missing and no {LEGACY_PLAN_DOCUMENT_NAME} to convert"
-    try:
-        content = legacy.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        return goal, f"{LEGACY_PLAN_DOCUMENT_NAME} is unreadable"
-    header = (
-        f"<!-- Generated from {LEGACY_PLAN_DOCUMENT_NAME} by pipeline_tools goal-sync. "
-        f"{GOAL_DOCUMENT_NAME} is the authoritative requirements document; edit it directly from now on. -->\n"
-    )
-    try:
-        goal.write_text(header + content, encoding="utf-8")
-    except OSError:
-        return goal, f"unable to write {GOAL_DOCUMENT_NAME}"
-    return goal, None
+    sources = ((LEGACY_GOAL_DOCUMENT_NAME, root / LEGACY_GOAL_DOCUMENT_NAME), (LEGACY_PLAN_DOCUMENT_NAME, root / LEGACY_PLAN_DOCUMENT_NAME))
+    for source_name, source in sources:
+        if not source.is_file():
+            continue
+        try:
+            content = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return goal, f"{source_name} is unreadable"
+        header = (
+            f"<!-- Generated from {source_name} by pipeline_tools goal-sync. "
+            f"{GOAL_DOCUMENT_NAME} is authoritative; edit it directly from now on. -->\n"
+        )
+        try:
+            goal.write_text(header + content, encoding="utf-8")
+        except OSError:
+            return goal, f"unable to write {GOAL_DOCUMENT_NAME}"
+        return goal, f"copied {source_name} to {GOAL_DOCUMENT_NAME}"
+    return goal, f"{GOAL_DOCUMENT_NAME} missing and no legacy requirements document found"
 
 
 def _normalise_text(value: Any) -> str:
@@ -471,9 +474,11 @@ def planning_preflight(
 
     if root.is_dir():
         plan, sync_error = sync_goal_document(root)
-        if sync_error:
+        if sync_error and not sync_error.startswith("copied "):
             errors.append(sync_error)
-        else:
+        elif sync_error:
+            warnings.append(sync_error)
+        if plan.is_file() and (not sync_error or sync_error.startswith("copied ")):
             try:
                 content = plan.read_text(encoding="utf-8")
             except (OSError, UnicodeError):
@@ -1588,7 +1593,7 @@ def _planning_identity(root: Path, run_id: str) -> dict[str, Any]:
     root = Path(root).resolve()
     plan, sync_error = sync_goal_document(root)
     facts, errors = _worktree_facts(root)
-    if errors or sync_error or not plan.is_file():
+    if errors or (sync_error and not sync_error.startswith("copied ")) or not plan.is_file():
         raise ValueError("planning run identity unavailable")
     return {
         "run_id": run_id,

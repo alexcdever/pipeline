@@ -89,7 +89,7 @@ class PlanningLifecycleTests(unittest.TestCase):
             self.assertEqual(recovered_index["status"], "pass")
             self.assertTrue((root / ".pipeline" / "recovery-index.json").is_file())
             conflict = planning_run_start(root, "conflict-test")
-            (root / "goal.md").write_text("drift\n", encoding="utf-8")
+            (root / "docs" / "goal.md").write_text("drift\n", encoding="utf-8")
             recovered = planning_run_recover(root, "conflict-test")
             self.assertEqual(recovered["status"], "blocked")
             self.assertEqual(recovered["phase"], "conflict")

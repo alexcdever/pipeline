@@ -342,8 +342,8 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("--evidence", readme)
         self.assertIn("--evidence", skill)
         self.assertIn("--evidence", template)
-        self.assertIn("0.13.0", skill)
-        self.assertIn("v0.12.0 → v0.13.0", migration)
+        self.assertIn("0.14.0", skill)
+        self.assertIn("v0.13.0 → v0.14.0", migration)
 
     def test_references_compat_and_migration_documents_known_items(self):
         reference = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")

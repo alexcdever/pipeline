@@ -4,8 +4,13 @@
 
 ## 版本升级与兼容性
 
+### 需求文档迁移
+
+新 canonical requirements 文档为 `docs/goal.md`。兼容解析顺序固定为 `docs/goal.md` → 根目录旧版 `goal.md` → 根目录更旧的 `implement-plan.md`。canonical 存在时永不覆盖；canonical 缺失时将首个存在的 legacy 文件复制到 `docs/goal.md`，并在文件首行加入 provenance HTML 注释，说明来源和 canonical 的编辑规则。复制不是字节完全相同：legacy 内容本体保持不变，但新增 header 会改变 canonical 的哈希；规划和后续 freshness 检查均针对生成后的 `docs/goal.md`。历史冻结任务单不被批量改写，schema 1-3 继续使用其记录的 `implement_plan` 路径。
+
 ### 目录结构变化
 
+- **v0.13.0 → v0.14.0**：需求权威文档迁移为 `docs/goal.md`；兼容根目录旧版 `goal.md` 和更早版本 `implement-plan.md`，按固定优先级迁移且不覆盖已存在的 canonical 文档。schema 4 绑定新路径，schema 1-3 继续读取历史 `implement_plan` 路径；历史冻结任务单不批量改写。
 - **v0.12.0 → v0.13.0**：任务单在契约提交后冻结且不可变；任务级状态统一由 lifecycle API/CLI 管理，跨会话优先使用 `resume/status/list/inspect`，状态写入仅允许 `role=main-agent`；原始日志与规划中间审计优先进入系统临时目录，项目只保留 `.pipeline/recovery-index.json`，正式 evidence 仍在 `.pipeline/<task-id>/`。旧 `lifecycle status --evidence` 保持兼容，用于 legacy evidence 查询。
 - **v0.11.0 → v0.12.0**：任务生成失败不保留规划审计；旧 `.workflow` 证据目录首次访问时自动迁移并在冲突时阻塞；证据核对标题改用中文并兼容旧标题；单条命令默认超时统一为 180 秒；自动任务单补充事实、假设、未知、链路、环境前置和决策点章节。
 - **v0.10.0 → v0.11.0**：移除“每个任务必须写握手 JSON 文件”的强制要求，改用模板化环境检查列表；证据文件改为失败时保存，成功时不保存。`pipeline-tools runtime handshake` 命令仍然存在，它是可选的能力检查，写入 `capability-handshake.json`，与已移除的强制握手 JSON 不是同一件事。

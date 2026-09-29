@@ -10,7 +10,7 @@
   "task_type": "repair",
   "project_type": "service",
   "risk": "medium",
-  "goal": {"path": "goal.md"},
+  "goal": {"path": "docs/goal.md"},
   "allowed_paths": ["<repo-relative-or-explicit-sibling-path-pattern>"],
   "forbidden_paths": ["<path-pattern>"],
   "non_goals": ["<explicit non-goal that this task must not pursue>"],

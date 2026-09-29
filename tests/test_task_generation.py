@@ -16,12 +16,13 @@ CHAIN = {name: ["src/app.py"] for name in ("entry", "interaction", "application"
 
 
 def make_inputs(root, task_ids=("task-a", "task-b")):
-    (root / "goal.md").write_text("stable goal\n", encoding="utf-8")
+    (root / "docs" / "goal.md").parent.mkdir(parents=True, exist_ok=True)
+    (root / "docs" / "goal.md").write_text("stable goal\n", encoding="utf-8")
     (root / "src").mkdir(exist_ok=True)
     (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
     acceptance = [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: test", "command_ref": "python -m unittest tests.test_task_generation -v"}]
-    project = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "facts": [{"id": "project-fact-1", "value": "src/app.py is the application entry resource"}], "resources": [{"id": "resource", "path": "src/app.py"}, {"id": "resource-tests", "path": "tests/test_task_generation.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
-    requirements = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance}
+    project = {"schema": 1, "sources": [{"id": "source", "path": "docs/goal.md"}], "facts": [{"id": "project-fact-1", "value": "src/app.py is the application entry resource"}], "resources": [{"id": "resource", "path": "src/app.py"}, {"id": "resource-tests", "path": "tests/test_task_generation.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
+    requirements = {"schema": 1, "sources": [{"id": "source", "path": "docs/goal.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance}
     tasks = [{"id": task_id, "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource", "resource-tests"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"} for task_id in task_ids]
     plan = {"schema": 1, "non_goals": ["本任务不扩展用户可见范围"], "requirements": ["requirement"], "resources": ["resource", "resource-tests"], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": tasks}
     return project, requirements, plan
@@ -48,7 +49,7 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertEqual(result["status"], "pass")
             self.assertEqual(result["task_ids"], ["task-a", "task-b"])
             self.assertEqual(result["planning_run_id"], "run-1")
-            self.assertEqual(result["requirements_sha256"], hashlib.sha256((root / "goal.md").read_bytes()).hexdigest())
+            self.assertEqual(result["requirements_sha256"], hashlib.sha256((root / "docs" / "goal.md").read_bytes()).hexdigest())
             self.assertFalse((root / ".worktrees").exists())
             for task_id in result["task_ids"]:
                 sheet = root / "docs" / "tasks" / f"{task_id}.md"
@@ -109,7 +110,7 @@ class TaskGenerationTests(unittest.TestCase):
             root = Path(directory)
             project, requirements, plan = make_inputs(root)
             make_repo(root)
-            (root / "goal.md").unlink()
+            (root / "docs" / "goal.md").unlink()
             result = self.run_generation(root, project, requirements, plan, run_id="preflight-audit-run")
             self.assertEqual(result["status"], "blocked")
             self.assertFalse((root / ".pipeline" / "planning").exists())
@@ -204,14 +205,14 @@ class TaskGenerationTests(unittest.TestCase):
             root = Path(directory)
             project, requirements, plan = make_inputs(root, ("consistent",))
             make_repo(root)
-            expected = hashlib.sha256((root / "goal.md").read_bytes()).hexdigest()
-            (root / "goal.md").write_text("drifted goal\n", encoding="utf-8")
+            expected = hashlib.sha256((root / "docs" / "goal.md").read_bytes()).hexdigest()
+            (root / "docs" / "goal.md").write_text("drifted goal\n", encoding="utf-8")
             drift = self.run_generation(root, project, requirements, plan, run_id="drift-run", expected=expected)
             self.assertEqual(drift["status"], "blocked")
             self.assertTrue(any("hash" in error for error in drift["errors"]))
             self.assertFalse((root / "docs" / "tasks" / "consistent.md").exists())
 
-            (root / "goal.md").write_text("stable goal\n", encoding="utf-8")
+            (root / "docs" / "goal.md").write_text("stable goal\n", encoding="utf-8")
             result = self.run_generation(root, project, requirements, plan, run_id="consistent-run")
             self.assertEqual(result["status"], "pass")
             sheet = root / "docs" / "tasks" / "consistent.md"
@@ -352,7 +353,8 @@ class TaskGenerationTests(unittest.TestCase):
             )
             self.assertEqual(contract["allowed_paths"], [".pipeline/evidence-task/", "tests/test_task_generation.py"])
             self.assertNotIn(".pipeline/** existing history", contract["forbidden_paths"])
-            self.assertIn("goal.md", contract["forbidden_paths"])
+            self.assertIn("docs/goal.md", contract["forbidden_paths"])
+            self.assertIn("implement-plan.md", contract["forbidden_paths"])
             self.assertIn("IDEA.md", contract["forbidden_paths"])
             self.assertEqual(validate_task(sheet), [])
 
@@ -378,7 +380,7 @@ class TaskGenerationTests(unittest.TestCase):
             "schema": 4,
             "task_id": task_id,
             "task_type": task_type,
-            "goal": {"path": "goal.md", "sha256": "0" * 64, "planning_run_id": "parent-run"},
+            "goal": {"path": "docs/goal.md", "sha256": "0" * 64, "planning_run_id": "parent-run"},
             "risk": "medium",
             "project_type": "service",
             "non_goals": ["parent sheet fixture"],

@@ -1022,11 +1022,11 @@ def goal_status(
     goal = contract.get("goal")
     legacy_plan = contract.get("implement_plan")
     if isinstance(goal, dict):
-        label, relative, document = "goal", "goal.md", goal
+        label, relative, document = "goal", "docs/goal.md", goal
     elif isinstance(legacy_plan, dict):
         label, relative, document = "implement-plan", "implement-plan.md", legacy_plan
     elif contract.get("schema") == 4:
-        label, relative, document = "goal", "goal.md", None
+        label, relative, document = "goal", "docs/goal.md", None
     else:
         label, relative, document = "implement-plan", "implement-plan.md", None
     recorded: str | None = None

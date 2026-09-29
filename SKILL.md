@@ -1,7 +1,7 @@
 ---
 name: pipeline
 description: "Use when an agent plans, builds, reviews, or merges code."
-version: 0.13.0
+version: 0.14.0
 author: Alex Chen (alexcdever)
 license: MIT
 platforms: [linux, macos, windows]
@@ -79,7 +79,7 @@ metadata:
 - 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
-- 需求权威文件是仓库根目录的 `goal.md`；旧的 `implement-plan.md` 只作为迁移来源，`planning goal-sync` 会把它按字节原样复制成带来源头的 `goal.md`（不重写内容），此后只编辑 `goal.md`。
+- 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
 - 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）；`freeze_check` 据此检测任务单在冻结后被改动。
 - `planning_to_dispatch` 支持 `expected_requirements_sha256` 绑定规划期需求基线；传入后 preflight 用它在派发前核对 `goal.md` 哈希是否漂移。
 - `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。

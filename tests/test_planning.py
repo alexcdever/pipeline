@@ -12,6 +12,7 @@ from pipeline_tools.planning import (
     validate_project_facts,
     validate_requirement_facts,
     validate_task_plan,
+    sync_goal_document,
 )
 
 
@@ -129,6 +130,31 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(result["task_ids"], ["current-task"])
             self.assertTrue((root / "docs" / "tasks" / "current-task.md").is_file())
             self.assertEqual(historical.read_text(encoding="utf-8"), "historical artifact")
+
+    def test_goal_document_resolution_precedence_and_provenance(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / 'goal.md').write_text('legacy goal', encoding='utf-8')
+            (root / 'implement-plan.md').write_text('older plan', encoding='utf-8')
+            path, message = sync_goal_document(root)
+            self.assertEqual(path, root / 'docs' / 'goal.md')
+            self.assertIn('goal.md', message)
+            self.assertIn('legacy goal', path.read_text(encoding='utf-8'))
+            self.assertNotIn('older plan', path.read_text(encoding='utf-8'))
+
+            path.write_text('canonical', encoding='utf-8')
+            (root / 'goal.md').write_text('changed legacy', encoding='utf-8')
+            resolved, message = sync_goal_document(root)
+            self.assertIsNone(message)
+            self.assertEqual(resolved.read_text(encoding='utf-8'), 'canonical')
+
+    def test_goal_document_falls_back_to_implement_plan(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / 'implement-plan.md').write_text('older plan', encoding='utf-8')
+            path, message = sync_goal_document(root)
+            self.assertIn('implement-plan.md', message)
+            self.assertIn('older plan', path.read_text(encoding='utf-8'))
 
     def test_planning_preflight(self):
         with tempfile.TemporaryDirectory() as d:
