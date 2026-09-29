@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "task_id": "metrics-tracking-policy-continuation-1",
+  "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+  "branch": "metrics-tracking-policy-continuation-1",
+  "role": "reviewer",
+  "round": 1,
+  "status": "pass",
+  "acceptance": [
+    {
+      "id": "acceptance-test-readme-documents-tracking-is-developer-choice",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": [
+        "review-report.md"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_readme_documents_metrics_tracking_is_developer_choice",
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+      "exit_code": 0,
+      "evidence_ref": "review-report.md"
+    },
+    {
+      "command": "git diff HEAD --name-only",
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+      "exit_code": 0,
+      "evidence_ref": "review-report.md"
+    },
+    {
+      "command": "git check-ignore -v .pipeline/metrics/foo.json .pipeline/x/x-progress.jsonl",
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+      "exit_code": 0,
+      "evidence_ref": "review-report.md"
+    }
+  ],
+  "unverified": [
+    "full 317-test suite count (only the single acceptance test was independently re-run)",
+    "post-merge re-verification in the main worktree"
+  ]
+}

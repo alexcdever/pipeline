@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "task_id": "metrics-tracking-policy-continuation-1",
+  "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+  "branch": "metrics-tracking-policy-continuation-1",
+  "role": "executor",
+  "round": 1,
+  "status": "pass",
+  "acceptance": [
+    {
+      "id": "acceptance-test-readme-documents-tracking-is-developer-choice",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": [
+        "executor-report.md"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_readme_documents_metrics_tracking_is_developer_choice",
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+      "exit_code": 0,
+      "evidence_ref": "executor-report.md"
+    },
+    {
+      "command": "python -m unittest discover -s tests",
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+      "exit_code": 0,
+      "evidence_ref": "executor-report.md"
+    },
+    {
+      "command": "python -m pipeline_tools --format json task validate docs/tasks/metrics-tracking-policy-continuation-1.md",
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\metrics-tracking-policy-continuation-1",
+      "exit_code": 0,
+      "evidence_ref": "executor-report.md"
+    }
+  ],
+  "unverified": [
+    "post-merge re-verification in the main worktree (out of scope for the executor)",
+    "whether any doc other than README.md restates the removed mandate"
+  ]
+}

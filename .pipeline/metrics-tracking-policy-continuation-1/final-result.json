@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "task_id": "metrics-tracking-policy-continuation-1",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy-continuation-1",
+  "branch": "metrics-tracking-policy-continuation-1",
+  "role": "final",
+  "round": 1,
+  "status": "pass",
+  "head": "dd1e74916a4374eb0eabbc69cc13a29805bb65fd",
+  "goal_sha256": "9abb196ae5f1ecb99fa4834374b6c27910fa508b467c56d2bd8a9970a086e25f",
+  "commands": [
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_readme_documents_metrics_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy-continuation-1", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy-continuation-1", "evidence_ref": "final-check.md"}
+  ],
+  "acceptance": [
+    {"id": "acceptance-test-readme-documents-tracking-is-developer-choice", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "scope": {
+    "changed_files": [
+      "README.md",
+      "tests/test_acceptance_id_and_template_compliance.py"
+    ],
+    "out_of_scope": []
+  },
+  "assertions": [
+    "验收测试由主代理亲自重跑，退出码 0",
+    "全量 317 tests OK，基线 316 之上仅新增 1，无回归",
+    "README 三处旧强制措辞已替换，进度日志规则保留",
+    "四条负向断言经对照 HEAD 版 README 证明改动前确实存在，非恒真",
+    "生产 diff 仅 README.md 与 tests/，全在 allowed_paths"
+  ],
+  "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"],
+  "unverified": [
+    "README 之外是否还有文档复述旧强制（合同非阻塞未知项）",
+    "两个历史证据报告各含 2 个 U+FFFD，属已入库历史，本任务未清理"
+  ],
+  "recommendation": "ready_to_merge"
+}

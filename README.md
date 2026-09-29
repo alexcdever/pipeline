@@ -13,7 +13,7 @@
 
 - 任务单：`docs/tasks/<task-id>.md`
 - 任务证据：`.pipeline/<task-id>/`
-- 项目级统计：`.pipeline/metrics/`（由工具自动生成并纳入 Git 追踪）
+- 项目级统计：`.pipeline/metrics/`（由工具自动生成；是否纳入 Git 由项目开发者决定）
 - 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
 - 任务契约提交后冻结
 - 任务单只承载冻结契约与人类可读的契约说明；过程记录（任务锚点、验收台账、执行记录、最终结果）写入 `.pipeline/<task-id>/` 的角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 和三份阶段报告（`executor-report.md`、`review-report.md`、`final-check.md`），不另行维护项目级状态文档
@@ -61,9 +61,10 @@ python -m pipeline_tools gate post-merge .pipeline/<task-id> --task-id <task-id>
 ## 项目级反馈
 
 除 `metrics` 子命令外，所有 `pipeline-tools` 阶段命令默认自动记录一个结构化指标事件到
-目标项目的 `.pipeline/metrics/`。指标文件是可审查的流水线历史，应纳入 Git；不要把该目录
-加入项目的 `.gitignore`。自动采集只使用命令退出码、结构化结果和可定位的证据路径，不会从
-自然语言报告推断产品结论，也不会记录 token、凭据、完整命令输出或业务数据。
+目标项目的 `.pipeline/metrics/`。该目录由工具自动创建和写入；是否把它纳入 Git 由项目开发者
+决定，技能既不要求也不禁止（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。自动采集
+只使用命令退出码、结构化结果和可定位的证据路径，不会从自然语言报告推断产品结论，也不会
+记录 token、凭据、完整命令输出或业务数据。
 
 自动采集可以通过环境变量 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 暂时关闭（仅用于测试或
 明确的诊断场景）；正常任务执行不要关闭。`metrics` 子命令本身不递归生成阶段事件，但
@@ -93,7 +94,7 @@ python -m pipeline_tools --format json evidence readiness .pipeline/<task-id> --
 
 `runtime handshake` 是可选的能力检查，写入 `<workflow>/capability-handshake.json`，记录仓库可读、workflow 可写、产品代码写权限与 runtime 状态；它不是被移除的那个强制握手机制，新任务不依赖该命令也能完成闭环。版本差异见 `references/compat-and-migration.md`。
 
-角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；`.pipeline/metrics/` 的指标事件则相反，应纳入 Git。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
+角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；`.pipeline/metrics/` 的指标事件不受这条规则约束，是否纳入 Git 由项目开发者决定（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
 
 结构化命令使用统一响应外壳：`schema`、`command`、`status`、`exit_code`、`observed`、`errors`、`blockers`、`artifacts`、`next_actions` 和 `unverified`。JSON 文件是流程编排输入，终端摘要只用于人类查看。
 
