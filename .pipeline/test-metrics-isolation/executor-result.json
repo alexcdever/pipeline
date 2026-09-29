@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "task_id": "test-metrics-isolation",
+  "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\test-metrics-isolation",
+  "branch": "test-metrics-isolation",
+  "role": "executor",
+  "round": 1,
+  "status": "pass",
+  "acceptance": [
+    {
+      "id": "acceptance-test-cli-suite-leaves-tracked-metrics-unchanged",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-auto-metrics-enabled-run-isolated",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-wrapper-exit-code-with-isolation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-metrics-contract-documents-test-isolation",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "python -m unittest tests.test_cli.CLITests.test_cli_suite_leaves_tracked_metrics_unchanged",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\test-metrics-isolation",
+      "evidence_ref": "executor-report.md"
+    },
+    {
+      "command": "python -m unittest tests.test_cli.CLITests.test_auto_metrics_enabled_run_keeps_metrics_out_of_repository",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\test-metrics-isolation",
+      "evidence_ref": "executor-report.md"
+    },
+    {
+      "command": "python -m unittest tests.test_cli.CLITests.test_automatic_metrics_wrapper_preserves_outer_test_command_exit_code",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\test-metrics-isolation",
+      "evidence_ref": "executor-report.md"
+    },
+    {
+      "command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_metrics_contract_documents_test_isolation",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\test-metrics-isolation",
+      "evidence_ref": "executor-report.md"
+    },
+    {
+      "command": "python -m unittest discover -s tests",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\test-metrics-isolation",
+      "evidence_ref": "executor-report.md"
+    }
+  ],
+  "unverified": []
+}

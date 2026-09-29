@@ -119,6 +119,17 @@
 
 历史里已经存在的漂移证据不重写 Git 历史；`pipeline-tools scope history` 支持可选 `--since <commit>`，把扫描范围收窄到 `<since>..HEAD`。省略 `--since` 时行为与旧版本一致，扫描全部可达历史；`--since` 是前向基线，不是豁免。详细规则见 `references/acceptance-evidence.md` 的「保留证据集」和「前向基线闸门」两节。
 
+## 测试隔离规则
+
+自动采集按调用方的当前工作目录解析项目根：`_git_root(Path.cwd())` 向上找最近的 `.git`，因此任何以仓库根为 cwd 的 `pipeline-tools` 阶段调用都会写入受追踪的 `.pipeline/metrics/`。测试套件若以仓库根为 cwd 启用自动采集（`PIPELINE_TOOLS_DISABLE_AUTO_METRICS` 未设为 `1`/`true`/`yes`/`on`），就会给这份工作流历史追加一个未追踪的 `*.json` 事件，弄脏工作树。
+
+测试隔离规则：**测试必须让启用自动采集的运行写入临时 root，或以非仓库目录为 cwd，绝不能写入仓库的 `.pipeline/metrics/`。**
+
+- `run_cli` 在仓库根的默认 cwd 上运行，因此显式启用自动采集的用例要把 cwd 指向一个临时目录（非 Git 仓库），让根解析落在那份临时树里。
+- 不得为了让隔离成立而跳过或删除任何既有自动指标测试；隔离只改变写入位置，不削弱对采集行为的断言。
+- 被追踪的 `.pipeline/metrics/` 历史保持不变：运行测试套件后 `git status --short .pipeline/metrics/` 不新增未追踪文件。
+- `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 仍然是测试/诊断期关闭采集的开关；测试隔离解决的是「显式启用采集」时不得污染仓库，二者互不替代。
+
 ## 反馈边界
 
 统计只能生成后续优化问题，不得自动：

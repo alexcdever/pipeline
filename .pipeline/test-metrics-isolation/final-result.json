@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "task_id": "test-metrics-isolation",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/test-metrics-isolation",
+  "branch": "test-metrics-isolation",
+  "role": "final",
+  "round": 1,
+  "status": "pass",
+  "head": "14a17d2c62aa4765b53bc099af4dbb8c0e10998f",
+  "goal_sha256": "9abb196ae5f1ecb99fa4834374b6c27910fa508b467c56d2bd8a9970a086e25f",
+  "commands": [
+    {"command": "python -m unittest tests.test_cli.CLITests.test_cli_suite_leaves_tracked_metrics_unchanged", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/test-metrics-isolation", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_auto_metrics_enabled_run_keeps_metrics_out_of_repository", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/test-metrics-isolation", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_automatic_metrics_wrapper_preserves_outer_test_command_exit_code", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/test-metrics-isolation", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_metrics_contract_documents_test_isolation", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/test-metrics-isolation", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/test-metrics-isolation", "evidence_ref": "final-check.md"}
+  ],
+  "acceptance": [
+    {"id": "acceptance-test-cli-suite-leaves-tracked-metrics-unchanged", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-auto-metrics-enabled-run-isolated", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-wrapper-exit-code-with-isolation", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-metrics-contract-documents-test-isolation", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "scope": {
+    "changed_files": [
+      "tests/test_cli.py",
+      "tests/test_acceptance_id_and_template_compliance.py",
+      "references/metrics-contract.md"
+    ],
+    "out_of_scope": []
+  },
+  "assertions": [
+    "4 条验收测试由主代理亲自重跑，退出码全为 0",
+    "全量 312 tests OK；套件跑完 .pipeline/metrics/ 未增长，原始缺陷已消除",
+    "改动 3 文件全在 allowed_paths 内；pipeline_tools/、.gitignore、docs/、已入库 metrics 历史未动",
+    "既有自动指标测试未被跳过或删除"
+  ],
+  "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"],
+  "unverified": [
+    "文档契约测试的负向断言恒真，不设防，登记为跟进项",
+    "未核验隔离临时 root 内单条事件内容",
+    "未在非 Windows 平台复跑"
+  ],
+  "recommendation": "ready_to_merge"
+}

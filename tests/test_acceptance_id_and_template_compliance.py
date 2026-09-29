@@ -360,6 +360,22 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("同一次 planning run", task_design)
         self.assertIn("HEAD", task_design)
 
+    def test_references_metrics_contract_documents_test_isolation(self):
+        contract = (ROOT / "references/metrics-contract.md").read_text(encoding="utf-8")
+        self.assertIn("## 测试隔离规则", contract)
+        for needle in (
+            "临时 root",
+            "非仓库目录",
+            "`run_cli`",
+            "`_git_root(Path.cwd())`",
+            "`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1`",
+            "`git status --short .pipeline/metrics/`",
+            "未追踪",
+        ):
+            self.assertIn(needle, contract, needle)
+        # 规则必须要求隔离，而不是允许把 metrics 目录加进 .gitignore。
+        self.assertNotIn(".pipeline/metrics/` 加入 `.gitignore`", contract)
+
 
 if __name__ == "__main__":
     unittest.main()
