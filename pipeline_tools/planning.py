@@ -1084,6 +1084,98 @@ def _aliases_for_entities(value: list[Any]) -> tuple[set[str], dict[str, str]]:
     return known, aliases
 
 
+DELETE_OPERATION_TOKENS = {
+    "delete",
+    "deletes",
+    "deleting",
+    "deletion",
+    "remove",
+    "removes",
+    "removing",
+    "removal",
+    "purge",
+    "purges",
+    "purging",
+}
+RESERVED_EVIDENCE_SUFFIX = "-progress.jsonl"
+
+
+def _is_delete_operation(operation: dict[str, Any]) -> bool:
+    """Return whether an operation's declared kind is a deletion."""
+    kind = operation.get("kind")
+    if not isinstance(kind, str):
+        return False
+    return any(token in DELETE_OPERATION_TOKENS for token in re.split(r"[^a-z0-9]+", kind.lower()) if token)
+
+
+def _pipeline_resource_path(value: Any) -> str | None:
+    """Return the project-relative path when a resource names ``.pipeline/``."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().replace("\\\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    if normalized.startswith(".pipeline/") and len(normalized) > len(".pipeline/"):
+        return normalized
+    return None
+
+
+def _deletable_evidence_files(directory: Path) -> list[Path]:
+    """Return files a delete operation may legitimately remove.
+
+    The retained evidence set and the role progress logs are reserved: an
+    operation that only sees those has nothing it is allowed to delete.
+    """
+    found: list[Path] = []
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file():
+            continue
+        name = path.name
+        if name in RETAINED_EVIDENCE_NAMES or name.endswith(RESERVED_EVIDENCE_SUFFIX):
+            continue
+        found.append(path)
+    return found
+
+
+def _validate_pipeline_resource_existence(
+    task_id: str,
+    resources: Iterable[Any],
+    resource_paths: dict[str, str],
+    errors: list[str],
+    *,
+    root: Path,
+    operation: dict[str, Any] | None = None,
+) -> None:
+    """Require a hand-written ``.pipeline/<dir>/`` resource to exist on disk.
+
+    The check is mechanical and directory-name agnostic: it only inspects the
+    path a resource points at. It applies to planning inputs, so already frozen
+    task sheets are never retroactively invalidated.
+    """
+    for item in resources:
+        reference = item.get("id") if isinstance(item, dict) else item
+        if not isinstance(reference, str):
+            continue
+        declared = resource_paths.get(reference, reference)
+        pipeline_path = _pipeline_resource_path(declared)
+        if pipeline_path is None:
+            continue
+        directory = root / pipeline_path.rstrip("/")
+        if operation is None:
+            label = f"task {task_id} resource {pipeline_path}"
+        else:
+            label = f"operation {operation.get('id')} resource {pipeline_path}"
+        if not directory.is_dir():
+            errors.append(f"{label} names a .pipeline directory that does not exist")
+            continue
+        if operation is not None and _is_delete_operation(operation):
+            if not _deletable_evidence_files(directory):
+                errors.append(
+                    f"operation {operation.get('id')} deletes {pipeline_path} "
+                    "but the directory holds no deletable files"
+                )
+
+
 def validate_task_plan(
     plan: dict[str, Any],
     project_facts: dict[str, Any] | None = None,
@@ -1093,9 +1185,10 @@ def validate_task_plan(
 ) -> list[str]:
     """Validate task coverage, full operation tests, dependencies, and derivation.
 
-    ``root`` is optional and only used to verify a derived task whose parent
-    lives outside this planning run: without it such a parent cannot be proven
-    to exist and is rejected.
+    ``root`` is optional. It is used to verify a derived task whose parent lives
+    outside this planning run (without it such a parent cannot be proven to exist
+    and is rejected) and to check that a hand-written ``.pipeline/<dir>/``
+    resource actually exists on disk.
     """
     errors: list[str] = []
     if not isinstance(plan, dict) or plan.get("schema") != 1:
@@ -1226,6 +1319,26 @@ def validate_task_plan(
         task_allowed_paths = [
             resource_paths.get(item, item) for item in task_allowed_paths
         ]
+        if root is not None:
+            _validate_pipeline_resource_existence(
+                identifier,
+                task.get("resources") or [],
+                resource_paths,
+                errors,
+                root=root,
+            )
+            for operation_id in task.get("operations", []) or []:
+                operation = operation_records.get(operation_id)
+                if not isinstance(operation, dict):
+                    continue
+                _validate_pipeline_resource_existence(
+                    identifier,
+                    operation.get("resources") or [],
+                    resource_paths,
+                    errors,
+                    root=root,
+                    operation=operation,
+                )
         if task_allowed_paths:
             _validate_test_ref_placement(
                 declared, accepted_records, task_allowed_paths, errors, task_id=identifier

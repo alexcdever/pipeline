@@ -978,7 +978,7 @@ def _main(argv: list[str] | None = None) -> int:
                 else:
                     project_facts = _json_file_for_cli(args.project_facts) if args.project_facts else None
                     requirement_facts = _json_file_for_cli(args.requirement_facts) if args.requirement_facts else None
-                    errors = validate_task_plan(value, project_facts, requirement_facts)
+                    errors = validate_task_plan(value, project_facts, requirement_facts, root=args.root)
                 print(json.dumps({"status": "pass" if not errors else "fail", "errors": errors}, ensure_ascii=True)); return PASS if not errors else CONFIG
             if args.action == "progress-append":
                 path = append_progress(args.root, args.task_id, args.role, json.loads(args.event)); print(json.dumps({"path": str(path)})); return PASS

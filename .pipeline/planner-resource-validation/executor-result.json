@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "task_id": "planner-resource-validation",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+  "branch": "planner-resource-validation",
+  "role": "executor",
+  "round": 1,
+  "status": "pass",
+  "acceptance": [
+    {"id": "acceptance-test-planner-rejects-missing-pipeline-directory", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-planner-rejects-delete-without-deletable-files", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-planner-accepts-existing-pipeline-directory", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-planner-resource-rules-documented", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-task-plan-validate-cli-forwards-root", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-known-items-registered", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]}
+  ],
+  "commands": [
+    {"command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_rejects_missing_pipeline_resource_directory", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_rejects_delete_operation_without_deletable_files", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_accepts_existing_pipeline_resource_directory", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_documents_planner_resource_checks", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_task_plan_validate_cli_forwards_root_for_derived_parent", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_compat_and_migration_documents_known_items", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"},
+    {"command": "python -m pipeline_tools --format json task validate docs/tasks/planner-resource-validation.md", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "executor-report.md"}
+  ],
+  "assertions": [
+    "planning.py validate_task_plan checks .pipeline/<dir>/ resource existence when root is supplied",
+    "a delete-kind operation pointing at a directory holding only retained evidence is rejected",
+    "the task-plan-validate CLI forwards --root so a cross-run derived parent resolves",
+    "references/task-design.md documents the planner resource existence rules",
+    "references/compat-and-migration.md carries the known-items section",
+    "the frozen planner-resource-validation sheet still validates as pass"
+  ],
+  "evidence_refs": ["executor-report.md"],
+  "unverified": [
+    "no replay against real historical task sheets; only the design constraint (no retroactive invalidation) was verified",
+    "reviewer/final reports are out of executor scope"
+  ],
+  "identity": {"product_head": "5e9e754c6d3fde88f9f04348b1cfbec3b6745722"},
+  "recommendation": "ready_for_review"
+}

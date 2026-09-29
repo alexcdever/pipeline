@@ -38,4 +38,13 @@
 
 提交顺序遵循 `SKILL.md`「标准生命周期」的合并复验一步：在 worktree 中提交实现代码和报告文档，再合并到主分支，合并成功后清理 worktree。
 
-以上优化在主代理的「恢复核对」阶段执行，不影响正在进行中的任务。
+## 已知项与后续跟进
+
+以下是当前版本里已确认、但**不在本轮任务范围内**的已知问题。它们登记在此以便追踪，不代表需要立刻修复；每条都注明了是当前问题还是潜在风险。
+
+- **`evidence-retention-forward-gate` / `gate-deletion-semantics` 两张已冻结任务单的 `**` 通配 `allowed_paths`**：属于**潜在**问题，不是当前故障。两张单已冻结并验收，其 `allowed_paths` 使用了 `**` 通配写法，与后续更严格的路径语义不完全一致。**不要**因此重开、重校或改写这两张单——它们的历史保持不变，登记仅用于将来若要收紧通配语义时知会。
+- **`pipeline_tools/planning.py` 的 `_shares_test_root` 疑似死代码**：静态 grep 未发现任何调用点。**潜在**问题——不排除存在动态分发路径；在确认前不删除，登记为待核实。
+- **`references/metrics-contract.md` 的删除方向缺口**：该文件对保留集删除方向（`D` 状态）的说明不完整，`references/acceptance-evidence.md` 已有更完整表述。属于**当前**文档缺口，本轮不修。
+- **`pipeline_tools/__main__.py` 的其他 CLI 转发缺口**：例如 `generate-task-sheets` 未把 `assumptions`/`unknowns` 转发给生成器，而 Python 入口支持这两个参数。属于**当前**缺口；本轮只修 `task-plan-validate` 的 `--root` 转发，其余登记为已知项。
+
+以上已知项只登记，不在本轮任务里修复；它们不改变任何运行时规则。

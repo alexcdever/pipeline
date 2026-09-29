@@ -175,6 +175,79 @@ class CLITests(unittest.TestCase):
             self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
             self.assertEqual(json.loads(p.stdout)['status'], 'fail')
 
+    def _write_derived_parent_sheet(self, root):
+        sheet = root / 'docs' / 'tasks' / 'parent-run.md'
+        sheet.parent.mkdir(parents=True, exist_ok=True)
+        contract = {
+            'schema': 4, 'task_id': 'parent-run', 'task_type': 'prerequisite',
+            'goal': {'path': 'goal.md', 'sha256': '0' * 64, 'planning_run_id': 'parent-run'},
+            'risk': 'medium', 'project_type': 'service',
+            'non_goals': ['parent sheet fixture'],
+            'allowed_paths': ['src/app.py'], 'forbidden_paths': ['goal.md'],
+            'requirements': ['r1'], 'resources': ['src/app.py'],
+            'operations': [{'id': 'create', 'kind': 'execute', 'scope': 'task', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'chain': {name: {'not_applicable': True, 'reason': 'fixture'} for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')},
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+            'dependencies': [], 'required_evidence_levels': [2],
+            'non_user_completion_reason': 'parent fixture groundwork',
+        }
+        sheet.write_text(
+            '# parent-run\n\n<!-- Task ID: parent-run -->\n\n```pipeline-contract\n'
+            + json.dumps(contract, indent=2) + '\n```\n',
+            encoding='utf-8',
+        )
+        return sheet
+
+    def _derived_plan_for_cli(self):
+        return {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'],
+            'resources': ['src/app.py', 'tests/test_planning.py'],
+            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+            'tasks': [{
+                'id': 'derived-task', 'type': 'derived', 'requirements': ['r1'],
+                'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
+                'depends_on': [], 'parent_task_id': 'parent-run',
+                'derived_from': {'task_id': 'parent-run', 'commit': 'a' * 40, 'branch': 'parent-branch'},
+            }],
+        }
+
+    def test_task_plan_validate_cli_forwards_root_for_derived_parent(self):
+        from pipeline_tools.planning import validate_task_plan
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+            (root / 'src').mkdir()
+            (root / 'src' / 'app.py').write_text('app\n', encoding='utf-8')
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+            self._write_derived_parent_sheet(root)
+            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'parent sheet'], cwd=root, check=True)
+
+            plan = self._derived_plan_for_cli()
+            plan_path = root / 'plan.json'
+            plan_path.write_text(json.dumps(plan), encoding='utf-8')
+
+            # The cross-run parent lives at HEAD, so the Python API accepts the plan
+            # only when it is handed the root that proves the parent exists.
+            self.assertEqual(validate_task_plan(plan, root=root), [])
+
+            with_root = run_cli(['planning', 'task-plan-validate', str(plan_path), '--root', str(root)])
+            self.assertEqual(with_root.returncode, 0, (with_root.stdout, with_root.stderr))
+            self.assertEqual(json.loads(with_root.stdout), {'status': 'pass', 'errors': []})
+
+            # Without --root the CLI cannot prove the cross-run parent and fails
+            # closed, matching the Python API called without a root.
+            without_root = run_cli(['planning', 'task-plan-validate', str(plan_path)])
+            self.assertEqual(without_root.returncode, 2, (without_root.stdout, without_root.stderr))
+            self.assertEqual(json.loads(without_root.stdout)['status'], 'fail')
+            self.assertTrue(any('parent-run' in error for error in json.loads(without_root.stdout)['errors']))
+
 
     def test_json_output_has_common_envelope_and_can_be_saved(self):
         with tempfile.TemporaryDirectory() as d:

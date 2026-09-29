@@ -301,6 +301,42 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertNotIn("提出归属主张", task_design)
         self.assertNotIn("位置校验不生效", task_design)
 
+    def test_references_task_design_documents_planner_resource_checks(self):
+        task_design = (ROOT / "references/task-design.md").read_text(encoding="utf-8")
+        self.assertIn("规划期资源存在性规则", task_design)
+        for needle in (
+            "validate_task_plan",
+            "root=root",
+            "--root",
+            "pipeline_tools/planning.py",
+            ".pipeline/",
+            "RETAINED_EVIDENCE_NAMES",
+            "-progress.jsonl",
+            "does not exist",
+            "no deletable files",
+            "机械",
+            "白名单",
+            "不会追溯地让已冻结的任务单失效",
+        ):
+            self.assertIn(needle, task_design, needle)
+
+    def test_references_compat_and_migration_documents_known_items(self):
+        reference = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")
+        self.assertIn("已知项与后续跟进", reference)
+        for needle in (
+            "evidence-retention-forward-gate",
+            "gate-deletion-semantics",
+            "_shares_test_root",
+            "metrics-contract.md",
+            "generate-task-sheets",
+            "assumptions",
+            "unknowns",
+            "潜在",
+            "当前",
+            "不要",
+        ):
+            self.assertIn(needle, reference, needle)
+
     def test_references_task_design_documents_derived_generation_support(self):
         task_design = (ROOT / "references/task-design.md").read_text(encoding="utf-8")
         self.assertIn("两条写入路径", task_design)

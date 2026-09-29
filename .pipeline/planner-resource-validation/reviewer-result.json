@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "task_id": "planner-resource-validation",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+  "branch": "planner-resource-validation",
+  "role": "reviewer",
+  "round": 1,
+  "status": "pass",
+  "acceptance": [
+    {"id": "acceptance-test-planner-rejects-missing-pipeline-directory", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-planner-rejects-delete-without-deletable-files", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-planner-accepts-existing-pipeline-directory", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-planner-resource-rules-documented", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-task-plan-validate-cli-forwards-root", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-known-items-registered", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]}
+  ],
+  "commands": [
+    {"command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_rejects_missing_pipeline_resource_directory", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_rejects_delete_operation_without_deletable_files", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_accepts_existing_pipeline_resource_directory", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_documents_planner_resource_checks", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_task_plan_validate_cli_forwards_root_for_derived_parent", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_compat_and_migration_documents_known_items", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation", "evidence_ref": "review-report.md"}
+  ],
+  "assertions": [
+    "all six acceptance tests independently re-run by the reviewer returned OK with exit code 0",
+    "full suite re-run independently: Ran 309 tests in 227.721s, OK, exit code 0",
+    "validate_task_plan(plan, root=root) reports task-level and operation-level errors for a missing .pipeline/<dir>/ resource; not a silent no-op",
+    "validate_task_plan(plan) with root=None returns no errors, so the new check stays inert and does not retroactively invalidate frozen sheets",
+    "constructive CLI comparison: with --root rc=0/pass, without --root rc=2/fail; --root forwarding genuinely changes behaviour",
+    "delete-kind detection is a token heuristic: delete/remove/purge and inflections match; DeleteEvidence, rm-evidence, drop-evidence, clean-evidence, erase-evidence do not, and that boundary is scoped in references/task-design.md",
+    "_deletable_evidence_files returns empty for an empty dir, the 7 retained files, and *-progress.jsonl; only raw.log or nested files count as deletable",
+    "the diff touches only 7 files, all inside allowed_paths; git diff -- docs/ is empty so the frozen task sheet is unmodified",
+    "the evidence directory holds no .log or .jsonl; review-report.md was authored by the reviewer, not the executor",
+    "the two new doc-contract tests assert real document content, not tautologies"
+  ],
+  "evidence_refs": ["review-report.md", "reviewer-result.json"],
+  "unverified": [
+    "negative boundary of the delete-kind token heuristic (DeleteEvidence, rm-evidence, drop-evidence, clean-evidence, erase-evidence are not detected) has no test coverage; intentionality inferred from docs, not a design decision",
+    "a .PIPELINE/foo uppercase prefix is not recognised as a pipeline resource and skips the check; no test coverage",
+    "../.pipeline/x traversal references are skipped; confirmed by code reading only, not run end-to-end",
+    ".pipeline//foo (double slash) is accepted and passed to Path joining; Windows resolution read statically only",
+    "no merge into the main worktree and no post-merge re-verification was performed (reviewer role scope)",
+    "the 309-test suite was not diffed case-by-case against the baseline; only that the reviewed test diff is additive"
+  ],
+  "identity": {"product_head": "5e9e754c6d3fde88f9f04348b1cfbec3b6745722"},
+  "recommendation": "ready_to_merge"
+}
