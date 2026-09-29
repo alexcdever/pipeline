@@ -6,6 +6,7 @@
 
 ### 目录结构变化
 
+- **v0.11.0 → v0.12.0**：任务生成失败不保留规划审计；旧 `.workflow` 证据目录首次访问时自动迁移并在冲突时阻塞；证据核对标题改用中文并兼容旧标题；单条命令默认超时统一为 180 秒；自动任务单补充事实、假设、未知、链路、环境前置和决策点章节。
 - **v0.10.0 → v0.11.0**：移除“每个任务必须写握手 JSON 文件”的强制要求，改用模板化环境检查列表；证据文件改为失败时保存，成功时不保存。`pipeline-tools runtime handshake` 命令仍然存在，它是可选的能力检查，写入 `capability-handshake.json`，与已移除的强制握手 JSON 不是同一件事。
 - **旧版本迁移**：`.workflow/<task-id>/` 目录在新版本工具首次发现时自动迁移到 `.pipeline/<task-id>/` 并校验；若 `.pipeline/` 已存在则报告冲突并停止，不覆盖、不双写。迁移由 `pipeline_tools/layout.py` 的 `migrate_layout` 执行，事件契约层面的细节见 `references/metrics-contract.md`。
 
