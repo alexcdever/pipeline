@@ -116,6 +116,15 @@
 
 schema 3 的每个 operation 必须声明 `resource_mode`，取值只能是 `single` 或 `batch`（`OPERATION_RESOURCE_MODES`），并且必须与 `resources` 数量一致：只有 1 个资源时必须是 `single`，2 个及以上时必须是 `batch`；`resources` 本身必须是非空数组（`pipeline_tools/contract.py` 的 `OPERATION_RESOURCE_MODES` 校验）。
 
+### 规划期资源存在性规则
+
+手写的 `.pipeline/<dir>/` 资源在规划期由 `pipeline_tools/planning.py` 的 `validate_task_plan` 机械校验，前提是调用方传入了 `root`（Python API 的 `validate_task_plan(..., root=root)`；CLI 的 `planning task-plan-validate --root <root>`）。规则只有两条：
+
+- **目录必须真实存在**：`task.resources` 或 `operation.resources` 里任何一个以 `.pipeline/` 开头、且不只是 `.pipeline/` 本身的资源路径，必须在 `root` 下解析为一个真实目录；否则报 `names a .pipeline directory that does not exist`。
+- **删除类操作必须有可删文件**：kind 含删除语义 token（`delete`、`remove`、`purge` 及其屈折形式）的 operation，其 `.pipeline/<dir>/` 资源目录里必须至少有一个**非保留**文件；只有保留证据（`RETAINED_EVIDENCE_NAMES`）或角色进度日志（`*-progress.jsonl`）时报 `the directory holds no deletable files`。保留集是证据最终化的产物，删除它们才是漂移。
+
+这条校验是**机械的、与具体目录名无关的**：它只检查路径指向的文件系统事实，不硬编码任何目录名白名单。它只作用于规划输入，因此**不会追溯地让已冻结的任务单失效**——冻结任务单由 `task validate` 和 gate 期校验负责，本规则不重跑它们。
+
 ### `test_ref` 的位置规则
 
 `test_ref` 的书写格式是 `文件路径: 类名.方法名`，冒号前的文件路径是项目相对路径，冒号后的符号目标是可选位置声明；`test_ref` 与 `command_ref` 都不含尖括号。

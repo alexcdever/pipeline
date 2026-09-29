@@ -513,6 +513,64 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertFalse((root / "docs" / "tasks" / "child-task.md").exists())
             self.assertFalse(list((root / "docs" / "tasks").glob("*.planning-tmp")))
 
+    def pipeline_resource_inputs(self, root, resource_path, operation_kind=None, task_id="pipeline-task"):
+        project, requirements, plan = make_inputs(root, (task_id,))
+        plan["resources"] = [resource_path, "tests/test_task_generation.py"]
+        plan["tasks"][0]["resources"] = [resource_path, "tests/test_task_generation.py"]
+        operation = plan["operations"][0]
+        operation["resources"] = [resource_path]
+        if operation_kind is not None:
+            operation["kind"] = operation_kind
+        project["resources"] = [
+            {"id": resource_path, "path": resource_path},
+            {"id": "resource-tests", "path": "tests/test_task_generation.py"},
+        ]
+        return project, requirements, plan
+
+    def test_task_generation_rejects_missing_pipeline_resource_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            resource = ".pipeline/pipeline-evidence/"
+            project, requirements, plan = self.pipeline_resource_inputs(root, resource)
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="missing-pipeline-resource")
+            self.assertEqual(result["status"], "blocked", result)
+            self.assertTrue(
+                any(resource in error and "does not exist" in error for error in result["errors"]),
+                result["errors"],
+            )
+            self.assertFalse((root / "docs" / "tasks" / "pipeline-task.md").exists())
+
+    def test_task_generation_rejects_delete_operation_without_deletable_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            resource = ".pipeline/pipeline-evidence/"
+            project, requirements, plan = self.pipeline_resource_inputs(root, resource, operation_kind="delete-evidence")
+            (root / ".pipeline" / "pipeline-evidence").mkdir(parents=True)
+            (root / ".pipeline" / "pipeline-evidence" / "final-check.md").write_text("retained\n", encoding="utf-8")
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="delete-without-deletable")
+            self.assertEqual(result["status"], "blocked", result)
+            self.assertTrue(
+                any("deletable files" in error for error in result["errors"]),
+                result["errors"],
+            )
+            self.assertFalse((root / "docs" / "tasks" / "pipeline-task.md").exists())
+
+    def test_task_generation_accepts_existing_pipeline_resource_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            resource = ".pipeline/pipeline-evidence/"
+            project, requirements, plan = self.pipeline_resource_inputs(root, resource)
+            (root / ".pipeline" / "pipeline-evidence").mkdir(parents=True)
+            (root / ".pipeline" / "pipeline-evidence" / "raw.log").write_text("diagnostic\n", encoding="utf-8")
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="existing-pipeline-resource")
+            self.assertEqual(result["status"], "pass", result)
+            sheet = root / "docs" / "tasks" / "pipeline-task.md"
+            self.assertEqual(validate_task(sheet), [])
+            self.assertIn('".pipeline/pipeline-evidence/"', sheet.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

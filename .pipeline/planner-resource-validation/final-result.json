@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "task_id": "planner-resource-validation",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+  "branch": "planner-resource-validation",
+  "role": "final",
+  "round": 1,
+  "status": "pass",
+  "head": "5e9e754c6d3fde88f9f04348b1cfbec3b6745722",
+  "goal_sha256": "9abb196ae5f1ecb99fa4834374b6c27910fa508b467c56d2bd8a9970a086e25f",
+  "commands": [
+    {
+      "command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_rejects_missing_pipeline_resource_directory",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    },
+    {
+      "command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_rejects_delete_operation_without_deletable_files",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    },
+    {
+      "command": "python -m unittest tests.test_task_generation.TaskGenerationTests.test_task_generation_accepts_existing_pipeline_resource_directory",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    },
+    {
+      "command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_documents_planner_resource_checks",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    },
+    {
+      "command": "python -m unittest tests.test_cli.CLITests.test_task_plan_validate_cli_forwards_root_for_derived_parent",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    },
+    {
+      "command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_compat_and_migration_documents_known_items",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    },
+    {
+      "command": "python -m unittest discover -s tests",
+      "exit_code": 0,
+      "cwd": "D:/Projects/Skills/pipeline/.worktrees/planner-resource-validation",
+      "evidence_ref": "final-check.md"
+    }
+  ],
+  "acceptance": [
+    {"id": "acceptance-test-planner-rejects-missing-pipeline-directory", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-planner-rejects-delete-without-deletable-files", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-planner-accepts-existing-pipeline-directory", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-planner-resource-rules-documented", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-task-plan-validate-cli-forwards-root", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-known-items-registered", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "scope": {
+    "changed_files": [
+      "pipeline_tools/planning.py",
+      "pipeline_tools/__main__.py",
+      "references/task-design.md",
+      "references/compat-and-migration.md",
+      "tests/test_task_generation.py",
+      "tests/test_cli.py",
+      "tests/test_acceptance_id_and_template_compliance.py"
+    ],
+    "out_of_scope": []
+  },
+  "assertions": [
+    "6 条验收测试由主代理亲自重跑，退出码全为 0",
+    "全量 309 tests OK，基线 303 之上仅新增，无回归",
+    "生产 diff 由主代理直接阅读，未依赖子代理转述",
+    "7 个改动文件全在 allowed_paths 内，冻结任务单未改"
+  ],
+  "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"],
+  "unverified": [
+    "未在真实历史任务单上回放新校验",
+    "删除类 token 判定的负向边界无测试覆盖",
+    "大写 .PIPELINE/ 前缀与 .. 穿越路径被跳过，仅静态阅读"
+  ],
+  "recommendation": "ready_to_merge"
+}
