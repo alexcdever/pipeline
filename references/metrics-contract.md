@@ -1,6 +1,10 @@
 # 项目级反馈事件契约
 
-项目级反馈是从 `pipeline-tools` 的机械执行结果派生的、可审查的流水线统计，不是验收证据，不回写任务契约、技能规则或产品数据。目录固定为项目根目录的 `.pipeline/metrics/`，默认由工具自动创建并写入；指标文件应纳入 Git 追踪，不应加入项目 `.gitignore`。工具首次访问旧项目时会自动把 `.workflow/metrics/` 原样迁移到 `.pipeline/metrics/`，核对文件哈希后继续执行；若 `.pipeline/` 已存在则停止并报告冲突，不得长期双写或复制统计事件。
+项目级反馈是从 `pipeline-tools` 的机械执行结果派生的、可审查的流水线统计，不是验收证据，不回写任务契约、技能规则或产品数据。目录固定为项目根目录的 `.pipeline/metrics/`，默认由工具自动创建并写入。
+
+**是否把 pipeline 创建的目录和文件纳入 Git 由项目开发者决定**：技能既不要求也不禁止追踪 `.pipeline/metrics/`。仓库可以把它纳入版本控制，也可以把它排除在版本控制之外只留在本地磁盘，两者都合规。技能对 Git 的使用只用于让脚本做校验、以及给大模型提供意图识别所需的上下文，不替项目决定版本控制策略。
+
+工具首次访问旧项目时会自动把 `.workflow/metrics/` 原样迁移到 `.pipeline/metrics/`，核对文件哈希后继续执行；若 `.pipeline/` 已存在则停止并报告冲突，不得长期双写或复制统计事件。
 
 ## 自动采集边界
 
@@ -104,14 +108,14 @@
 
 ## 进度日志不进入 Git
 
-角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl`（`<role>` ∈ `executor` / `reviewer` / `main`）是过程记录，**不进入 Git**，与同样位于 `.pipeline/` 下但必须提交的指标事件相区分：
+角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl`（`<role>` ∈ `executor` / `reviewer` / `main`）是过程记录，**不进入 Git**：
 
 - 项目根目录 `.gitignore` 含规则 `.pipeline/*/*-progress.jsonl`，把进度日志排除在版本控制之外。
 - `commit_history_check` 按名拒绝：历史提交里出现任何 `-progress.jsonl` 都会记一条 `progress log must not enter Git`。
 - `scope_check` 对它们豁免：进度日志不计入范围漂移，不会因为工具自动写入而让冻结任务的 `scope check` 失败。
-- `.pipeline/metrics/` 的规则相反——指标文件是可审查的流水线历史，应纳入 Git（见本文件开头和「反馈边界」）。
+- `.pipeline/metrics/` 不受这条规则约束：是否追踪由项目开发者决定（见本文件开头和「反馈边界」）。
 
-两者不要混：把进度日志提交进 Git 是违规，把 `.pipeline/metrics/` 加进 `.gitignore` 同样是违规。
+两者不要混：把进度日志提交进 Git 是违规；`.pipeline/metrics/` 则不受这条规则约束，追踪与否由项目开发者决定。
 
 ## 保留集与前向基线
 
@@ -121,13 +125,13 @@
 
 ## 测试隔离规则
 
-自动采集按调用方的当前工作目录解析项目根：`_git_root(Path.cwd())` 向上找最近的 `.git`，因此任何以仓库根为 cwd 的 `pipeline-tools` 阶段调用都会写入受追踪的 `.pipeline/metrics/`。测试套件若以仓库根为 cwd 启用自动采集（`PIPELINE_TOOLS_DISABLE_AUTO_METRICS` 未设为 `1`/`true`/`yes`/`on`），就会给这份工作流历史追加一个未追踪的 `*.json` 事件，弄脏工作树。
+自动采集按调用方的当前工作目录解析项目根：`_git_root(Path.cwd())` 向上找最近的 `.git`，因此任何以仓库根为 cwd 的 `pipeline-tools` 阶段调用都会写入仓库的 `.pipeline/metrics/`。测试套件若以仓库根为 cwd 启用自动采集（`PIPELINE_TOOLS_DISABLE_AUTO_METRICS` 未设为 `1`/`true`/`yes`/`on`），就会给仓库的指标目录追加一个 `*.json` 事件。这条不变量与追踪状态无关：无论 `.pipeline/metrics/` 是被追踪还是被忽略，仓库目录本身都不该被测试改动。
 
-测试隔离规则：**测试必须让启用自动采集的运行写入临时 root，或以非仓库目录为 cwd，绝不能写入仓库的 `.pipeline/metrics/`。**
+测试隔离规则：**测试必须让启用自动采集的运行写入临时 root，或以非仓库目录为 cwd，绝不能写入仓库的 `.pipeline/metrics/` 目录。** 判定基准是仓库目录的实际内容，不依赖 Git 追踪状态。
 
 - `run_cli` 在仓库根的默认 cwd 上运行，因此显式启用自动采集的用例要把 cwd 指向一个临时目录（非 Git 仓库），让根解析落在那份临时树里。
 - 不得为了让隔离成立而跳过或删除任何既有自动指标测试；隔离只改变写入位置，不削弱对采集行为的断言。
-- 被追踪的 `.pipeline/metrics/` 历史保持不变：运行测试套件后 `git status --short .pipeline/metrics/` 不新增未追踪文件。
+- 仓库的 `.pipeline/metrics/` 目录内容保持不变：运行测试套件前后对目录做「文件名 → 内容哈希」快照，不新增、不修改任何文件。`git status --short .pipeline/metrics/` 不再是有效判据——被忽略的 `.pipeline/metrics/` 本来就是未追踪的，Git 状态看不到新增文件，所以隔离断言必须直接测量目录内容。
 - `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 仍然是测试/诊断期关闭采集的开关；测试隔离解决的是「显式启用采集」时不得污染仓库，二者互不替代。
 
 ## 反馈边界
@@ -140,7 +144,7 @@
 - 上传数据或访问网络；
 - 把单次样本当成趋势。
 
-指标事件文件是工作流审计的一部分，可以与任务单、报告和命令日志一同提交；其中的
+指标事件文件是工作流审计的一部分；如果项目选择追踪它们，可以与任务单、报告和命令日志一同提交，其中的
 `evidence_ref` 必须仍是项目内相对路径，提交前应检查没有敏感信息。
 
 评估节省 token 的流程优化时，至少同时观察证据缺口、审查推翻、合并后回归和高等级验收数量；任一恶化时，不能把 token 下降判为成功。

@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .env
 .pipeline/metrics-export.json
+.pipeline/metrics/
 .pipeline/*/*-progress.jsonl
 /.worktrees/
 .DS_Store

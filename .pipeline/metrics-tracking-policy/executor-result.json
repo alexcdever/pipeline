@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "task_id": "metrics-tracking-policy",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy",
+  "branch": "metrics-tracking-policy",
+  "role": "executor",
+  "round": 1,
+  "status": "pass",
+  "identity": {
+    "product_head": "776d3d9609703b2220e0ed0856dc940de15a88cc",
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy",
+    "branch": "metrics-tracking-policy"
+  },
+  "acceptance": [
+    {"id": "acceptance-test-metrics-contract-tracking-optional", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-compat-doc-tracking-optional", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-repo-metrics-untracked-and-ignored", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]},
+    {"id": "acceptance-test-suite-metrics-isolation-without-tracking", "status": "pass", "exit_code": 0, "evidence_refs": ["executor-report.md"]}
+  ],
+  "commands": [
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_metrics_contract_documents_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_compat_and_migration_documents_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_repository_metrics_are_ignored_and_untracked", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_cli_suite_does_not_write_repository_metrics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "python -m pipeline_tools --format json task validate docs/tasks/metrics-tracking-policy.md", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "git ls-files .pipeline/metrics/ | wc -l", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "git check-ignore -v .pipeline/metrics/event.json", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"},
+    {"command": "git diff --check", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "executor-report.md"}
+  ],
+  "unverified": [
+    "independent reviewer re-run",
+    "main-agent final check",
+    "post-merge re-verification in the main worktree",
+    "README.md:16 still asserts metrics are Git-tracked but is outside allowed_paths"
+  ]
+}
