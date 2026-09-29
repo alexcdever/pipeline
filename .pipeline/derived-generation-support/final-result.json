@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "task_id": "derived-generation-support",
+  "role": "main-final",
+  "status": "pass",
+  "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\derived-generation-support",
+  "branch": "derived-generation-support",
+  "round": 1,
+  "identity": {
+    "product_head": "19e19fdad58130e2338b57eab7d33aaef30e38db",
+    "head": "19e19fdad58130e2338b57eab7d33aaef30e38db",
+    "basis": "product_head = 最后一个改非证据路径的提交，实测为 19e19fd（git diff 1e580ec HEAD --name-status 的 5 个非证据改动文件全部由它引入）；head = 执行提交，按惯例原文取 19e19fd。注意被审 executor-result.json 的 identity.head 记录为 a8dbdb4，本轮裁定其可接受、不改动，理由见 final-check.md §2.1。"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-generator-emits-derived-from",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-generator-unchanged-for-non-derived",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-generator-emits-same-run-parent-sheets",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-generator-fails-closed-on-existing-same-run-parent-sheet",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-plan-accepts-cross-run-parent",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-plan-rejects-missing-parent",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-plan-rejects-planner-declared-parent-type-mismatch",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-plan-accepts-same-run-derived-parent",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    },
+    {
+      "id": "acceptance-test-derived-generation-rules-documented",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["final-check.md"]
+    }
+  ],
+  "verdict": "ACCEPT",
+  "adjudications": [
+    {
+      "item": "executor-result.json 的 identity.head",
+      "decision": "符合惯例，无需修正",
+      "evidence": "identity={product_head: 19e19fd..., head: a8dbdb4}。product_head 是唯一被 evidence_freshness（core.py:1489-1523）校验的字段，实测等于最后一个改非证据路径的提交，freshness status=pass/evidence_only=true。head 不被任何工具校验（verify_structured_result 不读 identity），且 acceptance-id-and-template-compliance 与 test-ref-narrowing-followup 先例支持 head≠product_head。"
+    },
+    {
+      "item": "result verify 目录形式 FAIL",
+      "decision": "CLI 用法约束，非工具缺陷；不得改动",
+      "evidence": "__main__.py:347-348 的 path 为单数 JSON 文件位置参；verify_structured_result 经 _json_file(path) 读取。实测文件形式 pass/0、目录形式 fail/2。__main__.py 不在 allowed_paths（grep 计数 0）。"
+    },
+    {
+      "item": "里程碑：生成器首次产出 derived 单",
+      "decision": "缺口已消除",
+      "evidence": "两张现存 derived 单均手工撰写（derived-task-dispatch-recovery.md schema 2 且无 derived_from；gate-deletion-semantics-continuation-1.md schema 4 手写 derived_from，单内自述手工撰写）。本轮端到端实测生成器产出 schema 4 合法 derived 单。"
+    },
+    {
+      "item": "contract.py 零改动是否成立",
+      "decision": "成立，无需改动",
+      "evidence": "git diff 1e580ec HEAD -- pipeline_tools/contract.py 为空；三个既有闸门对生成器产出自然放行，端到端 validate_task==[] 为直接证明。"
+    },
+    {
+      "item": "create_derived_dispatch 未改动且契约形状一致",
+      "decision": "成立",
+      "evidence": "git diff 1e580ec HEAD -- pipeline_tools/core.py 为空；派发期（core.py 约 :1363）与生成器（planning.py:1821-1854）写入同一组四键 {task_id, commit, branch, parent_task_type}。"
+    }
+  ],
+  "unverified": [
+    "identity.head 的字面语义存在两种可辩护读法，本轮判为低严重度残留歧义、不改动被审产物，留待人类确认",
+    "create_derived_dispatch 的运行时派发行为未实际执行（non_goals 第 3 条禁止改动该函数，仅静态核对契约形状一致）",
+    "本报告未重新执行 create_derived_dispatch 的端到端派发（不在本任务范围内）"
+  ],
+  "recommendation": "ready_to_merge"
+}
