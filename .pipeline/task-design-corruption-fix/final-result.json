@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "task_id": "task-design-corruption-fix",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/task-design-corruption-fix",
+  "branch": "task-design-corruption-fix",
+  "role": "final",
+  "round": 1,
+  "status": "pass",
+  "head": "f3b30a23a38be50b31ff387cc611c6b2c5877d97",
+  "goal_sha256": "9abb196ae5f1ecb99fa4834374b6c27910fa508b467c56d2bd8a9970a086e25f",
+  "commands": [
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_contains_no_replacement_character", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/task-design-corruption-fix", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/task-design-corruption-fix", "evidence_ref": "final-check.md"},
+    {"command": "python -m pipeline_tools --format json task validate docs/tasks/task-design-corruption-fix.md", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/task-design-corruption-fix", "evidence_ref": "final-check.md"}
+  ],
+  "acceptance": [
+    {"id": "acceptance-test-task-design-has-no-replacement-character", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "scope": {"changed_files": ["references/task-design.md", "tests/test_acceptance_id_and_template_compliance.py"], "out_of_scope": []},
+  "assertions": ["active task-design.md 的 U+FFFD 从 3 修复到 0", "全量 318 tests OK，基线 317 之上新增 1", "历史证据未修改"],
+  "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"],
+  "unverified": ["历史证据中的 U+FFFD 未清理，按本任务非目标保留"],
+  "recommendation": "ready_to_merge"
+}

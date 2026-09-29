@@ -77,7 +77,7 @@
 
 派生规则按父类型分三种情况：
 
-- **链路段强引用**：`_requires_full_chain` 在 `task_type` 为 `vertical-feature` 或 `repair` 时返回 `True`；当 `task_type == "derived"` 时，它���取 `derived_from.parent_task_type`，父类型为 `vertical-feature` 或 `repair` 时同样返回 `True`。也就是说 `derived` **不再**无条件获得链路豁免——父类型是 `vertical-feature`/`repair` 时，子契约七个段都必须给出真实引用。父类型为 `prerequisite` 时才允许 `{"not_applicable": true, "reason": "..."}` 结构化豁免。
+- **链路段强引用**：`_requires_full_chain` 在 `task_type` 为 `vertical-feature` 或 `repair` 时返回 `True`；当 `task_type == "derived"` 时，它读取 `derived_from.parent_task_type`，父类型为 `vertical-feature` 或 `repair` 时同样返回 `True`。也就是说 `derived` **不再**无条件获得链路豁免——父类型是 `vertical-feature`/`repair` 时，子契约七个段都必须给出真实引用。父类型为 `prerequisite` 时才允许 `{"not_applicable": true, "reason": "..."}` 结构化豁免。
 - **证据下限加成**：`evidence_floor` 在 `task_type == "vertical-feature"` **或** `parent_task_type == "vertical-feature"` 时把下限抬到至少 2（`pipeline_tools/contract.py:131-145`）。因此 `derived` 子任务在父类型为 `vertical-feature` 时继承这项加成。`repair` 父类型不触发这项加成——`repair` 本身也只在链路强引用上收紧，不抬高证据下限。其余仍受 `risk` 下限和 `project_type` 加成约束（这两项随父契约复制而来）。
 - **`prerequisite` 的 `non_user_completion_reason`**：该字段仍只在 `task_type == "prerequisite"` 时被要求（`pipeline_tools/contract.py` 的 `_validate_schema3_contract`）。父类型为 `prerequisite` 时，父字段被复制进子契约但 `derived` 不再校验它。主代理若希望子任务继续声明底座性质，应显式保留该字段。
 
