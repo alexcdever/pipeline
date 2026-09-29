@@ -210,7 +210,7 @@ def _build_parser() -> argparse.ArgumentParser:
     runner = command_sub.add_parser("run")
     runner.add_argument("--cwd", type=Path, required=True)
     runner.add_argument("--log", type=Path, required=True)
-    runner.add_argument("--timeout", type=float, default=30)
+    runner.add_argument("--timeout", type=float, default=180)
     runner.add_argument("--task-id")
     runner.add_argument("--attempt", type=int, default=0)
     runner.add_argument("--run-id")

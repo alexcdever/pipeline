@@ -60,6 +60,16 @@ class PlanningDispatchIntegrationTests(unittest.TestCase):
         project.update({"assumptions": [], "unknowns": [], "conflicts": [], "non_goals": ["本任务不扩展用户可见范围"], "decision_blockers": []})
         return planning_to_dispatch(root, run_id, project, requirements, plan, task_id="integration-task", branch=f"{run_id}-branch", baseline=head, approval_mode=approval_mode)
 
+    def test_task_generation_failure_does_not_retain_planning_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, head = self.make_repo(directory)
+            project, requirements, plan = self.inputs()
+            plan["tasks"][0]["non_user_completion_reason"] = ""
+            result = planning_to_dispatch(root, "task-generation-audit-run", project, requirements, plan, task_id="integration-task", branch="integration-task-branch", baseline=head, approved=True)
+            self.assertNotEqual(result["status"], "dispatch-ready")
+            self.assertEqual(result["stages"][-1]["name"], "task-generation")
+            self.assertFalse((root / ".pipeline" / "planning").exists())
+
     def test_successful_dispatch_persists_no_planning_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             root, head = self.make_repo(directory)

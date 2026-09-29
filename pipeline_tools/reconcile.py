@@ -9,6 +9,7 @@ from typing import Any
 
 from .contract import load_contract
 from .core import POST_MERGE_REPORT_STATUSES, evidence_freshness, evidence_readiness, evidence_verify, normalize_status
+from .layout import LegacyPipelineLayoutError, active_pipeline_dir
 
 _REPORTS = ("executor-report.md", "review-report.md", "final-check.md")
 _RESULTS = ("executor-result.json", "reviewer-result.json", "final-result.json")
@@ -44,7 +45,12 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     root, task_sheet = Path(root).resolve(), Path(task_sheet).resolve()
     contract, contract_errors = load_contract(task_sheet)
     task_id = contract.get("task_id") if contract else task_sheet.stem
-    evidence = root / ".pipeline" / str(task_id)
+    try:
+        evidence = active_pipeline_dir(root) / str(task_id)
+        layout_error = None
+    except (LegacyPipelineLayoutError, OSError) as error:
+        evidence = root / ".pipeline" / str(task_id)
+        layout_error = str(error)
     reports: dict[str, dict[str, Any]] = {}
     report_errors: list[str] = []
     for name in _REPORTS:
@@ -75,35 +81,46 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         identity_errors.append("report identity conflict")
     if reports and any(not value.get(key) for value in reports.values() for key in ("task_id", "branch", "worktree")):
         identity_errors.append("report identity is incomplete")
-    verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"))
-    readiness = evidence_readiness(evidence, str(task_id))
+    try:
+        verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"))
+        readiness = evidence_readiness(evidence, str(task_id))
+    except (LegacyPipelineLayoutError, OSError) as error:
+        verify_errors = [f"布局冲突：{error}"]
+        readiness = {"status": "not_ready"}
     result_path = evidence / "final-result.json"
     if not result_path.is_file():
         result_path = evidence / "reviewer-result.json"
-    freshness = evidence_freshness(root, evidence, result_path if result_path.is_file() else None)
+    try:
+        freshness = evidence_freshness(root, evidence, result_path if result_path.is_file() else None)
+    except (LegacyPipelineLayoutError, OSError) as error:
+        freshness = {"status": "blocked", "errors": [f"布局冲突：{error}"]}
     statuses = [value.get("status") for value in reports.values()]
     direct_pass = (not contract_errors and not report_errors and not identity_errors and not verify_errors
                    and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
                    and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
     status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
+    if layout_error:
+        status = "BLOCKED"
     output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,
               "identity": identity, "result": {name: value.get("status") for name, value in results.items()},
               "freshness": freshness["status"], "readiness": readiness["status"],
               "verify": "PASS" if not verify_errors else "BLOCKED",
               "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
-              "errors": contract_errors + report_errors + identity_errors + verify_errors,
+              "errors": contract_errors + report_errors + identity_errors + verify_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
               "unverified": [] if direct_pass else ["task completion"], "updated": False}
     if update and not contract_errors:
         text = task_sheet.read_text(encoding="utf-8")
         marker = "### 最终结果"
-        reconcile_marker = "### 机械对账（直接证据）"
+        reconcile_marker = "### 证据核对（任务现场核对）"
+        legacy_reconcile_marker = "### 机械对账（直接证据）"
         block = (reconcile_marker + "\n\n" f"- task-id: `{task_id}`\n- result: `{status}`\n"
                  f"- freshness: `{freshness['status']}`\n- readiness: `{readiness['status']}`\n"
                  f"- verify: `{output['verify']}`\n- evidence: `{evidence.relative_to(root).as_posix()}`\n")
-        if reconcile_marker in text:
-            start = text.index(reconcile_marker)
-            end = text.find("\n### ", start + len(reconcile_marker))
+        existing_marker = next((item for item in (reconcile_marker, legacy_reconcile_marker) if item in text), None)
+        if existing_marker:
+            start = text.index(existing_marker)
+            end = text.find("\n### ", start + len(existing_marker))
             end = len(text) if end < 0 else end
             text = text[:start] + block.rstrip() + text[end:]
         elif marker in text:

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from pipeline_tools.reconcile import reconcile_task
+from pipeline_tools.layout import LegacyPipelineLayoutError
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
@@ -92,9 +93,45 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             value = reconcile_task(root, sheet, update=True)
             after = sheet.read_text(encoding="utf-8")
             self.assertTrue(value["updated"])
-            self.assertIn("### 机械对账（直接证据）", after)
+            self.assertIn("### 证据核对（任务现场核对）", after)
             self.assertEqual(after.split("### 最终结果", 1)[0], before.split("### 最终结果", 1)[0])
             self.assertIn("pipeline-contract", after)
+
+    def test_update_replaces_legacy_reconcile_heading_without_duplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            text = sheet.read_text(encoding="utf-8").replace(
+                "### 最终结果",
+                "### 机械对账（直接证据）\n\n- old: `value`\n\n### 最终结果",
+            )
+            sheet.write_text(text, encoding="utf-8")
+            reconcile_task(root, sheet, update=True)
+            reconcile_task(root, sheet, update=True)
+            after = sheet.read_text(encoding="utf-8")
+            self.assertEqual(after.count("### 证据核对（任务现场核对）"), 1)
+            self.assertEqual(after.count("### 机械对账（直接证据）"), 0)
+
+    def test_reconcile_migrates_legacy_evidence_layout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            legacy = root / ".workflow" / "demo"
+            legacy.mkdir(parents=True)
+            (legacy / "marker.txt").write_text("legacy", encoding="utf-8")
+            reconcile_task(root, sheet)
+            self.assertFalse((root / ".workflow").exists())
+            self.assertTrue((root / ".pipeline" / "demo" / "marker.txt").is_file())
+
+    def test_reconcile_blocks_legacy_and_canonical_layout_conflict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            (root / ".workflow" / "demo").mkdir(parents=True)
+            (root / ".pipeline" / "demo").mkdir(parents=True)
+            value = reconcile_task(root, sheet)
+            self.assertEqual(value["status"], "BLOCKED")
+            self.assertTrue(any("布局冲突" in error for error in value["errors"]))
 
     def test_cli_reconcile_returns_machine_result_and_does_not_write_metrics(self):
         with tempfile.TemporaryDirectory() as directory:

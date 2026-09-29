@@ -1723,6 +1723,12 @@ def _purge_successful_planning_run(root: Path, run_id: str) -> None:
         pass
 
 
+def _purge_task_generation_audit(root: Path, run_id: str) -> None:
+    """Remove planning process records when no task sheet was generated."""
+    _purge_successful_planning_run(root, run_id)
+    _clear_stale_preflight_failure(Path(root))
+
+
 def planning_run_finalize(root: Path, run_id: str, *, success: bool, approval: bool = False) -> dict[str, Any]:
     try:
         candidate = _planning_run_directory(Path(root), run_id)
@@ -1885,6 +1891,7 @@ def _task_sheet_text(
     *,
     assumptions: list[Any] | None = None,
     unknowns: list[Any] | None = None,
+    facts: list[Any] | None = None,
     root: Path | None = None,
 ) -> str:
     task_id = task["id"]
@@ -1973,7 +1980,7 @@ def _task_sheet_text(
         contract["non_user_completion_reason"] = reason
     lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- goal SHA-256：`{requirements_sha256}`", "- 状态：未开始", "", "## 依赖与范围", "", "### 允许修改", ""]
     lines.extend(f"- `{item}`" for item in contract["allowed_paths"])
-    lines.extend(["", "### 明确不改", "", f"- `{GOAL_DOCUMENT_NAME}`", f"- `{LEGACY_PLAN_DOCUMENT_NAME}`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
+    lines.extend(["", "### 明确不改", "", f"- `{GOAL_DOCUMENT_NAME}`", f"- `{LEGACY_PLAN_DOCUMENT_NAME}`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 事实/假设/未知", "", f"- 事实：{json.dumps(facts or [], ensure_ascii=True)}", f"- 假设：{json.dumps(assumptions or [], ensure_ascii=True)}", f"- 未知：{json.dumps(unknowns or [], ensure_ascii=True)}", "", "## 设计与行为链路", "", f"- 链路：{json.dumps(contract['chain'], ensure_ascii=False)}", f"- 操作行为：{json.dumps([item.get('kind', 'execute') for item in operations], ensure_ascii=False)}", "", "## 环境前置", "", "- 已通过规划前置检查、事实校验和任务计划结构校验。", "", "## 决策点", "", f"- 任务依赖的决策阻塞：{json.dumps(plan.get('decision_blockers', []), ensure_ascii=False)}", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
     for index, test in enumerate(tests, 1):
         lines.extend([f"### 验收测试{index}：{test.get('id')}", "", f"- 测试：`{test.get('test_ref')}`", f"- 命令：`{test.get('command_ref')}`", f"- 证据等级：{test.get('evidence_level')}", ""])
     return "\n".join(lines) + "\n"
@@ -1989,6 +1996,7 @@ def generate_task_sheets(
     expected_requirements_sha256: str | None = None,
     assumptions: list[Any] | None = None,
     unknowns: list[Any] | None = None,
+    retain_planning_audit: bool = False,
 ) -> dict[str, Any]:
     """Generate all task sheets atomically after mechanical planning checks."""
     root = Path(root).resolve()
@@ -2011,6 +2019,8 @@ def generate_task_sheets(
         if errors:
             result["errors"] = errors
             result["next_actions"] = ["fix planning inputs and rerun"]
+            if not retain_planning_audit:
+                _purge_task_generation_audit(root, planning_run_id)
             return result
         destinations = [root / "docs" / "tasks" / f"{task_id}.md" for task_id in task_ids]
         for destination in destinations:
@@ -2021,6 +2031,7 @@ def generate_task_sheets(
         if errors:
             result["errors"] = errors
             result["next_actions"] = ["remove conflicts without overwriting existing task sheets"]
+            _purge_task_generation_audit(root, planning_run_id)
             return result
         contents = [
             _task_sheet_text(
@@ -2030,6 +2041,7 @@ def generate_task_sheets(
                 planning_run_id,
                 assumptions=assumptions,
                 unknowns=unknowns,
+                facts=project_facts.get("facts", []) if isinstance(project_facts, dict) else [],
                 root=root,
             )
             for task in tasks
@@ -2047,6 +2059,7 @@ def generate_task_sheets(
                 path.unlink(missing_ok=True)
             result["errors"] = validation_errors
             result["next_actions"] = ["fix generated contract before rerunning"]
+            _purge_task_generation_audit(root, planning_run_id)
             return result
         published: list[Path] = []
         try:
@@ -2069,6 +2082,7 @@ def generate_task_sheets(
         return result
     except (OSError, ValueError, TypeError, KeyError) as error:
         result["errors"] = [f"{type(error).__name__}: {error}"]
+        _purge_task_generation_audit(root, planning_run_id)
         return result
 
 
@@ -2170,6 +2184,8 @@ def planning_to_dispatch(
         unknowns=project_facts.get("unknowns") if isinstance(project_facts, dict) else None,
     )
     if not stage("task-generation", generated.get("status", "blocked"), generated):
+        _purge_task_generation_audit(root, run_id)
+        result["artifacts"] = []
         return result
     task_ids = generated.get("task_ids", [])
     selected = task_id or (task_ids[0] if len(task_ids) == 1 else None)

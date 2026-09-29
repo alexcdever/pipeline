@@ -315,7 +315,7 @@ def load_contract(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
 
     schema = data.get("schema")
     if isinstance(schema, bool) or schema not in SUPPORTED_SCHEMAS:
-        errors.append("schema must be integer 1, 2 or 3")
+        errors.append("schema must be integer 1, 2, 3 or 4")
 
     for field in ("allowed_paths", "forbidden_paths"):
         values = data.get(field)

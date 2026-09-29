@@ -149,7 +149,7 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
         pass
 
 
-def run_command(command: list[str], cwd: Path, log: Path, timeout: float = 30) -> dict[str, Any]:
+def run_command(command: list[str], cwd: Path, log: Path, timeout: float = 180) -> dict[str, Any]:
     """Run a command without a shell and return a bounded, redacted result."""
     command = list(command)
     if command and command[0] == "--":

@@ -20,7 +20,7 @@ def make_inputs(root, task_ids=("task-a", "task-b")):
     (root / "src").mkdir(exist_ok=True)
     (root / "src" / "app.py").write_text("app\n", encoding="utf-8")
     acceptance = [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_task_generation.py: test", "command_ref": "python -m unittest tests.test_task_generation -v"}]
-    project = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "resources": [{"id": "resource", "path": "src/app.py"}, {"id": "resource-tests", "path": "tests/test_task_generation.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
+    project = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "facts": [{"id": "project-fact-1", "value": "src/app.py is the application entry resource"}], "resources": [{"id": "resource", "path": "src/app.py"}, {"id": "resource-tests", "path": "tests/test_task_generation.py"}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "chain": CHAIN}
     requirements = {"schema": 1, "sources": [{"id": "source", "path": "goal.md"}], "requirements": [{"id": "requirement", "source_refs": ["source"]}], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance}
     tasks = [{"id": task_id, "type": "prerequisite", "requirements": ["requirement"], "resources": ["resource", "resource-tests"], "operations": ["operate"], "depends_on": [], "non_user_completion_reason": "enabling groundwork; no user-facing outcome"} for task_id in task_ids]
     plan = {"schema": 1, "non_goals": ["本任务不扩展用户可见范围"], "requirements": ["requirement"], "resources": ["resource", "resource-tests"], "operations": [{"id": "operate", "resources": ["resource"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}], "acceptance_tests": acceptance, "tasks": tasks}
@@ -63,6 +63,10 @@ class TaskGenerationTests(unittest.TestCase):
                 self.assertIn('"risk"', text)
                 self.assertIn('"project_type"', text)
                 self.assertIn('"resource_mode"', text)
+                for heading in ("## 事实/假设/未知", "## 设计与行为链路", "## 环境前置", "## 决策点"):
+                    self.assertIn(heading, text)
+                self.assertIn("project-fact-1", text)
+                self.assertIn("src/app.py is the application entry resource", text)
                 contract = json.loads(text.split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0])
                 self.assertEqual(contract["non_goals"], ["本任务不扩展用户可见范围"])
                 self.assertEqual(contract["risk"], "medium")
@@ -99,6 +103,16 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertTrue(any("sources" in error for error in result["errors"]))
             self.assertFalse((root / ".pipeline" / "planning").exists())
             self.assertFalse((root / "docs" / "tasks").exists())
+
+    def test_generation_preflight_failure_leaves_no_planning_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root)
+            make_repo(root)
+            (root / "goal.md").unlink()
+            result = self.run_generation(root, project, requirements, plan, run_id="preflight-audit-run")
+            self.assertEqual(result["status"], "blocked")
+            self.assertFalse((root / ".pipeline" / "planning").exists())
 
     def test_generation_is_fail_closed_for_existing_tasks_duplicate_ids_and_unsafe_output(self):
         with tempfile.TemporaryDirectory() as directory:

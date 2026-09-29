@@ -324,6 +324,11 @@ class CLITests(unittest.TestCase):
             self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))
             self.assertNotIn('Traceback', p.stderr)
 
+    def test_command_run_default_timeout_is_180_seconds(self):
+        from pipeline_tools.__main__ import _build_parser
+        args = _build_parser().parse_args(["command", "run", "--cwd", ".", "--log", "x.log", "--", PY, "-c", "print('ok')"])
+        self.assertEqual(args.timeout, 180)
+
     def test_command_run_timeout_is_3_with_timed_out_flag(self):
         with tempfile.TemporaryDirectory() as d:
             log = Path(d) / 'slow.log'
