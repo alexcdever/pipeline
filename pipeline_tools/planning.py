@@ -48,6 +48,7 @@ GOAL_DOCUMENT_NAME = "goal.md"
 LEGACY_PLAN_DOCUMENT_NAME = "implement-plan.md"
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ACCEPTANCE_ID_RE = re.compile(r"acceptance-test-[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+CONTRACT_BLOCK_RE = re.compile(r"```pipeline-contract[ \t]*\r?\n(.*?)\r?\n```", re.DOTALL)
 WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 SENSITIVE_NAME_RE = re.compile(
     r"(?i)(?:password|passwd|secret|token|api[_-]?key|authorization|bearer|cvc)"
@@ -305,6 +306,64 @@ def _sheet_committed(root: Path, task_id: str) -> bool:
     relative = f"docs/tasks/{task_id}.md"
     rc, _output, _error = _run_checked(["git", "cat-file", "-e", f"HEAD:{relative}"], root)
     return rc == 0
+
+
+def _read_parent_task_type(root: Path, parent_id: str) -> tuple[str | None, str | None]:
+    """Mechanically read ``task_type`` from the frozen parent sheet.
+
+    The sheet is read from ``HEAD`` so the returned value describes a frozen
+    contract rather than uncommitted work. Returns ``(task_type, error)`` with
+    exactly one of the two set.
+    """
+    relative = f"docs/tasks/{parent_id}.md"
+    rc, content, _error = _run_checked(["git", "show", f"HEAD:{relative}"], root)
+    if rc != 0:
+        return None, f"parent task {parent_id} has no frozen sheet at HEAD:{relative}"
+    block = CONTRACT_BLOCK_RE.search(content)
+    if block is None:
+        return None, f"parent task {parent_id} sheet has no readable pipeline-contract block"
+    try:
+        contract = json.loads(block.group(1))
+    except json.JSONDecodeError:
+        return None, f"parent task {parent_id} sheet contract is not valid JSON"
+    if not isinstance(contract, dict):
+        return None, f"parent task {parent_id} sheet contract is not an object"
+    task_type = contract.get("task_type")
+    if not isinstance(task_type, str) or not task_type.strip():
+        return None, f"parent task {parent_id} sheet declares no task_type"
+    return task_type.strip(), None
+
+
+def _cross_run_parent_errors(
+    root: Path | None,
+    task_id: str,
+    parent_id: str,
+    declared_parent_type: Any = None,
+) -> list[str]:
+    """Fail closed for a derived parent that is not a task in this plan.
+
+    A parent belonging to an earlier planning run has no entry in this plan's
+    ``tasks`` array, so it can only be accepted when the parent sheet is
+    committed at HEAD. When ``root`` is unavailable the parent cannot be
+    mechanically proven to exist and the plan is rejected instead of trusted.
+    When the planner declared ``parent_task_type`` it must equal the
+    mechanically read value.
+    """
+    if root is None:
+        return [
+            f"derived task {task_id} parent_task_id {parent_id} is outside this run "
+            "and root is unavailable to prove it exists"
+        ]
+    observed, error = _read_parent_task_type(Path(root), parent_id)
+    if error is not None:
+        return [f"derived task {task_id}: {error}"]
+    if isinstance(declared_parent_type, str) and declared_parent_type.strip():
+        if declared_parent_type.strip() != observed:
+            return [
+                f"derived task {task_id} derived_from.parent_task_type "
+                f"{declared_parent_type.strip()} does not match the parent task type {observed}"
+            ]
+    return []
 
 
 def _task_scene_facts(root: Path) -> tuple[list[str], list[str], dict[str, list[str]]]:
@@ -1029,8 +1088,15 @@ def validate_task_plan(
     plan: dict[str, Any],
     project_facts: dict[str, Any] | None = None,
     requirement_facts: dict[str, Any] | None = None,
+    *,
+    root: Path | None = None,
 ) -> list[str]:
-    """Validate task coverage, full operation tests, dependencies, and derivation."""
+    """Validate task coverage, full operation tests, dependencies, and derivation.
+
+    ``root`` is optional and only used to verify a derived task whose parent
+    lives outside this planning run: without it such a parent cannot be proven
+    to exist and is rejected.
+    """
     errors: list[str] = []
     if not isinstance(plan, dict) or plan.get("schema") != 1:
         errors.append("schema must be 1")
@@ -1196,11 +1262,36 @@ def validate_task_plan(
                     errors.append(f"task {identifier} has invalid dependency")
         parent = task.get("parent_task_id")
         derived_from = task.get("derived_from")
+        declared_parent_type = (
+            derived_from.get("parent_task_type") if isinstance(derived_from, dict) else None
+        )
         if task_type == "derived":
             if not _safe_identifier(parent):
                 errors.append(f"derived task {identifier} requires parent_task_id")
-            elif parent not in {other.get("id") for other in tasks if isinstance(other, dict)}:
-                errors.append(f"derived task {identifier} has invalid parent_task_id")
+            elif parent in {other.get("id") for other in tasks if isinstance(other, dict)}:
+                parent_task = next(
+                    (
+                        other
+                        for other in tasks
+                        if isinstance(other, dict) and other.get("id") == parent
+                    ),
+                    None,
+                )
+                if (
+                    isinstance(declared_parent_type, str)
+                    and declared_parent_type.strip()
+                    and parent_task is not None
+                    and declared_parent_type.strip() != parent_task.get("type")
+                ):
+                    errors.append(
+                        f"derived task {identifier} derived_from.parent_task_type "
+                        f"{declared_parent_type.strip()} does not match the parent task type "
+                        f"{parent_task.get('type')}"
+                    )
+            else:
+                errors.extend(
+                    _cross_run_parent_errors(root, identifier, parent, declared_parent_type)
+                )
             if isinstance(derived_from, dict):
                 relation_id = derived_from.get("task_id") or derived_from.get("parent_task_id")
                 if relation_id != parent:
@@ -1275,7 +1366,7 @@ def compare_task_plan_contract(
     field before the result can be used for freeze or dispatch.
     """
     errors: list[dict[str, Any]] = []
-    plan_errors = validate_task_plan(task_plan)
+    plan_errors = validate_task_plan(task_plan, root=root)
     errors.extend({"field": "task_plan", "reason": error, "source": "task-plan"} for error in plan_errors)
     contract, contract_errors = load_contract(Path(task_sheet))
     errors.extend({"field": "task_sheet", "reason": error, "source": str(task_sheet)} for error in contract_errors)
@@ -1681,6 +1772,7 @@ def _task_sheet_text(
     *,
     assumptions: list[Any] | None = None,
     unknowns: list[Any] | None = None,
+    root: Path | None = None,
 ) -> str:
     task_id = task["id"]
     task_type = task["type"]
@@ -1726,6 +1818,39 @@ def _task_sheet_text(
         "assumptions": list(assumptions or []),
         "unknowns": list(unknowns or []),
     }
+    if task_type == "derived":
+        derived_from = task.get("derived_from")
+        derived_from = derived_from if isinstance(derived_from, dict) else {}
+        relation_id = (
+            derived_from.get("task_id")
+            or derived_from.get("parent_task_id")
+            or task.get("parent_task_id")
+        )
+        parent_task_type = next(
+            (
+                other.get("type")
+                for other in plan.get("tasks", [])
+                if isinstance(other, dict) and other.get("id") == relation_id
+            ),
+            None,
+        )
+        if not isinstance(parent_task_type, str) or not parent_task_type.strip():
+            declared = derived_from.get("parent_task_type")
+            parent_task_type = declared if isinstance(declared, str) and declared.strip() else None
+        if not isinstance(parent_task_type, str) or not parent_task_type.strip():
+            if root is not None and isinstance(relation_id, str) and relation_id:
+                parent_task_type, _error = _read_parent_task_type(Path(root), relation_id)
+        if not isinstance(parent_task_type, str) or not parent_task_type.strip():
+            raise ValueError(
+                f"derived task {task_id} declares no resolvable parent_task_type; "
+                "the parent must be a task in this plan or have a frozen parent sheet"
+            )
+        contract["derived_from"] = {
+            "task_id": relation_id,
+            "commit": derived_from.get("commit"),
+            "branch": derived_from.get("branch"),
+            "parent_task_type": parent_task_type,
+        }
     if task_type == "prerequisite":
         reason = task.get("non_user_completion_reason")
         if not isinstance(reason, str) or not reason.strip():
@@ -1763,7 +1888,7 @@ def generate_task_sheets(
         requirements_sha256 = preflight.get("requirements_sha256")
         errors.extend(f"project-facts: {error}" for error in validate_project_facts(project_facts, root))
         errors.extend(f"requirement-facts: {error}" for error in validate_requirement_facts(requirement_facts, root))
-        errors.extend(validate_task_plan(task_plan, project_facts, requirement_facts))
+        errors.extend(validate_task_plan(task_plan, project_facts, requirement_facts, root=root))
         tasks = task_plan.get("tasks", []) if isinstance(task_plan, dict) else []
         task_ids = [task.get("id") for task in tasks if isinstance(task, dict)]
         if len(task_ids) != len(set(task_ids)):
@@ -1792,6 +1917,7 @@ def generate_task_sheets(
                 planning_run_id,
                 assumptions=assumptions,
                 unknowns=unknowns,
+                root=root,
             )
             for task in tasks
         ]

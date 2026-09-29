@@ -357,6 +357,162 @@ class TaskGenerationTests(unittest.TestCase):
             self.assertTrue(any("outside" in error for error in result["errors"]), result["errors"])
             self.assertFalse((root / "docs" / "tasks" / "scope-task.md").exists())
 
+    def write_parent_sheet(self, root, task_id, task_type="prerequisite"):
+        sheet = root / "docs" / "tasks" / f"{task_id}.md"
+        sheet.parent.mkdir(parents=True, exist_ok=True)
+        contract = {
+            "schema": 4,
+            "task_id": task_id,
+            "task_type": task_type,
+            "goal": {"path": "goal.md", "sha256": "0" * 64, "planning_run_id": "parent-run"},
+            "risk": "medium",
+            "project_type": "service",
+            "non_goals": ["parent sheet fixture"],
+            "allowed_paths": ["src/app.py"],
+            "forbidden_paths": ["goal.md"],
+            "requirements": ["requirement"],
+            "resources": ["src/app.py"],
+            "operations": [{"id": "operate", "kind": "execute", "scope": "task", "resources": ["src/app.py"], "resource_mode": "single", "acceptance_tests": ["acceptance-test-1"]}],
+            "chain": {name: {"not_applicable": True, "reason": "fixture"} for name in ("entry", "interaction", "application", "domain", "persistence", "readback", "recovery")},
+            "acceptance_tests": [{"id": "acceptance-test-1", "evidence_level": 2, "test_ref": "tests/test_task_generation.py", "command_ref": "python -m unittest"}],
+            "dependencies": [],
+            "required_evidence_levels": [2],
+        }
+        if task_type == "prerequisite":
+            contract["non_user_completion_reason"] = "parent fixture groundwork"
+        sheet.write_text(
+            f"# {task_id}\n\n<!-- Task ID: {task_id} -->\n\n```pipeline-contract\n"
+            + json.dumps(contract, ensure_ascii=True, indent=2)
+            + "\n```\n",
+            encoding="utf-8",
+        )
+        return sheet
+
+    def derived_task(self, task_id="derived-child", parent_task_id="parent-run", commit="a" * 40, branch="parent-run-branch", depends_on=()):
+        return {
+            "id": task_id,
+            "type": "derived",
+            "requirements": ["requirement"],
+            "resources": ["resource", "resource-tests"],
+            "operations": ["operate"],
+            "depends_on": list(depends_on),
+            "parent_task_id": parent_task_id,
+            "derived_from": {"task_id": parent_task_id, "commit": commit, "branch": branch},
+        }
+
+    def parent_task(self, task_id="parent-task"):
+        return {
+            "id": task_id,
+            "type": "prerequisite",
+            "requirements": ["requirement"],
+            "resources": ["resource", "resource-tests"],
+            "operations": ["operate"],
+            "depends_on": [],
+            "non_user_completion_reason": "enabling groundwork; no user-facing outcome",
+        }
+
+    def contract_of(self, sheet):
+        text = sheet.read_text(encoding="utf-8")
+        return json.loads(text.split("```pipeline-contract\n", 1)[1].split("\n```", 1)[0])
+
+    def test_generator_emits_derived_from_for_derived_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("derived-child",))
+            make_repo(root)
+            self.write_parent_sheet(root, "parent-run")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "parent sheet"], cwd=root, check=True)
+            plan["tasks"] = [self.derived_task()]
+            result = self.run_generation(root, project, requirements, plan, run_id="derived-run")
+            self.assertEqual(result["status"], "pass", result)
+            sheet = root / "docs" / "tasks" / "derived-child.md"
+            self.assertEqual(validate_task(sheet), [])
+            contract = self.contract_of(sheet)
+            self.assertEqual(
+                contract["derived_from"],
+                {
+                    "task_id": "parent-run",
+                    "commit": "a" * 40,
+                    "branch": "parent-run-branch",
+                    "parent_task_type": "prerequisite",
+                },
+            )
+
+    def test_generator_output_for_non_derived_task_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("plain-task",))
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="plain-run")
+            self.assertEqual(result["status"], "pass", result)
+            contract = self.contract_of(root / "docs" / "tasks" / "plain-task.md")
+            self.assertEqual(
+                set(contract),
+                {
+                    "schema",
+                    "task_id",
+                    "task_type",
+                    "goal",
+                    "risk",
+                    "project_type",
+                    "non_goals",
+                    "allowed_paths",
+                    "forbidden_paths",
+                    "requirements",
+                    "resources",
+                    "operations",
+                    "chain",
+                    "acceptance_tests",
+                    "dependencies",
+                    "required_evidence_levels",
+                    "assumptions",
+                    "unknowns",
+                    "non_user_completion_reason",
+                },
+            )
+            self.assertNotIn("derived_from", contract)
+
+    def test_generate_task_sheets_emits_derived_sheet_for_same_run_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("parent-task",))
+            plan["tasks"] = [self.parent_task(), self.derived_task("child-task", "parent-task", commit="b" * 40, branch="parent-task-branch", depends_on=("parent-task",))]
+            make_repo(root)
+            result = self.run_generation(root, project, requirements, plan, run_id="same-run")
+            self.assertEqual(result["status"], "pass", result)
+            self.assertEqual(result["task_ids"], ["parent-task", "child-task"])
+            parent_sheet = root / "docs" / "tasks" / "parent-task.md"
+            child_sheet = root / "docs" / "tasks" / "child-task.md"
+            self.assertTrue(parent_sheet.is_file())
+            self.assertTrue(child_sheet.is_file())
+            self.assertEqual(validate_task(parent_sheet), [])
+            self.assertEqual(validate_task(child_sheet), [])
+            parent_contract = self.contract_of(parent_sheet)
+            self.assertNotIn("derived_from", parent_contract)
+            child_contract = self.contract_of(child_sheet)
+            self.assertEqual(child_contract["dependencies"], ["parent-task"])
+            self.assertEqual(child_contract["derived_from"]["task_id"], "parent-task")
+            self.assertEqual(child_contract["derived_from"]["parent_task_type"], "prerequisite")
+            self.assertEqual(child_contract["derived_from"]["commit"], "b" * 40)
+            self.assertEqual(child_contract["derived_from"]["branch"], "parent-task-branch")
+
+    def test_generate_task_sheets_fails_closed_when_same_run_parent_sheet_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, requirements, plan = make_inputs(root, ("parent-task",))
+            plan["tasks"] = [self.parent_task(), self.derived_task("child-task", "parent-task", depends_on=("parent-task",))]
+            make_repo(root)
+            existing = root / "docs" / "tasks" / "parent-task.md"
+            existing.parent.mkdir(parents=True, exist_ok=True)
+            existing.write_bytes(b"frozen parent sheet")
+            result = self.run_generation(root, project, requirements, plan, run_id="existing-parent-run")
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("already exists" in error for error in result["errors"]), result["errors"])
+            self.assertEqual(existing.read_bytes(), b"frozen parent sheet")
+            self.assertFalse((root / "docs" / "tasks" / "child-task.md").exists())
+            self.assertFalse(list((root / "docs" / "tasks").glob("*.planning-tmp")))
+
 
 if __name__ == "__main__":
     unittest.main()

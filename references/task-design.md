@@ -83,6 +83,27 @@
 
 结论：`derived_from.parent_task_type` 是这条继承逻辑的唯一开关，漏填或填错会让子任务悄悄放松到错误的约束档位。创建 `derived` 任务时必须原样写入父契约的 `task_type`，并从父任务的明确提交创建、生成独立任务单、不复用父证据（见下文「派生任务的提交顺序」）。
 
+### `derived_from` 的两条写入路径与机械核验
+
+同一份 `derived_from` 有**两条写入路径**，两者产出的契约形状一致，但父任务的定位方式不同。文档要求两条路径都写明，且都按父任务位置机械核验 `parent_task_type`。
+
+**路径一：规划期生成器（`generate_task_sheets` / `_task_sheet_text`）。** 任务计划里的 `task` 声明 `type: derived`、`parent_task_id` 与 `derived_from` 时，`_task_sheet_text` 为它输出 `derived_from` 四字段：`task_id` 取 `derived_from.task_id`（回退 `parent_task_id`），`parent_task_type` 由**父任务的位置**机械读取，`commit` 与 `branch` 由规划者显式声明、**工具照抄**（生成发生在派发之前，同 run 的父任务此时还没有自己的提交与分支，因此工具不自动填充、也不做任何推导；规划者必须给出非空值，否则契约校验拒绝）。
+
+`parent_task_type` 的机械读取有两个来源，优先级固定：
+
+1. **父任务在本次计划的 `tasks` 数组内**（同一次 planning run）：直接取该 task 的 `type`，这是同 run 情形下的权威来源，因为父单此刻尚未生成。
+2. **父任务不在本 run 内**（跨 run）：读冻结的父任务单 `docs/tasks/<parent-id>.md`，从 `HEAD` 取该文件并解析其中的 `pipeline-contract` 块，取父契约的 `task_type`。读 `HEAD` 是为了只接受已冻结的父单，未提交的父单不会被当作已存在。
+
+**路径二：派发期 `create_derived_dispatch`。** 它从父任务单 `dict(contract)` 复制后覆盖四个字段，`derived_from` 的 `commit`/`branch` 取父任务当前提交与分支，`parent_task_type` 直接取父契约的 `task_type`。本路径的判定不在规划期，`core.py` 的 `freeze_check` 会在冻结期复核 `derived_from.parent_task_type` 是否与父单一致。
+
+**规划期的机械核验规则（`validate_task_plan`，可选 `root` 参数）：**
+
+- **同 run 父任务**：`parent_task_id` 必须落在同一计划的 `tasks` 数组内。若 `derived_from.parent_task_type` 已声明，必须与 plan 内父 task 的 `type` 相等，否则拒绝。
+- **跨 run 父任务**：`parent_task_id` 不在本 run 的 `tasks` 内时，只有在 `root` 可用的前提下读到 `HEAD` 上真实存在且已冻结的父单 `docs/tasks/<parent-id>.md` 才接受；`root` 缺失、父单不存在、父单未冻结、无 `pipeline-contract` 块或块内无 `task_type` 时一律 fail-closed 拒绝。
+- **声明值必须等于机械读取值**：无论父任务在哪个 run，只要 `derived_from.parent_task_type` 被声明，它就必须与机械读取到的值相等，否则 fail-closed。规划者不得凭记忆或推断填写该字段。
+
+**生成器侧的 fail-closed：** 父任务同在本 run、父单尚未存在时，父单与 derived 单在同一次生成中一并写出；若父单已存在（目标路径被占用），整次生成 fail-closed，不写任何一张单，也不留 `*.planning-tmp` 残留。
+
 ### 链路段与 `not_applicable`
 
 契约的 `chain` 固定七个段（`CHAIN_NAMES`）：`entry`、`interaction`、`application`、`domain`、`persistence`、`readback`、`recovery`。每段的写法按 schema 区分（`pipeline_tools/contract.py`）：

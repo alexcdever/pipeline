@@ -301,6 +301,29 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertNotIn("提出归属主张", task_design)
         self.assertNotIn("位置校验不生效", task_design)
 
+    def test_references_task_design_documents_derived_generation_support(self):
+        task_design = (ROOT / "references/task-design.md").read_text(encoding="utf-8")
+        self.assertIn("两条写入路径", task_design)
+        for needle in (
+            "derived_from",
+            "_task_sheet_text",
+            "create_derived_dispatch",
+            "parent_task_type",
+            "docs/tasks/<parent-id>.md",
+            "validate_task_plan",
+            "机械读取",
+            "fail-closed",
+            "root",
+            "commit",
+            "branch",
+        ):
+            self.assertIn(needle, task_design, needle)
+        # 生成器路径照抄规划者声明的提交/分支，不自动推导。
+        self.assertIn("工具照抄", task_design)
+        # 跨 run 与同 run 两条来源都必须写明。
+        self.assertIn("同一次 planning run", task_design)
+        self.assertIn("HEAD", task_design)
+
 
 if __name__ == "__main__":
     unittest.main()

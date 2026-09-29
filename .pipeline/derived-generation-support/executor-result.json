@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "task_id": "derived-generation-support",
+  "role": "executor",
+  "status": "pass",
+  "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\derived-generation-support",
+  "branch": "derived-generation-support",
+  "round": 1,
+  "identity": {
+    "product_head": "1e580ec",
+    "head": "PENDING_EXECUTOR_COMMIT"
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-test-generator-emits-derived-from",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-generator-unchanged-for-non-derived",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-generator-emits-same-run-parent-sheets",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-generator-fails-closed-on-existing-same-run-parent-sheet",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-plan-accepts-cross-run-parent",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-plan-rejects-missing-parent",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-plan-rejects-planner-declared-parent-type-mismatch",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-plan-accepts-same-run-derived-parent",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-derived-generation-rules-documented",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    }
+  ],
+  "unverified": [
+    "reviewer 与 main-final 阶��证据尚未生成",
+    "gate pre-merge 预期 blocked（缺 reviewer/final 证据）",
+    "freshness 需在执行提交后运行"
+  ]
+}
