@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "task_id": "task-design-corruption-fix",
+  "status": "pass",
+  "acceptance": [
+    {
+      "id": "acceptance-test-task-design-has-no-replacement-character",
+      "status": "pass",
+      "evidence_refs": ["review-report.md"],
+      "assertions": [
+        "The focused acceptance test passed independently with exit code 0.",
+        "references/task-design.md contains zero U+FFFD characters after an exact three-character repair."
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_task_design_contains_no_replacement_character",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\task-design-corruption-fix",
+      "evidence_ref": "review-report.md"
+    },
+    {
+      "command": "python -m unittest discover -s tests",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\task-design-corruption-fix",
+      "evidence_ref": "review-report.md"
+    },
+    {
+      "command": "bin/pipeline-tools.cmd task validate docs/tasks/task-design-corruption-fix.md",
+      "exit_code": 0,
+      "cwd": "D:\\Projects\\Skills\\pipeline\\.worktrees\\task-design-corruption-fix",
+      "evidence_ref": "review-report.md"
+    }
+  ],
+  "assertions": [
+    "Exactly 3 baseline U+FFFD characters in references/task-design.md were replaced and the active count is 0.",
+    "The task-design reference diff has no text changes beyond replacing the three U+FFFD characters with 读取.",
+    "The added test asserts both no replacement character and the repaired derived_from.parent_task_type wording.",
+    "The frozen task sheet is byte-for-byte unchanged and task validation passes.",
+    "Changed files are limited to references/task-design.md and tests/test_acceptance_id_and_template_compliance.py.",
+    "Historical replacement-character occurrences were not modified."
+  ],
+  "evidence_refs": ["review-report.md", "reviewer-result.json"],
+  "identity": {
+    "baseline_head": "f3b30a23a38be50b31ff387cc611c6b2c5877d97",
+    "goal_sha256": "9abb196ae5f1ecb99fa4834374b6c27910fa508b467c56d2bd8a9970a086e25f",
+    "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\task-design-corruption-fix",
+    "branch": "task-design-corruption-fix"
+  },
+  "unverified": []
+}

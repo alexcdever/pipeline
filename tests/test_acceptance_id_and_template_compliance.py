@@ -413,6 +413,12 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         ):
             self.assertNotIn(stale, readme, stale)
 
+    def test_references_task_design_contains_no_replacement_character(self):
+        reference = (ROOT / "references/task-design.md").read_text(encoding="utf-8")
+        self.assertNotIn("\ufffd", reference)
+        self.assertIn("_requires_full_chain", reference)
+        self.assertIn("读取 `derived_from.parent_task_type`", reference)
+
 
 if __name__ == "__main__":
     unittest.main()
