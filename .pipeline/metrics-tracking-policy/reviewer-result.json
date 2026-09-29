@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "task_id": "metrics-tracking-policy",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy",
+  "branch": "metrics-tracking-policy",
+  "role": "reviewer",
+  "round": 1,
+  "status": "pass",
+  "acceptance": [
+    {"id": "acceptance-test-metrics-contract-tracking-optional", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-compat-doc-tracking-optional", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-repo-metrics-untracked-and-ignored", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]},
+    {"id": "acceptance-test-suite-metrics-isolation-without-tracking", "status": "pass", "exit_code": 0, "evidence_refs": ["review-report.md"]}
+  ],
+  "commands": [
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_metrics_contract_documents_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_compat_and_migration_documents_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_repository_metrics_are_ignored_and_untracked", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_cli_suite_does_not_write_repository_metrics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "git ls-files .pipeline/metrics/ | wc -l", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "git check-ignore -v .pipeline/metrics/event.json", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"},
+    {"command": "python -m pipeline_tools scope check . --allowed \"references/**\" \"tests/**\" \".gitignore\"", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "review-report.md"}
+  ],
+  "unverified": [
+    "post-merge re-verification in the main worktree",
+    "commit_history_check / scope history on the eventual commit (deliverable is uncommitted)",
+    "final-check.md and final-result.json (main-agent stage)"
+  ]
+}

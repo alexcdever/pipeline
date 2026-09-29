@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "task_id": "metrics-tracking-policy",
+  "worktree": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy",
+  "branch": "metrics-tracking-policy",
+  "role": "final",
+  "round": 1,
+  "status": "pass",
+  "head": "776d3d9609703b2220e0ed0856dc940de15a88cc",
+  "goal_sha256": "9abb196ae5f1ecb99fa4834374b6c27910fa508b467c56d2bd8a9970a086e25f",
+  "commands": [
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_metrics_contract_documents_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest tests.test_acceptance_id_and_template_compliance.AcceptanceIdAndTemplateComplianceTests.test_references_compat_and_migration_documents_tracking_is_developer_choice", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_repository_metrics_are_ignored_and_untracked", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest tests.test_cli.CLITests.test_cli_suite_does_not_write_repository_metrics", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "final-check.md"},
+    {"command": "python -m unittest discover -s tests", "exit_code": 0, "cwd": "D:/Projects/Skills/pipeline/.worktrees/metrics-tracking-policy", "evidence_ref": "final-check.md"}
+  ],
+  "acceptance": [
+    {"id": "acceptance-test-metrics-contract-tracking-optional", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-compat-doc-tracking-optional", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-repo-metrics-untracked-and-ignored", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]},
+    {"id": "acceptance-test-suite-metrics-isolation-without-tracking", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
+  ],
+  "scope": {
+    "changed_files": [
+      ".gitignore",
+      "references/metrics-contract.md",
+      "references/compat-and-migration.md",
+      "tests/test_cli.py",
+      "tests/test_acceptance_id_and_template_compliance.py"
+    ],
+    "out_of_scope": []
+  },
+  "assertions": [
+    "4 条验收测试由主代理亲自重跑，退出码全为 0",
+    "全量 316 tests OK，基线 312 之上仅新增 4，无回归",
+    "untrack 非破坏：ls-files=0、check-ignore 命中、磁盘文件保留、blob 哈希比对 mismatch=0 missing=0",
+    "仅 references/、tests/、.gitignore 改动，全在 allowed_paths",
+    "进度日志规则完整保留；旧强制追踪措辞已清除",
+    "恒真断言已替换为可失败的正向断言"
+  ],
+  "evidence_refs": ["final-check.md", "executor-report.md", "review-report.md"],
+  "unverified": [
+    "README.md 第 16/64/96 行仍称 metrics 应追踪，需另开 derived 任务",
+    "commit_history_check / scope history 需在提交后补跑"
+  ],
+  "recommendation": "ready_to_merge"
+}

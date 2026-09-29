@@ -26,8 +26,8 @@ def isolated_metrics_root():
     """A throwaway non-repository cwd for runs that enable automatic metrics.
 
     Automatic collection resolves its project root from the invocation cwd. The
-    suite must never point that at this checkout, or the tracked
-    ``.pipeline/metrics/`` history gains an untracked event on every run.
+    suite must never point that at this checkout, or the repository
+    ``.pipeline/metrics/`` directory gains an event on every run, tracked or not.
     """
     global _ISOLATED_METRICS_ROOT
     if _ISOLATED_METRICS_ROOT is None or not _ISOLATED_METRICS_ROOT.is_dir():
@@ -508,8 +508,10 @@ class CLITests(unittest.TestCase):
             self.assertEqual(value['source'], 'pipeline_tools')
             self.assertEqual(value['evidence_ref'], 'task.md')
             self.assertIsInstance(value['duration_s'], float)
+            # Tracking is the project developer's choice: this test must not
+            # forbid the repository's own policy in either direction.
             ignored = subprocess.run(['git', '-C', str(ROOT), 'check-ignore', '--no-index', '.pipeline/metrics/event.json'], capture_output=True, text=True, timeout=60)
-            self.assertNotEqual(ignored.returncode, 0)
+            self.assertIn(ignored.returncode, (0, 1), (ignored.stdout, ignored.stderr))
 
     def test_automatic_timeout_records_feedback_event(self):
         with tempfile.TemporaryDirectory() as d:
@@ -612,6 +614,25 @@ class CLITests(unittest.TestCase):
         # throwaway root.
         self.assertEqual(metrics_snapshot(repo_metrics), before)
         self.assertTrue(metrics_snapshot(isolated / '.pipeline' / 'metrics'))
+
+    def test_repository_metrics_are_ignored_and_untracked(self):
+        gitignore = (ROOT / '.gitignore').read_text(encoding='utf-8')
+        self.assertIn('.pipeline/metrics/', gitignore)
+        ignored = subprocess.run(['git', '-C', str(ROOT), 'check-ignore', '.pipeline/metrics/event.json'], capture_output=True, text=True, timeout=60)
+        self.assertEqual(ignored.returncode, 0, (ignored.stdout, ignored.stderr))
+        tracked = subprocess.run(['git', '-C', str(ROOT), 'ls-files', '.pipeline/metrics/'], capture_output=True, text=True, timeout=60)
+        self.assertEqual(tracked.returncode, 0, (tracked.stdout, tracked.stderr))
+        self.assertEqual(tracked.stdout.strip(), '', tracked.stdout)
+
+    def test_cli_suite_does_not_write_repository_metrics(self):
+        repo_metrics = ROOT / '.pipeline' / 'metrics'
+        before = metrics_snapshot(repo_metrics)
+        # A real automatic-metrics run: a malformed top-level invocation still
+        # records a cli_parse_error event, so collection genuinely happens.
+        completed = run_cli(['not-a-command'],
+                            env={'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '0'})
+        self.assertEqual(completed.returncode, 2, (completed.stdout, completed.stderr))
+        self.assertEqual(metrics_snapshot(repo_metrics), before)
 
     def test_cli_suite_leaves_tracked_metrics_unchanged(self):
         repo_metrics = ROOT / '.pipeline' / 'metrics'

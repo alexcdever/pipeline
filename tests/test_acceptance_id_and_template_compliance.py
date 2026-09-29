@@ -373,8 +373,29 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             "未追踪",
         ):
             self.assertIn(needle, contract, needle)
-        # 规则必须要求隔离，而不是允许把 metrics 目录加进 .gitignore。
-        self.assertNotIn(".pipeline/metrics/` 加入 `.gitignore`", contract)
+        # 隔离不变量与追踪状态无关：测试不得写入仓库的指标目录。
+        self.assertIn("绝不能写入仓库的 `.pipeline/metrics/` 目录", contract)
+
+    def test_references_metrics_contract_documents_tracking_is_developer_choice(self):
+        contract = (ROOT / "references/metrics-contract.md").read_text(encoding="utf-8")
+        self.assertIn("由项目开发者决定", contract)
+        self.assertIn("技能既不要求也不禁止", contract)
+        for stale in (
+            "应纳入 Git 追踪",
+            "不应加入项目 `.gitignore`",
+            "加进 `.gitignore` 同样是违规",
+        ):
+            self.assertNotIn(stale, contract, stale)
+
+    def test_references_compat_and_migration_documents_tracking_is_developer_choice(self):
+        reference = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")
+        self.assertIn("由项目开发者决定", reference)
+        self.assertIn("技能既不要求也不禁止", reference)
+        for stale in (
+            "必须纳入 Git 追踪",
+            "不应加入项目 `.gitignore`",
+        ):
+            self.assertNotIn(stale, reference, stale)
 
 
 if __name__ == "__main__":
