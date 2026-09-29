@@ -397,6 +397,22 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         ):
             self.assertNotIn(stale, reference, stale)
 
+    def test_readme_documents_metrics_tracking_is_developer_choice(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("由项目开发者决定", readme)
+        self.assertIn("技能既不要求也不禁止", readme)
+        # 进度日志规则必须保留：过程记录不进入 Git。
+        self.assertIn(".pipeline/*/*-progress.jsonl", readme)
+        self.assertIn("不进入 Git", readme)
+        # 每条断言缺失的字符串都曾是旧版 README 的原文，是真实回归守卫。
+        for stale in (
+            "纳入 Git 追踪",
+            "应纳入 Git",
+            "不要把该目录",
+            "加入项目的",
+        ):
+            self.assertNotIn(stale, readme, stale)
+
 
 if __name__ == "__main__":
     unittest.main()
