@@ -420,6 +420,8 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
     directory = _canonical_evidence_dir(directory)
     errors: list[str] = []
     reports: dict[str, dict[str, Any]] = {}
+    root = _evidence_root(directory)
+    current_identity = git_identity(root)
     expected_roles = {
         "executor-report.md": "executor",
         "review-report.md": "reviewer",
@@ -473,6 +475,17 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
                     errors.append(f"{name} generated_at is not ISO-8601")
         if value.get("task_id") != task_id:
             errors.append(f"{name} task identity mismatch")
+        if value.get("schema") == 2:
+            for key in ("head", "branch"):
+                if value.get(key) != (current_identity.get(key) if key == "head" else (branch or current_identity.get(key))):
+                    errors.append(f"{name} {key} does not match current Git identity")
+            try:
+                report_worktree = Path(value.get("worktree", "")).resolve()
+            except (OSError, ValueError):
+                report_worktree = None
+            current_worktree = current_identity.get("worktree")
+            if not current_worktree or report_worktree != Path(current_worktree):
+                errors.append(f"{name} worktree does not match current Git identity")
         if branch and value.get("branch") != branch:
             errors.append(f"{name} branch mismatch")
         if value.get("role") != expected_roles[name]:
@@ -976,6 +989,47 @@ def _file_sha256(path: Path) -> str | None:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return None
+
+
+def git_identity(root: Path) -> dict[str, str | None]:
+    root = Path(root).resolve()
+    rc_head, head = git(root, "rev-parse", "--verify", "HEAD", redact_output=False)
+    rc_branch, branch = git(root, "branch", "--show-current", redact_output=False)
+    rc_worktree, worktree = git(root, "rev-parse", "--show-toplevel", redact_output=False)
+    return {
+        "head": head.strip() if rc_head == 0 else None,
+        "branch": branch.strip() if rc_branch == 0 else None,
+        "worktree": str(Path(worktree.strip()).resolve()) if rc_worktree == 0 and worktree.strip() else None,
+    }
+
+
+def retained_evidence_snapshot(directory: Path) -> dict[str, str]:
+    return {
+        name: _file_sha256(directory / name) or ""
+        for name in RETAINED_EVIDENCE_NAMES
+        if name != "finalization.json" and (directory / name).is_file()
+    }
+
+
+def verify_finalization_snapshot(directory: Path, marker: dict[str, Any], root: Path | None = None) -> list[str]:
+    errors: list[str] = []
+    expected = marker.get("retained_sha256")
+    if not isinstance(expected, dict) or not expected:
+        errors.append("finalization retained evidence snapshot is missing")
+    elif expected != retained_evidence_snapshot(directory):
+        errors.append("finalization retained evidence hash mismatch")
+    identity = marker.get("identity")
+    if not isinstance(identity, dict):
+        errors.append("finalization identity snapshot is missing")
+    else:
+        current = git_identity(root or _evidence_root(directory))
+        for key in ("head", "branch", "worktree"):
+            recorded = identity.get(key)
+            if key == "worktree" and isinstance(recorded, str):
+                recorded = str(Path(recorded).resolve())
+            if recorded != current.get(key):
+                errors.append(f"finalization {key} is stale")
+    return errors
 
 
 def _contract_from_text(text: str) -> dict[str, Any] | None:

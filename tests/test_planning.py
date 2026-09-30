@@ -473,6 +473,10 @@ class PlanningTests(unittest.TestCase):
             self.assertFalse((directory / 'raw.log').exists())
             self.assertTrue((directory / 'finalization.json').exists())
             self.assertEqual(finalize_evidence(directory, 'demo', True)['status'], 'finalized')
+            (directory / 'final-check.md').write_text('tampered', encoding='utf-8')
+            stale = finalize_evidence(directory, 'demo', True)
+            self.assertEqual(stale['status'], 'blocked')
+            self.assertTrue(any('hash mismatch' in item for item in stale['missing']))
 
     def test_finalization_cleanup_failure_leaves_no_marker(self):
         with tempfile.TemporaryDirectory() as d:

@@ -15,6 +15,7 @@ from .core import (
     evidence_verify,
     normalize_status,
     verify_structured_result,
+    verify_finalization_snapshot,
 )
 from .layout import LegacyPipelineLayoutError, active_pipeline_dir
 
@@ -140,6 +141,8 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         finalization_errors.append("missing or invalid finalization.json")
     elif finalization.get("task_id") != task_id or finalization.get("status") != "finalized":
         finalization_errors.append("finalization identity or status is invalid")
+    else:
+        finalization_errors.extend(verify_finalization_snapshot(evidence, finalization, root))
     post_merge_errors = []
     if not reports:
         post_merge_errors.append("no reports available")
@@ -151,11 +154,13 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         for command in reports.get("final-check.md", {}).get("commands", [])
     ):
         post_merge_errors.append("main worktree post-merge re-verification is missing")
+    if any(normalize_status(status, ("BLOCKED",)) == "BLOCKED" for status in statuses):
+        post_merge_errors.append("report declares BLOCKED")
     direct_pass = (not contract_errors and not report_errors and not result_errors and not identity_errors and not verify_errors
                    and not finalization_errors and not post_merge_errors and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
                    and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
-    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or finalization_errors or freshness["status"] == "blocked" else "UNVERIFIED")
+    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or finalization_errors or post_merge_errors or freshness["status"] == "blocked" else "UNVERIFIED")
     if layout_error:
         status = "BLOCKED"
     output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,

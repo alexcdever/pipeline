@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
@@ -30,6 +31,9 @@ from .core import (
     POST_MERGE_REPORT_STATUSES,
     RESULT_STATUSES,
     RETAINED_EVIDENCE_NAMES,
+    git_identity,
+    retained_evidence_snapshot,
+    verify_finalization_snapshot,
     normalize_status,
     resolve_result_role,
     verify_structured_result,
@@ -2553,6 +2557,9 @@ def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_c
         except (OSError, UnicodeError, json.JSONDecodeError):
             return {"status": "blocked", "missing": ["valid finalization.json"], "finalization": None}
         if existing.get("task_id") == task_id and existing.get("status") == "finalized":
+            errors = verify_finalization_snapshot(directory, existing)
+            if errors:
+                return {"status": "blocked", "missing": errors, "finalization": None}
             return {"status": "finalized", "missing": [], "finalization": str(marker)}
         return {"status": "blocked", "missing": ["finalization identity"], "finalization": None}
 
@@ -2612,10 +2619,13 @@ def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_c
         }
 
     value = {
-        "schema": 1,
+        "schema": 2,
         "task_id": task_id,
         "status": "finalized",
         "retained": retained,
+        "retained_sha256": retained_evidence_snapshot(directory),
+        "identity": git_identity(directory),
+        "finalized_at": datetime.now(timezone.utc).isoformat(),
         "approved_by": "main",
     }
     staging = directory / ".finalization-staging"

@@ -151,6 +151,35 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             self.assertEqual(result["status"], "blocked")
             self.assertNotEqual(result["exit_code"], 0)
 
+    def test_old_head_and_worktree_are_blocked_against_current_git_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "base"], check=True)
+            evidence = self._evidence(root)
+            current = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            for report in ("executor-report.md", "review-report.md", "final-check.md"):
+                lines = (evidence / report).read_text(encoding="utf-8").splitlines()
+                value = json.loads(lines[2])
+                value["head"] = "1" * 40
+                value["worktree"] = str(root / "old-worktree")
+                (evidence / report).write_text("report\n```pipeline-evidence\n" + json.dumps(value) + "\n```\n", encoding="utf-8")
+            result = reconcile_task(root, sheet)
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertTrue(any("current Git identity" in error for error in result["errors"]))
+            self.assertNotEqual(current, "1" * 40)
+
+    def test_post_merge_reverification_gap_is_blocked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            self._evidence(root)
+            result = reconcile_task(root, sheet)
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertTrue(any("post-merge re-verification" in error for error in result["errors"]))
+
     def test_cli_reconcile_returns_machine_result_and_does_not_write_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

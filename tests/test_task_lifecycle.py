@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline_tools.task_lifecycle import append_event, inspect_task, list_tasks, resume_task, transition_task
+from pipeline_tools.task_lifecycle import append_event, init_task, inspect_task, list_tasks, resume_task, transition_task
 
 
 class TaskLifecycleTests(unittest.TestCase):
@@ -113,6 +113,28 @@ class TaskLifecycleTests(unittest.TestCase):
             result = append_event(root, "demo", "two", role="main-agent")
             self.assertEqual(result["status"], "blocked")
             self.assertEqual(events.read_text(encoding="utf-8"), original + '{"sequence": 2, "type":')
+
+    def test_self_transition_is_blocked_without_state_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            result = init_task(root, "demo")
+            self.assertEqual(result["state"], "pending")
+            blocked = transition_task(root, "demo", "pending", role="main-agent")
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(inspect_task(root, "demo")["state"], "pending")
+
+    def test_corrupt_lifecycle_file_without_events_is_not_rebuilt_by_init(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            state_path = root / ".pipeline" / "demo" / "lifecycle.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text("{broken", encoding="utf-8")
+            result = init_task(root, "demo")
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("corrupt" in error for error in result["errors"]))
+            self.assertEqual(state_path.read_text(encoding="utf-8"), "{broken")
 
     def test_illegal_transition_and_list(self):
         with tempfile.TemporaryDirectory() as directory:

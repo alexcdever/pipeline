@@ -94,8 +94,8 @@ class CLITests(unittest.TestCase):
             self.assertTrue(raw.is_file()); self.assertFalse((evidence / 'finalization.json').exists())
             (evidence / 'finalization.json').write_text(json.dumps({'schema': 1, 'task_id': 'demo', 'status': 'finalized'}), encoding='utf-8')
             repeat = run_cli(['planning', 'evidence-finalize', str(evidence), '--task-id', 'demo', '--success'])
-            self.assertEqual(repeat.returncode, 0, (repeat.stdout, repeat.stderr))
-            self.assertEqual(json.loads(repeat.stdout)['status'], 'finalized')
+            self.assertEqual(repeat.returncode, 3, (repeat.stdout, repeat.stderr))
+            self.assertEqual(json.loads(repeat.stdout)['status'], 'blocked')
 
     def test_evidence_verify_current_command_reports_machine_identity_and_finalization_state(self):
         with tempfile.TemporaryDirectory() as d:
@@ -105,7 +105,7 @@ class CLITests(unittest.TestCase):
                 self._write_machine_report(evidence, role)
             (evidence / 'finalization.json').write_text(json.dumps({'schema': 1, 'task_id': 'demo', 'status': 'finalized'}), encoding='utf-8')
             verified = run_cli(['evidence', 'verify', str(evidence), '--task-id', 'demo', '--branch', 'feature/demo', '--phase', 'finalized'])
-            self.assertEqual(verified.returncode, 0, (verified.stdout, verified.stderr))
+            self.assertEqual(verified.returncode, 3, (verified.stdout, verified.stderr))
 
     def test_result_verify_cli_accepts_final_role(self):
         with tempfile.TemporaryDirectory() as d:

@@ -59,6 +59,7 @@ from .core import (
     evidence_freshness,
     evidence_readiness,
     verify_structured_result,
+    verify_finalization_snapshot,
     write_dispatch,
     create_worktree_dispatch,
     create_derived_dispatch,
@@ -1110,6 +1111,8 @@ def _main(argv: list[str] | None = None) -> int:
                         finalized = {}
                     if finalized.get("task_id") != args.task_id or finalized.get("status") != "finalized":
                         errors.append("finalization identity or status is invalid")
+                    else:
+                        errors.extend(verify_finalization_snapshot(args.directory, finalized))
             _print_errors(errors)
             return PASS if not errors else BLOCKED
         if args.group == "gate":

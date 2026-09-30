@@ -59,6 +59,22 @@ class EvidenceTests(unittest.TestCase):
         path.write_text(json.dumps(result), encoding='utf-8')
         return path
 
+    def test_schema2_report_identity_must_match_current_git_identity(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            head = self._make_git_repo(root)
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            for role, name in (('executor', 'executor-report.md'), ('reviewer', 'review-report.md'), ('main-final', 'final-check.md')):
+                value = json.loads(report(role).split('\n')[1])
+                value.update({'schema': 2, 'head': '0' * 40, 'generated_at': '2026-01-01T00:00:00+00:00', 'worktree': str(root / 'wrong')})
+                (directory / name).write_text('```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8')
+            errors = gate_check(directory, 'demo', 'feature/demo', 'pre-merge')
+            self.assertTrue(any('current Git identity' in error for error in errors), errors)
+            self.assertNotEqual(head, '0' * 40)
+
     def test_freshness_allows_only_task_evidence_commit_after_product_head(self):
         import subprocess
 

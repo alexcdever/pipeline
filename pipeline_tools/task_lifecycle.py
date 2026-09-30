@@ -113,15 +113,17 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
         except (OSError, UnicodeError, json.JSONDecodeError):
             return _result("blocked", task_id, errors=["events.jsonl is corrupted"])
     if not path.is_file():
+        if path.exists():
+            return _result("blocked", task_id, errors=["lifecycle.json is corrupted"])
         if events_path.is_file():
             return _result("blocked", task_id, errors=["events.jsonl exists but lifecycle.json is missing"])
         return None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None
+        return _result("blocked", task_id, errors=["lifecycle.json is corrupted"])
     if not isinstance(value, dict):
-        return None
+        return _result("blocked", task_id, errors=["lifecycle.json is corrupted"])
     recorded = (value.get("identity") or {}).get("task_sheet_sha256")
     observed = _sha256(_task_sheet(root, task_id)) or ""
     if recorded != observed:
@@ -363,7 +365,9 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
     current = state["state"]
     if current in {"merged", "abandoned"}:
         return _result("blocked", task_id, state=current, errors=[f"terminal state {current} is immutable"])
-    if target != current and target not in TRANSITIONS.get(current, set()):
+    if target == current:
+        return _result("blocked", task_id, state=current, errors=[f"self-transition is not allowed: {current} -> {target}"])
+    if target not in TRANSITIONS.get(current, set()):
         return _result("blocked", task_id, state=current, errors=[f"illegal transition: {current} -> {target}"], allowed_transitions=sorted(TRANSITIONS.get(current, set())))
     evidence_value = _evidence(root, task_id, evidence)
     if target in {"ready", "merged"}:
