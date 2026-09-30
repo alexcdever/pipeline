@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pipeline_tools.core import git_identity, retained_evidence_snapshot
 from pipeline_tools.task_lifecycle import append_event, init_task, inspect_task, list_tasks, resume_task, transition_task
 
 
@@ -121,6 +122,40 @@ class TaskLifecycleTests(unittest.TestCase):
             self.write_evidence(root)
             self.assertEqual(transition_task(root, "demo", "ready", role="main-agent")["state"], "ready")
             (root / ".pipeline" / "demo" / "final-check.md").write_text("```pipeline-evidence\\n{}\\n```\\n", encoding="utf-8")
+            blocked = transition_task(root, "demo", "merged", role="main-agent")
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(inspect_task(root, "demo")["state"], "ready")
+
+    def test_ready_to_merged_requires_finalization_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "freeze"], check=True)
+            transition_task(root, "demo", "active", role="main-agent")
+            transition_task(root, "demo", "review", role="main-agent")
+            self.write_evidence(root)
+            self.assertEqual(transition_task(root, "demo", "ready", role="main-agent")["state"], "ready")
+            blocked = transition_task(root, "demo", "merged", role="main-agent")
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(inspect_task(root, "demo")["state"], "ready")
+
+    def test_ready_to_merged_rejects_stale_finalization_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "freeze"], check=True)
+            transition_task(root, "demo", "active", role="main-agent")
+            transition_task(root, "demo", "review", role="main-agent")
+            self.write_evidence(root)
+            evidence = root / ".pipeline" / "demo"
+            marker = {"schema": 2, "task_id": "demo", "status": "finalized", "retained_sha256": retained_evidence_snapshot(evidence), "identity": git_identity(root)}
+            marker["identity"]["head"] = "0" * 40
+            (evidence / "finalization.json").write_text(json.dumps(marker), encoding="utf-8")
+            self.assertEqual(transition_task(root, "demo", "ready", role="main-agent")["state"], "ready")
             blocked = transition_task(root, "demo", "merged", role="main-agent")
             self.assertEqual(blocked["status"], "blocked")
             self.assertEqual(inspect_task(root, "demo")["state"], "ready")

@@ -49,6 +49,18 @@ def _json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _safe_cwd_is_root(value: Any, root: Path) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        candidate = Path(value.strip())
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        return candidate.resolve() == root.resolve()
+    except (OSError, TypeError, ValueError, RuntimeError):
+        return False
+
+
 def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dict[str, Any]:
     root, task_sheet = Path(root).resolve(), Path(task_sheet).resolve()
     contract, contract_errors = load_contract(task_sheet)
@@ -149,8 +161,11 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     elif reports.get("final-check.md", {}).get("role") != "main-final":
         post_merge_errors.append("final-check is required for post-merge finalization")
     if not any(
-        isinstance(command, dict) and command.get("exit_code") == 0 and command.get("cwd")
-        and Path(command["cwd"]).resolve() == root
+        isinstance(command, dict)
+        and command.get("exit_code") == 0
+        and isinstance(command.get("cwd"), str)
+        and command.get("cwd").strip()
+        and _safe_cwd_is_root(command.get("cwd"), root)
         for command in reports.get("final-check.md", {}).get("commands", [])
     ):
         post_merge_errors.append("main worktree post-merge re-verification is missing")

@@ -180,6 +180,18 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             self.assertEqual(result["status"], "BLOCKED")
             self.assertTrue(any("post-merge re-verification" in error for error in result["errors"]))
 
+    def test_malformed_post_merge_cwd_is_blocked_without_exception(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            evidence = self._evidence(root)
+            report = json.loads((evidence / "final-check.md").read_text(encoding="utf-8").splitlines()[2])
+            report["commands"] = [{"command": "test", "exit_code": 0, "cwd": {"__class__": "Path"}, "evidence_ref": "test.log"}]
+            (evidence / "final-check.md").write_text("report\n```pipeline-evidence\n" + json.dumps(report) + "\n```\n", encoding="utf-8")
+            result = reconcile_task(root, sheet)
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertTrue(any("post-merge re-verification" in error for error in result["errors"]))
+
     def test_cli_reconcile_returns_machine_result_and_does_not_write_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

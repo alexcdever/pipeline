@@ -21,7 +21,7 @@ from typing import Any
 
 from .layout import active_pipeline_dir, read_pipeline_dirs
 from .contract import validate_task
-from .core import evidence_verify, gate_check, git
+from .core import evidence_verify, gate_check, git, verify_finalization_snapshot
 
 
 _EVENT_FAILURE = "lifecycle event write failed; state was rolled back"
@@ -402,13 +402,29 @@ def _transition_task_unlocked(root: Path, task_id: str, target: str, identity: s
         if target in {"ready", "merged"}:
             phase = "pre-merge" if target == "ready" else "post-merge"
             current_head, current_branch, current_worktree = _git_identity(root)
-            evidence_errors = gate_check(Path(evidence_value["directory"]), task_id, current_branch, phase)
+            evidence_directory = Path(evidence_value["directory"])
+            evidence_errors = gate_check(evidence_directory, task_id, current_branch, phase)
             if evidence_errors or not evidence_value["ready"]:
                 return _result("blocked", task_id, state=current, errors=[f"{phase} gate failed", *evidence_errors], evidence=evidence_value)
             head, branch, worktree = current_head, current_branch, current_worktree
             if not head or not branch or not worktree:
                 return _result("blocked", task_id, state=current, errors=["main worktree identity could not be verified"])
             evidence_value["main_worktree"] = {"head": head, "branch": branch, "worktree": worktree}
+            if target == "merged":
+                marker_path = evidence_directory / "finalization.json"
+                try:
+                    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    marker = None
+                marker_errors = []
+                if not isinstance(marker, dict):
+                    marker_errors.append("finalization.json is missing or invalid")
+                elif marker.get("task_id") != task_id or marker.get("status") != "finalized":
+                    marker_errors.append("finalization.json identity or status is invalid")
+                else:
+                    marker_errors.extend(verify_finalization_snapshot(evidence_directory, marker, root))
+                if marker_errors:
+                    return _result("blocked", task_id, state=current, state_unchanged=True, errors=["finalization marker verification failed", *marker_errors], evidence=evidence_value)
         previous = dict(state)
         state.update({"state": target, "updated_at": _now(), "evidence": evidence_value, "status": "pass"})
         _atomic_write_state_unlocked(directory / "lifecycle.json", state)
