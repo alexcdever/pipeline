@@ -23,7 +23,7 @@ metadata:
 ## 角色契约
 
 - **用户**：提供目标、优先级；裁决真实设计决策、外部授权、不可逆风险。
-- **主代理**：读状态 → 拆任务 → 写任务单+逐条验收测试 → 提交冻结后派发 → 调度执行/审查子代理 → 核全部证据并重跑关键验收 → 把任务级过程记录写入 `.pipeline/<task-id>/` 的角色进度日志和阶段报告 → 全闸门通过后合并并在主工作树复验。不默认替执行子代理写业务代码；遇真实决策点保留现场停下，不猜测。
+- **主代理**：读状态 → 拆任务 → 写任务单+逐条验收测试 → 提交冻结后派发 → 调度执行/审查子代理 → 核全部证据并重跑关键验收 → 把任务级过程记录写入 `.pipeline/<task-id>/` 的角色进度日志和阶段报告 → 全闸门通过后合并并在主工作树复验。实现提交与正式 evidence 提交分开；pre-merge 必须包含满足 gate 的完整三份报告和三份机器结果，post-merge 更新同名 `final-check.md`/`final-result.json` 并提交 `finalization.json`，三者作为独立 evidence 提交。不默认替执行子代理写业务代码；遇真实决策点保留现场停下，不猜测。
 - **执行子代理**：在指定 worktree 按红→绿→蓝实现冻结任务单；跑验收命令与必要回归；只在自己任务证据目录写执行报告。不改冻结目标/范围/验收测试，不自行扩大产品设计。
 - **审查子代理**：独立上下文读任务单、代码、执行报告；亲自重跑验收测试；查正确性、边界、范围、覆盖率与证据新鲜度；发现问题报 BLOCKED/FAIL。默认只读，不改产品代码。
 
@@ -76,7 +76,7 @@ metadata:
 - 结构化执行闭环使用 `dispatch write`、`result verify` 和 `freshness`；只有当前 task-id、角色、HEAD、验收结果和证据引用均通过机械校验，才能把语义代理的 recommendation 交给下一阶段。
 - 工具不可用、命令超时、证据缺失或身份/范围漂移时标为 `BLOCKED`/漂移，不绕过工具改写成 PASS。
 - 报告必须包含机器可读的 `pipeline-evidence` 区块；自然语言报告不能单独产生验收结论。
-- 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`。
+- 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`；迁移只移动并校验文件，不改写 evidence 内部历史路径文本，后续工具统一使用 `.pipeline/`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
 - 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
@@ -95,7 +95,7 @@ metadata:
 4. 独立审查：独立上下文直接复验；转述他人结果不算。
 5. 证据属当前任务：task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成。
 6. 真实链路不可替代：单元/组件/协议/持久化/真实浏览器/设备各自证明各自边界。
-7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）。
+7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）；post-merge `final-check.md`、`final-result.json` 与 `finalization.json` 作为独立 evidence 提交。
 8. 超时有界：单条测试默认 3 分钟硬上限，超时必须停止诊断；整套用更大的明确累计上限。
 9. 决策点停下：缺产品决策、协议兼容、权限、外部服务或验收环境时保留现场上报，不替用户定案。
 10. 数量≠覆盖率：绿色数、退出码、完成通知、报告存在、代码行数增加都不能单独 PASS。

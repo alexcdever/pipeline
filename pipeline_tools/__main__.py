@@ -144,7 +144,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     planning = groups.add_parser("planning")
     planning_sub = planning.add_subparsers(dest="action", required=True)
-    pf = planning_sub.add_parser("preflight"); pf.add_argument("root", type=Path)
+    pf = planning_sub.add_parser("preflight"); pf.add_argument("root", type=Path); pf.add_argument("--apply", action="store_true")
     goal_sync = planning_sub.add_parser("goal-sync"); goal_sync.add_argument("root", type=Path)
     facts = planning_sub.add_parser("facts-validate"); facts.add_argument("path", type=Path); facts.add_argument("--root", type=Path)
     normalize = planning_sub.add_parser("facts-normalize"); normalize.add_argument("path", type=Path); normalize.add_argument("--run-id")
@@ -168,6 +168,8 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--requirement-facts", type=Path, required=True)
     generate.add_argument("--task-plan", type=Path, required=True)
     generate.add_argument("--expected-requirements-sha256")
+    generate.add_argument("--assumptions", type=Path)
+    generate.add_argument("--unknowns", type=Path)
     orchestrate = planning_sub.add_parser("to-dispatch")
     orchestrate.add_argument("root", type=Path)
     orchestrate.add_argument("--run-id", required=True)
@@ -318,6 +320,7 @@ def _build_parser() -> argparse.ArgumentParser:
     role.add_argument("--product-pattern", action="append", default=[])
     role.add_argument("--authorized", action="store_true")
     role.add_argument("--task-id")
+    role.add_argument("--baseline")
     role.add_argument("--run-id")
 
     lifecycle = groups.add_parser("lifecycle", help="derive structured workflow state")
@@ -416,6 +419,16 @@ def _json_file_for_cli(path: Path) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("JSON input must be an object")
     return value
+
+
+def _fact_cli_input(path: Path | None, field: str) -> list[object] | None:
+    if path is None:
+        return None
+    value = _json_file_for_cli(path)
+    facts = value.get(field)
+    if not isinstance(facts, list) or any(not isinstance(item, dict) for item in facts):
+        raise ValueError(f"{field} input must contain an array of objects")
+    return facts
 
 
 def _status_exit_code(result: dict[str, object]) -> int:
@@ -942,7 +955,7 @@ def _main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
         if args.group == "planning":
             if args.action == "preflight":
-                value = planning_preflight(args.root); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
+                value = planning_preflight(args.root, apply=args.apply); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
             if args.action == "goal-sync":
                 goal_path, sync_error = sync_goal_document(args.root)
                 value = {
@@ -1027,13 +1040,15 @@ def _main(argv: list[str] | None = None) -> int:
                     _json_file_for_cli(args.requirement_facts),
                     _json_file_for_cli(args.task_plan),
                     expected_requirements_sha256=args.expected_requirements_sha256,
+                    assumptions=_fact_cli_input(args.assumptions, "assumptions"),
+                    unknowns=_fact_cli_input(args.unknowns, "unknowns"),
                 )
                 if args.format == "json":
                     _emit(value, args)
                 else:
                     print(json.dumps(value, ensure_ascii=True))
                 return PASS if value["status"] == "pass" else (BLOCKED if value["status"] == "blocked" else CONFIG)
-            value = finalize_evidence(args.directory, args.task_id, args.success); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "finalized" else BLOCKED
+            value = finalize_evidence(args.directory, args.task_id, args.success, require_canonical=True); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "finalized" else BLOCKED
         if args.group == "task" and args.action == "validate":
             errors = validate_task(args.path)
             if args.format == "json":
@@ -1075,7 +1090,7 @@ def _main(argv: list[str] | None = None) -> int:
                     _emit(value, args)
                 else:
                     print(json.dumps(value, ensure_ascii=True, sort_keys=True))
-                return PASS
+                return _status_exit_code(value)
             if args.action == "readiness":
                 value = evidence_readiness(args.directory, args.task_id)
                 if args.format == "json":
@@ -1102,7 +1117,7 @@ def _main(argv: list[str] | None = None) -> int:
             errors = gate_check(args.directory, args.task_id, args.branch, args.action, unverified=unverified)
             if args.result:
                 role = args.role or ("reviewer" if "reviewer" in args.result.name else "executor")
-                errors.extend(verify_structured_result(args.result, args.task_id, role))
+                errors.extend(verify_structured_result(args.result, args.task_id, role, strict=True))
                 freshness = evidence_freshness(args.directory.parent.parent, args.directory, args.result)
                 if freshness["status"] != "pass":
                     errors.extend(freshness["errors"])
@@ -1187,7 +1202,7 @@ def _main(argv: list[str] | None = None) -> int:
                 )
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True))
                 return PASS if result["status"] == "pass" else BLOCKED
-            bad = role_scope_check(args.root, args.role, args.product_pattern, args.authorized)
+            bad = role_scope_check(args.root, args.role, args.product_pattern, args.authorized, args.task_id, args.baseline)
             if bad:
                 print("FAIL: " + ", ".join(bad))
                 return DRIFT

@@ -166,6 +166,16 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(result['status'], 'blocked')
             self.assertIn('requirements_sha256', result)
 
+    def test_planning_preflight_dry_run_does_not_migrate_legacy_layout(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / '.workflow').mkdir()
+            (root / 'implement-plan.md').write_text('real requirements', encoding='utf-8')
+            result = planning_preflight(root, apply=False)
+            self.assertEqual(result['status'], 'blocked')
+            self.assertTrue((root / '.workflow').is_dir())
+            self.assertTrue(any('explicit apply' in error for error in result['errors']))
+
     def test_planning_preflight_accepts_non_repository_target_when_tool_checkout_is_valid(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -206,13 +216,13 @@ class PlanningTests(unittest.TestCase):
             subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
             from pipeline_tools.layout import recovery_index_path, temporary_root
             recorded = recovery_index_path(root)
-            blocked = planning_preflight(root, expected_requirements_sha256='0' * 64)
+            blocked = planning_preflight(root, expected_requirements_sha256='0' * 64, apply=True)
             self.assertEqual(blocked['status'], 'blocked')
             self.assertTrue(recorded.is_file())
             self.assertFalse((root / '.pipeline' / 'planning').exists())
             self.assertIn('temporary://', recorded.read_text(encoding='utf-8'))
             self.assertTrue(any(path.name.endswith('-preflight.json') for path in temporary_root(root).iterdir()))
-            result = planning_preflight(root)
+            result = planning_preflight(root, apply=True)
             self.assertEqual(result['status'], 'pass', result)
             self.assertFalse((root / '.pipeline' / 'planning').exists())
 
@@ -234,10 +244,10 @@ class PlanningTests(unittest.TestCase):
             (root / 'implement-plan.md').write_text('real requirements', encoding='utf-8')
             subprocess.run(['git', 'add', '.'], cwd=root, check=True)
             subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
-            first = planning_preflight(root)
+            first = planning_preflight(root, apply=True)
             self.assertEqual(first['status'], 'pass')
             (root / 'implement-plan.md').write_text('changed requirements', encoding='utf-8')
-            drift = planning_preflight(root, expected_requirements_sha256=first['requirements_sha256'], expected_branch='wrong')
+            drift = planning_preflight(root, expected_requirements_sha256=first['requirements_sha256'], expected_branch='wrong', apply=True)
             self.assertEqual(drift['status'], 'blocked')
             self.assertTrue(any('hash' in error or 'branch' in error for error in drift['errors']))
 
@@ -604,7 +614,7 @@ class PlanningTests(unittest.TestCase):
             (root / 'implement-plan.md').write_text('real requirements', encoding='utf-8')
             subprocess.run(['git', 'add', '.'], cwd=root, check=True)
             subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
-            result = planning_preflight(root)
+            result = planning_preflight(root, apply=True)
             self.assertEqual(result['status'], 'pass')
             self.assertEqual(result['task_scenes'], {'sheets_without_worktree': [], 'worktrees_without_sheet': [], 'uncommitted_sheets': [], 'leftover_evidence': []})
             self.assertNotIn('reconcile existing task scenes before planning', result['next_actions'])
@@ -759,7 +769,7 @@ class PlanningTests(unittest.TestCase):
             (root / ".workflow" / "task-a" / "note.txt").write_text("legacy", encoding="utf-8")
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
-            result = planning_preflight(root)
+            result = planning_preflight(root, apply=True)
             self.assertEqual(result["status"], "pass", result)
             self.assertFalse((root / ".workflow").exists())
             self.assertTrue((root / ".pipeline" / "task-a" / "note.txt").is_file())

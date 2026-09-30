@@ -32,6 +32,8 @@ from .core import (
     RETAINED_EVIDENCE_NAMES,
     normalize_status,
     resolve_result_role,
+    verify_structured_result,
+    gate_check,
 )
 from .layout import (
     LEGACY_PIPELINE_DIR_NAME,
@@ -366,7 +368,7 @@ def _cross_run_parent_errors(
     return []
 
 
-def _task_scene_facts(root: Path) -> tuple[list[str], list[str], dict[str, list[str]]]:
+def _task_scene_facts(root: Path, *, apply: bool = True) -> tuple[list[str], list[str], dict[str, list[str]]]:
     """Report pre-existing task scenes without judging their product meaning.
 
     A task worktree without a frozen task sheet violates the recorded invariant
@@ -403,7 +405,10 @@ def _task_scene_facts(root: Path) -> tuple[list[str], list[str], dict[str, list[
         warnings.append(".worktrees directory is unreadable")
     evidence: dict[str, Path] = {}
     try:
-        pipeline_directory = active_pipeline_dir(root)
+        if apply:
+            pipeline_directory = active_pipeline_dir(root)
+        else:
+            pipeline_directory = root / PIPELINE_DIR_NAME
     except (LegacyPipelineLayoutError, OSError):
         pipeline_directory = root / PIPELINE_DIR_NAME
     try:
@@ -444,6 +449,7 @@ def planning_preflight(
     expected_head: str | None = None,
     expected_branch: str | None = None,
     expected_worktree: Path | None = None,
+    apply: bool = False,
 ) -> dict[str, Any]:
     """Run fail-closed checks before any planning or worktree dispatch.
 
@@ -462,7 +468,7 @@ def planning_preflight(
     pipeline = root / PIPELINE_DIR_NAME
     if legacy.exists() and pipeline.exists():
         errors.append(".workflow and .pipeline both exist")
-    elif legacy.exists():
+    elif legacy.exists() and apply:
         # A lone legacy tree is migrated in place; only the canonical path is
         # used for every later planning decision.
         try:
@@ -471,9 +477,15 @@ def planning_preflight(
             errors.append(f"legacy .workflow migration failed: {error}")
         else:
             warnings.append("legacy .workflow migrated to .pipeline")
+    elif legacy.exists():
+        errors.append("legacy .workflow requires explicit apply")
 
     if root.is_dir():
-        plan, sync_error = sync_goal_document(root)
+        if apply:
+            plan, sync_error = sync_goal_document(root)
+        else:
+            plan = root / GOAL_DOCUMENT_NAME
+            sync_error = None if plan.is_file() else f"{GOAL_DOCUMENT_NAME} missing and apply is required"
         if sync_error and not sync_error.startswith("copied "):
             errors.append(sync_error)
         elif sync_error:
@@ -565,7 +577,7 @@ def planning_preflight(
 
     task_scenes: dict[str, list[str]] = {"sheets_without_worktree": [], "worktrees_without_sheet": [], "uncommitted_sheets": [], "leftover_evidence": []}
     if root.is_dir():
-        scene_warnings, scene_errors, task_scenes = _task_scene_facts(root)
+        scene_warnings, scene_errors, task_scenes = _task_scene_facts(root, apply=apply)
         warnings.extend(scene_warnings)
         errors.extend(scene_errors)
 
@@ -589,9 +601,9 @@ def planning_preflight(
         "next_actions": next_actions,
         "unverified": [] if not errors else ["planning dispatch", "task generation"],
     }
-    if errors and root.is_dir():
+    if errors and root.is_dir() and apply:
         result["artifacts"] = _write_preflight_failure(root, result)
-    else:
+    elif apply:
         _clear_stale_preflight_failure(root)
     return result
 
@@ -2016,7 +2028,7 @@ def _task_sheet_text(
                 f"task {task_id} is prerequisite but declares no non_user_completion_reason in the task plan"
             )
         contract["non_user_completion_reason"] = reason
-    lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- goal SHA-256：`{requirements_sha256}`", "- 状态：未开始", "", "## 依赖与范围", "", "### 允许修改", ""]
+    lines = [f"# {task_id}：冻结任务单", "", f"<!-- Task ID: {task_id} -->", "<!-- Generated from task-plan; contract fields are mechanically derived. -->", "", "```pipeline-contract", json.dumps(contract, ensure_ascii=True, indent=2), "```", "", "## 任务身份", "", f"- 任务类型：`{task_type}`", f"- planning-run-id：`{run_id}`", f"- goal SHA-256：`{requirements_sha256}`", "", "## 依赖与范围", "", "### 允许修改", ""]
     lines.extend(f"- `{item}`" for item in contract["allowed_paths"])
     lines.extend(["", "### 明确不改", "", f"- `{GOAL_DOCUMENT_NAME}`", f"- `{LEGACY_PLAN_DOCUMENT_NAME}`", "- `IDEA.md`", "- 已有任务单和历史规划证据", "", "## 事实/假设/未知", "", f"- 事实：{json.dumps(facts or [], ensure_ascii=True)}", f"- 假设：{json.dumps(assumptions or [], ensure_ascii=True)}", f"- 未知：{json.dumps(unknowns or [], ensure_ascii=True)}", "", "## 设计与行为链路", "", f"- 链路：{json.dumps(contract['chain'], ensure_ascii=False)}", f"- 操作行为：{json.dumps([item.get('kind', 'execute') for item in operations], ensure_ascii=False)}", "", "## 环境前置", "", "- 已通过规划前置检查、事实校验和任务计划结构校验。", "", "## 决策点", "", f"- 任务依赖的决策阻塞：{json.dumps(plan.get('decision_blockers', []), ensure_ascii=False)}", "", "## 任务计划映射", "", f"- 需求：{json.dumps(task.get('requirements', []), ensure_ascii=True)}", f"- 资源：{json.dumps(task.get('resources', []), ensure_ascii=True)}", f"- 操作：{json.dumps(sorted(operation_ids), ensure_ascii=True)}", f"- 依赖：{json.dumps(task.get('depends_on', []), ensure_ascii=True)}", "", "## 验收测试", ""])
     for index, test in enumerate(tests, 1):
@@ -2041,7 +2053,7 @@ def generate_task_sheets(
     _planning_run_directory(root, planning_run_id)
     result: dict[str, Any] = {"schema": 1, "command": "planning.generate-task-sheets", "status": "blocked", "run_id": planning_run_id, "planning_run_id": planning_run_id, "task_id": None, "task_ids": [], "artifacts": [], "errors": [], "next_actions": []}
     try:
-        preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256)
+        preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256, apply=True)
         errors = list(preflight.get("errors", []))
         plan_path = root / GOAL_DOCUMENT_NAME
         requirements_sha256 = preflight.get("requirements_sha256")
@@ -2193,7 +2205,7 @@ def planning_to_dispatch(
                 expected_requirements_sha256 = recorded_hash
         except (OSError, ValueError):
             pass
-    preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256)
+    preflight = planning_preflight(root, expected_requirements_sha256=expected_requirements_sha256, apply=True)
     if not stage("preflight", preflight.get("status", "blocked"), preflight):
         return result
     gate_input = {"schema": 1, "planning_run_id": run_id}
@@ -2519,7 +2531,7 @@ def _evidence_directory_identity(directory: Path, task_id: str) -> bool:
     return True
 
 
-def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str, Any]:
+def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_canonical: bool = False) -> dict[str, Any]:
     """Finalize only an approved evidence set, preserving failure现场."""
     directory = Path(directory)
     required = [
@@ -2528,6 +2540,10 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
         "final-check.md", "final-result.json",
     ]
     retained = list(RETAINED_EVIDENCE_NAMES)
+    if require_canonical:
+        canonical = directory.resolve().parents[1] / PIPELINE_DIR_NAME / task_id
+        if directory.resolve() != canonical.resolve():
+            return {"status": "blocked", "missing": ["evidence directory must be .pipeline/<task-id>"], "finalization": None}
     if not _evidence_directory_identity(directory, task_id):
         return {"status": "blocked", "missing": ["evidence directory identity"], "finalization": None}
     marker = directory / "finalization.json"
@@ -2541,6 +2557,10 @@ def finalize_evidence(directory: Path, task_id: str, success: bool) -> dict[str,
         return {"status": "blocked", "missing": ["finalization identity"], "finalization": None}
 
     missing = [name for name in required if not (directory / name).is_file()]
+    if require_canonical and success:
+        gate_errors = gate_check(directory, task_id, None, "post-merge")
+        if gate_errors:
+            return {"status": "blocked", "missing": [f"post-merge gate: {error}" for error in gate_errors], "finalization": None}
     if not success:
         return {"status": "blocked", "missing": missing, "finalization": None}
     if missing:

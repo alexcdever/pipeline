@@ -119,6 +119,16 @@ markdown 证据块与机器结果 JSON 各有自己的规范拼写：markdown �
 
 证据最终化必须先将待清理 raw evidence 移入同目录临时暂存区，完成清理并移除暂存区后，才可原子写入 `finalization.json`。任何清理异常都必须回滚暂存移动、删除临时 marker、返回 `blocked`，并保留 raw evidence 的路径与字节；相同故障重试不得留下 marker，故障解除后重试才可完成且重复成功幂等。
 
+## `.pipeline` 正式 evidence 的提交生命周期
+
+`.pipeline/<task-id>/` 是正式 evidence，不是临时日志目录。提交边界按生命周期分开：
+
+- **pre-merge 提交**：任务分支必须先提交三份角色报告、三份机器结果 JSON（包括 `final-check.md` 与 `final-result.json`）；这六份同名文件构成 pre-merge gate 输入，不能缺失。pre-merge 的 `finalization.json` 可在最终化成功后随该阶段 evidence 提交。
+- **merge**：主代理合并产品实现提交和上述 pre-merge evidence 提交；不把原始命令输出或 progress log 混入提交。
+- **post-merge 提交**：主工作树复验会更新同名的 `final-check.md`、`final-result.json`，并写入/更新 `finalization.json`，三者作为独立的 post-merge evidence 提交。它们覆盖 pre-merge 的同名文件，但不是追加第二套同名文件；post-merge gate 必须能从更新后的 `final-check.md` 证明主工作树中的成功命令。
+
+因此，pre-merge evidence 与 post-merge 复验不是同一个提交。任何阶段都不得用任务单状态或自然语言报告替代正式 evidence。
+
 ## 保留证据集
 
 一个成功完成并已最终化的任务目录，只保留 7 个文件：`executor-report.md`、`review-report.md`、`final-check.md`、`executor-result.json`、`reviewer-result.json`、`final-result.json`、`finalization.json`。其余过程产物（原始命令输出、acceptance 日志、握手 JSON、探针脚本等）在最终化时清理，不留在任务目录里。

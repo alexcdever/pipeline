@@ -11,6 +11,7 @@ import subprocess
 import time
 import uuid
 import hashlib
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -456,8 +457,18 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
         for field in required:
             if field not in value:
                 errors.append(f"{name} missing field: {field}")
-        if value.get("schema") != 1:
-            errors.append(f"{name} schema must be 1")
+        schema = value.get("schema")
+        if schema not in {1, 2}:
+            errors.append(f"{name} schema must be 1 or 2")
+        if schema == 2:
+            for field in ("head", "generated_at"):
+                if not isinstance(value.get(field), str) or not value.get(field).strip():
+                    errors.append(f"{name} {field} must be a non-empty string")
+            if isinstance(value.get("generated_at"), str):
+                try:
+                    datetime.fromisoformat(value["generated_at"].replace("Z", "+00:00"))
+                except ValueError:
+                    errors.append(f"{name} generated_at is not ISO-8601")
         if value.get("task_id") != task_id:
             errors.append(f"{name} task identity mismatch")
         if branch and value.get("branch") != branch:
@@ -533,20 +544,34 @@ def _metric_bool(value: Any, default: bool = False) -> bool:
 
 
 def evidence_readiness(directory: Path, task_id: str) -> dict[str, Any]:
-    """Check whether the evidence set is ready for formal verification."""
+    """Classify evidence preparation before formal verification or merge gates."""
     directory = _canonical_evidence_dir(directory)
-    required = ["executor-report.md", "review-report.md", "final-check.md"]
-    missing = [name for name in required if not (directory / name).is_file()]
-    result = "ready" if not missing else "not_ready"
+    reports = list(REPORT_NAMES)
+    results = list(MACHINE_RESULT_NAMES)
+    missing_reports = [name for name in reports if not (directory / name).is_file()]
+    missing_results = [name for name in results if not (directory / name).is_file()]
+    if missing_reports:
+        status = "not_ready"
+        layer = "reports"
+    elif missing_results:
+        status = "not_ready"
+        layer = "machine_results"
+    else:
+        status = "ready"
+        layer = "complete"
+    missing = missing_reports + missing_results
     return {
         "schema": 1,
         "command": "evidence.readiness",
         "task_id": task_id,
-        "status": result,
+        "status": status,
+        "layer": layer,
         "missing": missing,
+        "missing_reports": missing_reports,
+        "missing_machine_results": missing_results,
         "errors": [],
-        "blockers": [] if not missing else [{"class": "evidence", "reason": "missing evidence artifacts"}],
-        "observed": [{"fact": "required_evidence", "value": required}],
+        "blockers": [] if not missing else [{"class": "evidence", "reason": f"missing {layer} artifacts"}],
+        "observed": [{"fact": "required_reports", "value": reports}, {"fact": "required_machine_results", "value": results}],
         "next_actions": [] if not missing else ["complete_evidence_set"],
         "unverified": [] if not missing else ["formal evidence verification"],
     }
@@ -1231,9 +1256,23 @@ def write_dispatch(root: Path, dispatch: dict[str, Any], output: Path) -> Path:
     return output
 
 
-def verify_structured_result(path: Path, expected_task_id: str, expected_role: str) -> list[str]:
-    """Validate a machine result without interpreting semantic claims."""
+def verify_structured_result(
+    path: Path,
+    expected_task_id: str,
+    expected_role: str,
+    evidence_directory: Path | None = None,
+    *,
+    strict: bool = False,
+    expected_acceptance_ids: set[str] | None = None,
+) -> list[str]:
+    """Validate a machine result without interpreting semantic claims.
+
+    Evidence references are resolved against the result's directory by default;
+    callers may provide an explicit evidence directory for compatibility with
+    result files stored elsewhere.
+    """
     value = _json_file(path)
+    evidence_directory = Path(evidence_directory) if evidence_directory is not None else Path(path).parent
     if value is None:
         return ["result is missing or invalid JSON"]
     errors: list[str] = []
@@ -1246,8 +1285,14 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
         errors.append("task identity mismatch")
     if resolve_result_role(value.get("role")) != resolve_result_role(expected_role):
         errors.append("role mismatch")
-    if normalize_status(value.get("status"), RESULT_STATUSES) is None:
+    result_status = normalize_status(value.get("status"), RESULT_STATUSES)
+    if result_status is None:
         errors.append("invalid status")
+    top_exit_code = value.get("exit_code", 0)
+    if strict and (not isinstance(top_exit_code, int) or isinstance(top_exit_code, bool)):
+        errors.append("exit_code must be an integer")
+    elif strict and result_status == "pass" and top_exit_code != 0:
+        errors.append("PASS result exit_code must equal expected_exit_code 0")
     if not isinstance(value.get("acceptance"), list) or not value.get("acceptance"):
         errors.append("acceptance must be a non-empty array")
     if not isinstance(value.get("unverified"), list):
@@ -1259,10 +1304,32 @@ def verify_structured_result(path: Path, expected_task_id: str, expected_role: s
         for field in ("id", "status", "exit_code", "evidence_refs"):
             if field not in item:
                 errors.append(f"acceptance {index} missing field: {field}")
-        if normalize_status(item.get("status"), ACCEPTANCE_STATUSES) is None:
+        if not isinstance(item.get("id"), str) or not item.get("id", "").strip():
+            errors.append(f"acceptance {index} id must be a non-empty string")
+        acceptance_status = normalize_status(item.get("status"), ACCEPTANCE_STATUSES)
+        if acceptance_status is None:
             errors.append(f"acceptance {index} has invalid status")
-        if not isinstance(item.get("evidence_refs"), list):
-            errors.append(f"acceptance {index} evidence_refs must be an array")
+        elif strict and result_status == "pass" and acceptance_status != "pass":
+            errors.append(f"acceptance {index} must be PASS when result status is PASS")
+        exit_code = item.get("exit_code")
+        if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+            errors.append(f"acceptance {index} exit_code must be an integer")
+        elif strict and result_status == "pass" and exit_code != 0:
+            errors.append(f"acceptance {index} exit_code must equal expected_exit_code 0")
+        references = item.get("evidence_refs")
+        if not isinstance(references, list) or not references:
+            errors.append(f"acceptance {index} evidence_refs must be a non-empty array")
+        else:
+            for reference in references:
+                if not _evidence_file_exists(evidence_directory, reference):
+                    errors.append(f"acceptance {index} evidence_ref is missing or not relative: {reference}")
+        if expected_acceptance_ids is not None and isinstance(item.get("id"), str) and item.get("id") not in expected_acceptance_ids:
+            errors.append(f"acceptance {index} id is not in the current task contract: {item.get('id')}")
+    if strict and expected_acceptance_ids is not None:
+        actual_ids = {item.get("id") for item in value.get("acceptance", []) if isinstance(item, dict)}
+        missing_ids = expected_acceptance_ids - actual_ids
+        for acceptance_id in sorted(missing_ids):
+            errors.append(f"missing acceptance id from current task contract: {acceptance_id}")
     return errors
 
 
@@ -1569,15 +1636,37 @@ def role_scope_check(
     role: str,
     product_patterns: list[str] | None = None,
     authorized: bool = False,
+    task_id: str | None = None,
+    baseline: str | None = None,
 ) -> list[str]:
     """Prevent the main agent from changing product files without authorization."""
     if role != "main-agent" or authorized:
         return []
     patterns = product_patterns or ["src/**", "packages/**", "apps/**", "lib/**", "app/**"]
-    rc, output = git(root, "status", "--porcelain=v1", "--untracked-files=all")
-    if rc:
-        return [output or "not a git repository"]
-    return [path for path in _status_paths(output) if any(_matches(path, pattern, root) for pattern in patterns)]
+    if task_id:
+        contract = _task_sheet_contract(root, task_id)
+        if isinstance(contract, dict):
+            patterns = list(contract.get("allowed_paths") or patterns)
+            forbidden = list(contract.get("forbidden_paths") or [])
+        else:
+            forbidden = []
+    else:
+        forbidden = []
+    if baseline:
+        rc, output = git(root, "diff", "--name-only", baseline, "HEAD", redact_output=False)
+        if rc:
+            return [output or "unable to inspect baseline"]
+        paths = [path for path in output.splitlines() if path.strip()]
+    else:
+        rc, output = git(root, "status", "--porcelain=v1", "--untracked-files=all")
+        if rc:
+            return [output or "not a git repository"]
+        paths = _status_paths(output)
+    return [
+        path for path in paths
+        if any(_matches(path, pattern, root) for pattern in patterns)
+        or any(_matches(path, pattern, root) for pattern in forbidden)
+    ]
 
 
 def import_opencode_session(root: Path, session_file: Path, task_id: str = "opencode-session") -> list[Path]:
@@ -1710,6 +1799,21 @@ def gate_check(
             reports[name] = value
 
     errors.extend(_machine_result_errors(directory, phase))
+    expected_acceptance_ids = {
+        item.get("id") for item in (contract or {}).get("acceptance_tests", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    result_roles = {"executor-result.json": "executor", "reviewer-result.json": "reviewer", "final-result.json": "final"}
+    for result_name, result_role in result_roles.items():
+        result_path = directory / result_name
+        if result_path.is_file() and (phase == "pre-merge" or result_name == "final-result.json"):
+            errors.extend(
+                f"{result_name}: {error}"
+                for error in verify_structured_result(
+                    result_path, task_id, result_role, directory,
+                    strict=True, expected_acceptance_ids=expected_acceptance_ids,
+                )
+            )
 
     # Structural verification and a merge gate are intentionally separate:
     # a report may accurately say BLOCKED, but that must block merging.

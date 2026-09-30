@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from .contract import load_contract
-from .core import POST_MERGE_REPORT_STATUSES, evidence_freshness, evidence_readiness, evidence_verify, normalize_status
+from .core import (
+    POST_MERGE_REPORT_STATUSES,
+    evidence_freshness,
+    evidence_readiness,
+    evidence_verify,
+    normalize_status,
+    verify_structured_result,
+)
 from .layout import LegacyPipelineLayoutError, active_pipeline_dir
 
 _REPORTS = ("executor-report.md", "review-report.md", "final-check.md")
@@ -63,7 +70,29 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
             report_errors.extend(f"{name}: {error}" for error in errors)
         else:
             reports[name] = value
+    result_roles = {
+        "executor-result.json": "executor",
+        "reviewer-result.json": "reviewer",
+        "final-result.json": "final",
+    }
     results = {name: value for name in _RESULTS if (value := _json(evidence / name)) is not None}
+    expected_acceptance_ids = {
+        item.get("id") for item in (contract or {}).get("acceptance_tests", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    result_errors: list[str] = []
+    for name in _RESULTS:
+        path = evidence / name
+        if not path.is_file():
+            result_errors.append(f"missing {name}")
+            continue
+        result_errors.extend(
+            f"{name}: {error}"
+            for error in verify_structured_result(
+                path, str(task_id), result_roles[name], evidence,
+                strict=True, expected_acceptance_ids=expected_acceptance_ids,
+            )
+        )
     identity_values = {
         "task_id": {value.get("task_id") for value in reports.values()},
         "branch": {value.get("branch") for value in reports.values()},
@@ -95,11 +124,11 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     except (LegacyPipelineLayoutError, OSError) as error:
         freshness = {"status": "blocked", "errors": [f"布局冲突：{error}"]}
     statuses = [value.get("status") for value in reports.values()]
-    direct_pass = (not contract_errors and not report_errors and not identity_errors and not verify_errors
+    direct_pass = (not contract_errors and not report_errors and not result_errors and not identity_errors and not verify_errors
                    and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
                    and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
-    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
+    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
     if layout_error:
         status = "BLOCKED"
     output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,
@@ -107,29 +136,12 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
               "freshness": freshness["status"], "readiness": readiness["status"],
               "verify": "PASS" if not verify_errors else "BLOCKED",
               "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
-              "errors": contract_errors + report_errors + identity_errors + verify_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
+              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
               "unverified": [] if direct_pass else ["task completion"], "updated": False}
-    if update and not contract_errors:
-        text = task_sheet.read_text(encoding="utf-8")
-        marker = "### 最终结果"
-        reconcile_marker = "### 证据核对（任务现场核对）"
-        legacy_reconcile_marker = "### 机械对账（直接证据）"
-        block = (reconcile_marker + "\n\n" f"- task-id: `{task_id}`\n- result: `{status}`\n"
-                 f"- freshness: `{freshness['status']}`\n- readiness: `{readiness['status']}`\n"
-                 f"- verify: `{output['verify']}`\n- evidence: `{evidence.relative_to(root).as_posix()}`\n")
-        existing_marker = next((item for item in (reconcile_marker, legacy_reconcile_marker) if item in text), None)
-        if existing_marker:
-            start = text.index(existing_marker)
-            end = text.find("\n### ", start + len(existing_marker))
-            end = len(text) if end < 0 else end
-            text = text[:start] + block.rstrip() + text[end:]
-        elif marker in text:
-            insert_at = text.index(marker) + len(marker)
-            text = text[:insert_at] + "\n\n" + block + text[insert_at:]
-        else:
-            text += "\n" + block
-        task_sheet.write_text(text, encoding="utf-8")
-        output["updated"] = True
+    if update:
+        output["errors"].append("--update is deprecated and cannot modify task sheets")
+        output["status"] = "BLOCKED"
+        output["updated"] = False
     return output
 
 
@@ -137,4 +149,5 @@ def reconcile_tasks(root: Path, task_id: str | None = None, *, update: bool = Fa
     root = Path(root).resolve()
     sheets = sorted((root / "docs" / "tasks").glob("*.md"))
     selected = [sheet for sheet in sheets if task_id is None or sheet.stem == task_id]
-    return {"schema": 1, "command": "evidence.reconcile", "status": "pass", "tasks": [reconcile_task(root, sheet, update=update) for sheet in selected], "updated": update}
+    tasks = [reconcile_task(root, sheet, update=update) for sheet in selected]
+    return {"schema": 1, "command": "evidence.reconcile", "status": "pass" if all(item["status"] == "PASS" for item in tasks) else "blocked", "tasks": tasks, "updated": False, "exit_code": 0 if all(item["status"] == "PASS" for item in tasks) else 3}

@@ -50,6 +50,8 @@
 
 ## 主代理最终检查
 
+正式 evidence 的提交边界必须清晰：pre-merge 分别提交实现与 `.pipeline/<task-id>/` 的三份报告、三份机器结果（包括 pre-merge 版 `final-check.md` 与 `final-result.json`，满足 gate）；merge 后在主工作树更新这些同名文件并写入/更新 `finalization.json`，作为独立的 post-merge evidence 提交。不能用任务单状态或自然语言报告替代这些文件。
+
 不能只接收 "review PASS" 就合并，必须：
 
 - 重读任务身份、Git 状态、worktree 列表和 branch ancestry；

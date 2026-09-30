@@ -110,6 +110,7 @@ class CLITests(unittest.TestCase):
     def test_result_verify_cli_accepts_final_role(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
+            (root / 'test.log').write_text('ok', encoding='utf-8')
             path = root / 'final-result.json'
             path.write_text(json.dumps({
                 'schema': 1,
@@ -125,6 +126,7 @@ class CLITests(unittest.TestCase):
     def test_result_verify_cli_accepts_reviewer_role(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
+            (root / 'test.log').write_text('ok', encoding='utf-8')
             path = root / 'reviewer-result.json'
             path.write_text(json.dumps({
                 'schema': 1,
@@ -194,6 +196,11 @@ class CLITests(unittest.TestCase):
             self.assertEqual(value['task_id'], None)
             self.assertEqual(value['run_id'], 'cli-run')
             self.assertTrue((root / 'docs' / 'tasks' / 'cli-task.md').is_file())
+            assumptions = root / 'assumptions.json'
+            unknowns = root / 'unknowns.json'
+            assumptions.write_text(json.dumps({'assumptions': [{'id': 'assumption-cli'}]}), encoding='utf-8')
+            unknowns.write_text(json.dumps({'unknowns': [{'id': 'unknown-cli'}]}), encoding='utf-8')
+            self.assertEqual(run_cli(command + ['--assumptions', str(assumptions), '--unknowns', str(unknowns)]).returncode, 3)
             repeat = run_cli(command)
             self.assertEqual(repeat.returncode, 3, (repeat.stdout, repeat.stderr))
             repeated = json.loads(repeat.stdout)

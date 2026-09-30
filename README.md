@@ -21,7 +21,7 @@
 - 任务级状态只由 lifecycle API/CLI 管理；状态写入（`transition`、`event`）只允许主代理角色接口（`role=main-agent`），其他角色只能读取或报告 findings
 - 任务单只承载冻结契约与人类可读的契约说明；过程记录和阶段报告写入 `.pipeline/<task-id>/`，不另行维护项目级状态文档
 - 跨会话优先使用 `lifecycle resume/status/list/inspect` 恢复和读取任务状态，不从通知、自然语言报告或项目级状态文件推断
-- 合并前需要执行、独立审查和主代理终检；合并后在主工作树复验
+- 合并前需要执行、独立审查和主代理终检；实现提交与 `.pipeline/<task-id>/` 正式 evidence 提交分开；合并后在主工作树复验并单独提交 post-merge evidence
 - 审批策略：`.pipeline/config.json` 的 `approval_mode`（`automatic` | `manual`）是项目级默认，解析顺序为显式参数 → 运行记录 → 项目配置 → 默认 `automatic`；该文件需手工创建，没有命令会写入它
 
 ## 任务类型与命名
@@ -97,13 +97,13 @@ python -m pipeline_tools --format json freshness . .pipeline/<task-id> --result 
 python -m pipeline_tools --format json evidence readiness .pipeline/<task-id> --task-id <task-id>
 ```
 
-自动事件和 `metrics record` 事件都逐文件原子写入 `.pipeline/metrics/`。只有 `observed` 和 `derived` 进入核心聚合；`reported` 只留作追溯。新版本工具第一次访问已有 `.workflow/` 项目时会自动把整个目录原样迁移到 `.pipeline/`，核对文件哈希并更新路径引用；若 `.pipeline/` 已存在则停止并报告冲突，不会覆盖或双写。详见 `references/metrics-contract.md`。
+自动事件和 `metrics record` 事件都逐文件原子写入 `.pipeline/metrics/`。只有 `observed` 和 `derived` 进入核心聚合；`reported` 只留作追溯。新版本工具第一次访问已有 `.workflow/` 项目时会自动把整个目录原样迁移到 `.pipeline/`，核对文件哈希并将后续工具写入路径统一切换到 `.pipeline/`；不会改写 evidence 文件内部的历史文本引用。若 `.pipeline/` 已存在则停止并报告冲突，不会覆盖或双写。详见 `references/metrics-contract.md`。
 
 `metrics import-opencode-session` 只从 OpenCode Desktop 的结构化导出中提取可验证的工具错误、子代理错误和用户流程纠正信号；不会把自然语言 PASS 当作验收事实。`runtime preflight` 应在派发 executor/reviewer 前执行，`runtime role-scope` 用于阻止未授权的主代理产品代码修改。
 
 `runtime handshake` 是可选的能力检查，写入 `<workflow>/capability-handshake.json`，记录仓库可读、workflow 可写、产品代码写权限与 runtime 状态；它不是被移除的那个强制握手机制，新任务不依赖该命令也能完成闭环。版本差异见 `references/compat-and-migration.md`。
 
-角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；规划 stage、规划中间审计和原始日志优先写入系统临时目录 `pipeline-tools/`，项目侧仅保留 `.pipeline/recovery-index.json` 用于恢复索引，不把临时产物当正式 evidence。正式任务 evidence 仍在 `.pipeline/<task-id>/`；`.pipeline/metrics/` 的指标事件不受这条规则约束，是否纳入 Git 由项目开发者决定（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
+角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；规划 stage、规划中间审计和原始日志优先写入系统临时目录 `pipeline-tools/`，项目侧仅保留 `.pipeline/recovery-index.json` 用于恢复索引，不把临时产物当正式 evidence。正式任务 evidence 仍在 `.pipeline/<task-id>/`；pre-merge 必须先提交包含 `final-check.md`/`final-result.json` 在内的完整报告和机器结果集合以满足 gate，merge 后主工作树更新这些同名文件并提交 `final-check.md`、`final-result.json`、`finalization.json` 作为独立 post-merge evidence；`.pipeline/metrics/` 的指标事件不受这条规则约束，是否纳入 Git 由项目开发者决定（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
 
 结构化命令使用统一响应外壳：`schema`、`command`、`status`、`exit_code`、`observed`、`errors`、`blockers`、`artifacts`、`next_actions` 和 `unverified`。JSON 文件是流程编排输入，终端摘要只用于人类查看。
 

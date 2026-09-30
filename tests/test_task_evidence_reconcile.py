@@ -51,10 +51,11 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
         for filename, role in (("executor-report.md", "executor"), ("review-report.md", "reviewer"), ("final-check.md", "main-final")):
             branch = conflicting_branch if filename == "review-report.md" else "demo-branch"
             (directory / filename).write_text(self._report(role, branch=branch), encoding="utf-8")
-        (directory / "final-result.json").write_text(json.dumps({
-            "schema": 1, "task_id": task_id, "role": "main-final", "status": "pass",
-            "identity": {"head": "not-a-git-head"}, "acceptance": [], "unverified": [],
-        }), encoding="utf-8")
+        for filename, role in (("executor-result.json", "executor"), ("reviewer-result.json", "reviewer"), ("final-result.json", "main-final")):
+            (directory / filename).write_text(json.dumps({
+                "schema": 1, "task_id": task_id, "role": role, "status": "pass",
+                "identity": {"head": "not-a-git-head"}, "acceptance": [{"id": "acceptance-test-reconcile", "status": "pass", "exit_code": 0, "evidence_refs": ["test.log"]}], "unverified": [],
+            }), encoding="utf-8")
         return directory
 
     def test_missing_evidence_is_unverified_or_blocked_without_pass(self):
@@ -85,32 +86,40 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             reconcile_task(root, sheet)
             self.assertEqual(sheet.read_bytes(), before)
 
-    def test_update_changes_only_task_status_section(self):
+    def test_update_is_always_blocked_and_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             sheet = self._sheet(root)
-            before = sheet.read_text(encoding="utf-8")
+            before = sheet.read_bytes()
             value = reconcile_task(root, sheet, update=True)
-            after = sheet.read_text(encoding="utf-8")
-            self.assertTrue(value["updated"])
-            self.assertIn("### 证据核对（任务现场核对）", after)
-            self.assertEqual(after.split("### 最终结果", 1)[0], before.split("### 最终结果", 1)[0])
-            self.assertIn("pipeline-contract", after)
+            self.assertEqual(value["status"], "BLOCKED")
+            self.assertFalse(value["updated"])
+            self.assertTrue(any("deprecated" in error for error in value["errors"]))
+            self.assertEqual(sheet.read_bytes(), before)
 
-    def test_update_replaces_legacy_reconcile_heading_without_duplicate(self):
+    def test_update_never_modifies_task_sheet_even_when_uncommitted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             sheet = self._sheet(root)
-            text = sheet.read_text(encoding="utf-8").replace(
-                "### 最终结果",
-                "### 机械对账（直接证据）\n\n- old: `value`\n\n### 最终结果",
-            )
-            sheet.write_text(text, encoding="utf-8")
-            reconcile_task(root, sheet, update=True)
-            reconcile_task(root, sheet, update=True)
-            after = sheet.read_text(encoding="utf-8")
-            self.assertEqual(after.count("### 证据核对（任务现场核对）"), 1)
-            self.assertEqual(after.count("### 机械对账（直接证据）"), 0)
+            before = sheet.read_bytes()
+            value = reconcile_task(root, sheet, update=True)
+            self.assertEqual(value["status"], "BLOCKED")
+            self.assertFalse(value["updated"])
+            self.assertTrue(any("deprecated" in error for error in value["errors"]))
+            self.assertEqual(sheet.read_bytes(), before)
+
+    def test_invalid_machine_results_block_reconcile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            evidence = self._evidence(root)
+            (evidence / "reviewer-result.json").write_text(json.dumps({
+                "schema": 1, "task_id": "demo", "role": "reviewer", "status": "pass",
+                "acceptance": [], "unverified": [],
+            }), encoding="utf-8")
+            value = reconcile_task(root, sheet)
+            self.assertNotEqual(value["status"], "PASS")
+            self.assertTrue(any("reviewer-result.json" in error for error in value["errors"]))
 
     def test_reconcile_migrates_legacy_evidence_layout(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -138,9 +147,10 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             root = Path(directory)
             self._sheet(root)
             result = run_cli(["--format", "json", "evidence", "reconcile", str(root), "--task-id", "demo"], root)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 3, result.stderr)
             value = json.loads(result.stdout)
             self.assertEqual(value["command"], "evidence.reconcile")
+            self.assertEqual(value["status"], "blocked")
             self.assertIn(value["tasks"][0]["status"], {"UNVERIFIED", "BLOCKED"})
             self.assertFalse((root / ".pipeline" / "metrics").exists())
 

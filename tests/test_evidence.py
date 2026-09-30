@@ -627,6 +627,20 @@ class EvidenceTests(unittest.TestCase):
             self.assertFalse(any('status is invalid' in error for error in errors), errors)
             self.assertFalse(any('not mergeable' in error for error in errors), errors)
 
+    def test_schema_two_report_requires_head_and_generated_at(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = self._status_report_directory(root, {'executor': 'PASS', 'reviewer': 'PASS', 'main-final': 'PASS'})
+            path = directory / 'executor-report.md'
+            value, _ = __import__('pipeline_tools.core', fromlist=['_read_machine_evidence'])._read_machine_evidence(path)
+            value['schema'] = 2
+            value.pop('head', None)
+            value.pop('generated_at', None)
+            path.write_text('```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8')
+            errors = evidence_verify(directory, 'demo', 'feature/demo')
+            self.assertTrue(any('head must be' in error for error in errors))
+            self.assertTrue(any('generated_at must be' in error for error in errors))
+
     def test_result_verify_accepts_normalized_result_statuses(self):
         with tempfile.TemporaryDirectory() as d:
             directory = Path(d)
@@ -671,6 +685,29 @@ class EvidenceTests(unittest.TestCase):
             path = self._result(directory, 'NOT_A_STATUS', 'pass')
             errors = verify_structured_result(path, 'demo', 'executor')
             self.assertIn('invalid status', errors)
+
+    def test_result_acceptance_requires_identity_exit_code_and_existing_refs(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            path = directory / 'result.json'
+            value = self._result(directory, 'pass', 'pass')
+            data = json.loads(value.read_text(encoding='utf-8'))
+            data['acceptance'][0].update({'id': '', 'exit_code': True, 'evidence_refs': ['../escape']})
+            value.write_text(json.dumps(data), encoding='utf-8')
+            errors = verify_structured_result(value, 'demo', 'executor', directory)
+            self.assertTrue(any('id must be a non-empty string' in error for error in errors))
+            self.assertTrue(any('exit_code must be an integer' in error for error in errors))
+            self.assertTrue(any('evidence_ref is missing' in error for error in errors))
+
+    def test_result_acceptance_rejects_empty_evidence_refs(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d)
+            path = self._result(directory, 'pass', 'pass')
+            data = json.loads(path.read_text(encoding='utf-8'))
+            data['acceptance'][0]['evidence_refs'] = []
+            path.write_text(json.dumps(data), encoding='utf-8')
+            errors = verify_structured_result(path, 'demo', 'executor', directory)
+            self.assertTrue(any('evidence_refs must be a non-empty array' in error for error in errors))
 
 
 class MachineResultGateTests(unittest.TestCase):

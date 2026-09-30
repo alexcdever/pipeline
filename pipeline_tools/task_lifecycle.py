@@ -8,7 +8,14 @@ import getpass
 import os
 import tempfile
 import re
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +83,15 @@ def _state_path(root: Path, task_id: str) -> Path:
 
 def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
     path = _state_path(root, task_id)
+    events_path = path.parent / "events.jsonl"
+    if events_path.is_file():
+        try:
+            for sequence, line in enumerate(events_path.read_text(encoding="utf-8").splitlines(), start=1):
+                value = json.loads(line)
+                if not isinstance(value, dict) or value.get("sequence") != sequence:
+                    return _result("blocked", task_id, errors=[f"events.jsonl sequence is corrupted at line {sequence}"])
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return _result("blocked", task_id, errors=["events.jsonl is corrupted"])
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -147,25 +163,96 @@ def _result(status: str, task_id: str, **extra: Any) -> dict[str, Any]:
     return {"schema": 1, "command": "lifecycle", "status": status, "task_id": task_id, **extra}
 
 
+def _lock_file(directory: Path):
+    lock_path = directory / ".lifecycle.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    if os.name == "nt":
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    return handle
+
+
+def _unlock_file(handle) -> None:
+    if os.name == "nt":
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    handle.close()
+
+
 def _atomic_write_state(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
+    with _EVENT_LOCKS_GUARD:
+        lock = _EVENT_LOCKS.setdefault((path.parent / ".lifecycle.lock").resolve(), threading.Lock())
+    with lock:
+        lock_handle = _lock_file(path.parent)
+        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
         try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+            _unlock_file(lock_handle)
+
+
+_EVENT_LOCKS: dict[Path, threading.Lock] = {}
+_EVENT_LOCKS_GUARD = threading.Lock()
 
 
 def _write_event(directory: Path, event: dict[str, Any]) -> None:
-    with (directory / "events.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+    path = directory / "events.jsonl"
+    with _EVENT_LOCKS_GUARD:
+        lock = _EVENT_LOCKS.setdefault((directory / ".lifecycle.lock").resolve(), threading.Lock())
+    with lock:
+        directory.mkdir(parents=True, exist_ok=True)
+        lock_path = directory / ".lifecycle.lock"
+        with lock_path.open("a+b") as lock_handle:
+            if os.name == "nt":
+                lock_handle.seek(0, os.SEEK_END)
+                if lock_handle.tell() == 0:
+                    lock_handle.write(b"0")
+                    lock_handle.flush()
+                lock_handle.seek(0)
+                msvcrt.locking(lock_handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+                events = []
+                for line_number, line in enumerate(lines, start=1):
+                    try:
+                        value = json.loads(line)
+                    except json.JSONDecodeError as error:
+                        raise ValueError(f"events.jsonl is corrupted at line {line_number}") from error
+                    if not isinstance(value, dict) or value.get("sequence") != line_number:
+                        raise ValueError(f"events.jsonl sequence is corrupted at line {line_number}")
+                    events.append(value)
+                sequence = len(events) + 1
+                event = {"sequence": sequence, **event}
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            finally:
+                if os.name == "nt":
+                    lock_handle.seek(0)
+                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
 
 def init_task(root: Path, task_id: str, identity: str | None = None, *, create: bool = True) -> dict[str, Any]:
@@ -185,7 +272,10 @@ def init_task(root: Path, task_id: str, identity: str | None = None, *, create: 
     directory.mkdir(parents=True, exist_ok=True)
     state = {"schema": 1, "task_id": task_id, "state": "pending", "identity": bound, "created_at": _now(), "updated_at": _now(), "evidence": _evidence(root, task_id)}
     _atomic_write_state(directory / "lifecycle.json", state)
-    _write_event(directory, {"type": "created", "at": _now(), "identity": bound})
+    try:
+        _write_event(directory, {"type": "created", "at": _now(), "identity": bound})
+    except ValueError as error:
+        return _result("blocked", task_id, state="pending", errors=[str(error)])
     return _summary(state, root, task_id)
 
 
@@ -250,7 +340,10 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
     directory = _directory(root, task_id)
     state.update({"state": target, "updated_at": _now(), "evidence": evidence_value, "status": "pass"})
     _atomic_write_state(directory / "lifecycle.json", state)
-    _write_event(directory, {"type": "transition", "from": current, "to": target, "at": _now(), "identity": state["identity"]})
+    try:
+        _write_event(directory, {"type": "transition", "from": current, "to": target, "at": _now(), "identity": state["identity"]})
+    except ValueError as error:
+        return _result("blocked", task_id, state=target, errors=[str(error)])
     return state
 
 
@@ -264,7 +357,10 @@ def append_event(root: Path, task_id: str, event_type: str, data: dict[str, Any]
     if state.get("status") == "blocked":
         return state
     event = {"type": event_type, "at": _now(), "identity": state["identity"], "data": data or {}}
-    _write_event(_directory(root, task_id), event)
+    try:
+        _write_event(_directory(root, task_id), event)
+    except ValueError as error:
+        return _result("blocked", task_id, errors=[str(error)])
     return _result("pass", task_id, event=event)
 
 

@@ -36,6 +36,16 @@ class TaskLifecycleTests(unittest.TestCase):
             value = {"schema": 1, "task_id": "demo", "role": role if role != "final" else "main-final", "status": "pass", "acceptance": [{"id": "acceptance-test-1", "status": "pass", "exit_code": 0, "evidence_refs": ["run.log"]}], "unverified": []}
             (directory / f"{role}-result.json").write_text(json.dumps(value), encoding="utf-8")
 
+    def test_events_include_monotonic_sequence_and_are_durable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            append_event(root, "demo", "one", role="main-agent")
+            append_event(root, "demo", "two", role="main-agent")
+            events = [json.loads(line) for line in (root / ".pipeline" / "demo" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([event["sequence"] for event in events], list(range(1, len(events) + 1)))
+            self.assertEqual([event["type"] for event in events][-2:], ["one", "two"])
+
     def test_identity_transition_and_evidence_gate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

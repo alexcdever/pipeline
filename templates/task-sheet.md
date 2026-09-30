@@ -68,7 +68,7 @@ Schema 4 rules worth restating here:
 - 任务类型：`<vertical-feature / prerequisite / repair / derived>`
 - 用户结果或系统能力：<one verifiable outcome>
 - 执行 worktree 约定：`<仓库根目录>/.worktrees/<task-id>`，由主代理用 `git worktree add` 创建；不预先 `mkdir`，不创建仓库同级或第二个 worktree
-- 状态：由 lifecycle API/CLI 管理；此处不手工改写
+- 状态与过程记录：由 lifecycle API/CLI 和 `.pipeline/<task-id>/` 正式 evidence 管理；此处不手工改写
 
 ## 依赖与范围
 
