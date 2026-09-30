@@ -464,6 +464,24 @@ class CLITests(unittest.TestCase):
             p = run_cli(['scope', 'check', str(repo), '--allowed', 'src/**', '--allowed', 'docs/**'])
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
 
+    def test_scope_check_json_uses_envelope_for_pass_and_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo, _ = make_repo(d)
+            (repo / 'src').mkdir()
+            (repo / 'src' / 'a.py').write_text('x', encoding='utf-8')
+            passed = run_cli(['--format', 'json', 'scope', 'check', str(repo), '--allowed', 'src/**'])
+            self.assertEqual(passed.returncode, 0, (passed.stdout, passed.stderr))
+            self.assertEqual(json.loads(passed.stdout)['command'], 'scope.check')
+            self.assertEqual(json.loads(passed.stdout)['status'], 'pass')
+            (repo / 'docs').mkdir()
+            (repo / 'docs' / 'b.md').write_text('x', encoding='utf-8')
+            drifted = run_cli(['--format', 'json', 'scope', 'check', str(repo), '--allowed', 'src/**'])
+            self.assertEqual(drifted.returncode, 4, (drifted.stdout, drifted.stderr))
+            value = json.loads(drifted.stdout)
+            self.assertEqual(value['command'], 'scope.check')
+            self.assertEqual(value['status'], 'drift')
+            self.assertTrue(value['errors'])
+
     def test_scope_history_cli_since_passes_baseline_and_reports_drift(self):
         with tempfile.TemporaryDirectory() as d:
             repo, _ = make_repo(d)
@@ -854,6 +872,22 @@ class CLITests(unittest.TestCase):
             self.assertEqual(p.returncode, 4, (p.stdout, p.stderr))
             p = run_cli(['runtime', 'role-scope', str(root), '--role', 'main-agent', '--product-pattern', 'src/**', '--authorized'])
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
+
+    def test_runtime_role_scope_json_uses_envelope_for_pass_and_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, _ = make_repo(d)
+            passed = run_cli(['--format', 'json', 'runtime', 'role-scope', str(root), '--role', 'main-agent', '--product-pattern', 'src/**', '--authorized'])
+            self.assertEqual(passed.returncode, 0, (passed.stdout, passed.stderr))
+            self.assertEqual(json.loads(passed.stdout)['command'], 'runtime.role-scope')
+            self.assertEqual(json.loads(passed.stdout)['status'], 'pass')
+            (root / 'src').mkdir()
+            (root / 'src' / 'app.py').write_text('x', encoding='utf-8')
+            drifted = run_cli(['--format', 'json', 'runtime', 'role-scope', str(root), '--role', 'main-agent', '--product-pattern', 'src/**'])
+            self.assertEqual(drifted.returncode, 4, (drifted.stdout, drifted.stderr))
+            value = json.loads(drifted.stdout)
+            self.assertEqual(value['command'], 'runtime.role-scope')
+            self.assertEqual(value['status'], 'drift')
+            self.assertTrue(value['errors'])
 
     def test_runtime_preflight_uses_windows_pnpm_command_name(self):
         import platform

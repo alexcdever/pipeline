@@ -83,7 +83,7 @@ class _CLIArgumentParser(argparse.ArgumentParser):
     json_errors = False
 
     def error(self, message: str) -> None:
-        if self.json_errors:
+        if _CLIArgumentParser.json_errors:
             raise _ArgumentParseError(self, message)
         super().error(message)
 
@@ -175,7 +175,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = _CLIArgumentParser(prog="pipeline-tools")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument("--output", type=Path)
-    groups = parser.add_subparsers(dest="group", required=True)
+    groups = parser.add_subparsers(dest="group", required=True, parser_class=_CLIArgumentParser)
 
     planning = groups.add_parser("planning")
     planning_sub = planning.add_subparsers(dest="action", required=True)
@@ -900,7 +900,7 @@ def _record_automatic_metrics(argv: list[str], exit_code: int, duration_s: float
         return []
     try:
         parsed = _build_parser().parse_args(argv)
-    except SystemExit:
+    except (_ArgumentParseError, SystemExit):
         if exit_code == 0 and any(token in {"-h", "--help"} for token in argv):
             parsed = argparse.Namespace(group="help", action=None)
         else:
@@ -991,6 +991,7 @@ def _main(argv: list[str] | None = None) -> int:
     _CLIArgumentParser.json_errors = parser.json_errors
     try:
         args = parser.parse_args(actual_argv)
+        _CLIArgumentParser.json_errors = False
         if args.group == "planning":
             if args.action == "preflight":
                 value = planning_preflight(args.root, apply=args.apply); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
@@ -1109,11 +1110,11 @@ def _main(argv: list[str] | None = None) -> int:
             allowed = _flatten(args.allowed)
             forbidden = _flatten(args.forbidden)
             bad = scope_check(args.root, allowed, forbidden)
-            if bad:
-                print("FAIL: " + ", ".join(bad))
-                return DRIFT
-            print("PASS")
-            return PASS
+            if args.format == "json":
+                _emit(_envelope("scope.check", "pass" if not bad else "drift", errors=bad), args)
+            else:
+                _print_errors(bad)
+            return PASS if not bad else DRIFT
         if args.group == "command":
             try:
                 result = run_command(args.command, args.cwd, args.log, args.timeout)
@@ -1247,11 +1248,13 @@ def _main(argv: list[str] | None = None) -> int:
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True))
                 return PASS if result["status"] == "pass" else BLOCKED
             bad = role_scope_check(args.root, args.role, args.product_pattern, args.authorized, args.task_id, args.baseline)
-            if bad:
+            if args.format == "json":
+                _emit(_envelope("runtime.role-scope", "pass" if not bad else "drift", task_id=args.task_id, errors=bad), args)
+            elif bad:
                 print("FAIL: " + ", ".join(bad))
-                return DRIFT
-            print("PASS")
-            return PASS
+            else:
+                print("PASS")
+            return PASS if not bad else DRIFT
         if args.group == "lifecycle" and args.action == "status":
             result = legacy_lifecycle_status(args.root, args.task_id, args.evidence) if args.evidence else task_lifecycle_status(args.root, args.task_id)
             status_code = _status_exit_code(result)
