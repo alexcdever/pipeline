@@ -1224,16 +1224,24 @@ def _main(argv: list[str] | None = None) -> int:
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True))
             return status_code
         if args.group == "lifecycle" and args.action != "status":
-            if args.action == "list":
-                result = task_lifecycle_list(args.root)
-            elif args.action == "resume":
-                result = task_lifecycle_resume(args.root, args.task_id)
-            elif args.action == "inspect":
-                result = task_lifecycle_inspect(args.root, args.task_id)
-            elif args.action == "transition":
-                result = task_lifecycle_transition(args.root, args.task_id, args.target, evidence=args.evidence, role=args.role)
-            else:
-                result = task_lifecycle_event(args.root, args.task_id, args.event_type, json.loads(args.data), role=args.role)
+            try:
+                if args.action == "list":
+                    result = task_lifecycle_list(args.root)
+                elif args.action == "resume":
+                    result = task_lifecycle_resume(args.root, args.task_id)
+                elif args.action == "inspect":
+                    result = task_lifecycle_inspect(args.root, args.task_id)
+                elif args.action == "transition":
+                    result = task_lifecycle_transition(args.root, args.task_id, args.target, evidence=args.evidence, role=args.role)
+                else:
+                    result = task_lifecycle_event(args.root, args.task_id, args.event_type, json.loads(args.data), role=args.role)
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+                value = _envelope(f"lifecycle.{args.action}", "config", task_id=getattr(args, "task_id", None), errors=[str(error)])
+                if args.format == "json":
+                    _emit(value, args)
+                else:
+                    print(f"FAIL: {type(error).__name__}: {error}", file=sys.stderr)
+                return CONFIG
             if args.format == "json":
                 _emit(result, args)
             else:
@@ -1287,8 +1295,14 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print(f"{value['status'].upper()} evidence.freshness")
             return PASS if value["status"] == "pass" else BLOCKED
-    except (OSError, ValueError) as exc:
-        print(f"FAIL: {type(exc).__name__}", file=sys.stderr)
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        if "args" in locals() and getattr(args, "format", "text") == "json":
+            group = getattr(args, "group", "pipeline")
+            action = getattr(args, "action", None)
+            command = f"{group}.{action}" if action else group
+            _emit(_envelope(command, "config", task_id=getattr(args, "task_id", None), errors=[str(exc)]), args)
+        else:
+            print(f"FAIL: {type(exc).__name__}: {exc}", file=sys.stderr)
         return CONFIG
     return CONFIG
 

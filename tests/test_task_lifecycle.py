@@ -217,6 +217,30 @@ class TaskLifecycleTests(unittest.TestCase):
             self.assertEqual(list_tasks(root)["tasks"][0]["task_id"], "demo")
             self.assertEqual(transition_task(root, "demo", "merged", role="main-agent")["status"], "blocked")
 
+    def test_existing_lifecycle_requires_nonempty_replayable_events(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            state = init_task(root, "demo")
+            events = root / ".pipeline" / "demo" / "events.jsonl"
+            events.write_text("", encoding="utf-8")
+            self.assertEqual(inspect_task(root, "demo")["status"], "blocked")
+            events.write_text(json.dumps({"sequence": 1, "type": "note"}) + "\n", encoding="utf-8")
+            self.assertEqual(inspect_task(root, "demo")["status"], "blocked")
+            events.write_text("{\"sequence\": 1, \"type\": \"created\", \"identity\": " + json.dumps(state["identity"]) + "}\n", encoding="utf-8")
+            self.assertEqual(inspect_task(root, "demo")["status"], "pass")
+
+    def test_malformed_utf8_lifecycle_is_structured_blocked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            evidence = root / ".pipeline" / "demo"
+            evidence.mkdir(parents=True)
+            (evidence / "lifecycle.json").write_bytes(b"\\xff")
+            result = inspect_task(root, "demo")
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("valid UTF-8" in error for error in result["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

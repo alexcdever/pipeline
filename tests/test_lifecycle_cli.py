@@ -35,6 +35,16 @@ class LifecycleCLITests(LifecycleCLITests):
             self.assertEqual(denied.returncode, 3)
             self.assertEqual(json.loads(denied.stdout)["status"], "blocked")
 
+    def test_json_cli_configuration_errors_are_enveloped(self):
+        invalid_id = subprocess.run([sys.executable, "-m", "pipeline_tools", "--format", "json", "lifecycle", "inspect", ".", "--task-id", "bad/id"], capture_output=True, text=True)
+        self.assertEqual(invalid_id.returncode, 2)
+        self.assertEqual(json.loads(invalid_id.stdout)["status"], "config")
+        invalid_data = subprocess.run([sys.executable, "-m", "pipeline_tools", "--format", "json", "lifecycle", "event", ".", "--task-id", "demo", "note", "--role", "main-agent", "--data", "not-json"], capture_output=True, text=True)
+        self.assertEqual(invalid_data.returncode, 2)
+        envelope = json.loads(invalid_data.stdout)
+        self.assertEqual(envelope["status"], "config")
+        self.assertIn("errors", envelope)
+
 
 if __name__ == "__main__":
     unittest.main()

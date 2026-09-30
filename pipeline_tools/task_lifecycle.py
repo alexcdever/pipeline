@@ -120,16 +120,26 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
         return None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return _result("blocked", task_id, errors=["lifecycle.json is corrupted"])
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return _result("blocked", task_id, errors=["lifecycle.json is corrupted", "lifecycle.json must be valid UTF-8 JSON"])
     if not isinstance(value, dict):
         return _result("blocked", task_id, errors=["lifecycle.json is corrupted"])
-    recorded = (value.get("identity") or {}).get("task_sheet_sha256")
+    if not events_path.is_file():
+        return _result("blocked", task_id, errors=["events.jsonl is missing"])
+    identity = value.get("identity")
+    if value.get("task_id") != task_id or value.get("state") not in STATES or not isinstance(identity, dict):
+        return _result("blocked", task_id, errors=["lifecycle state or identity is invalid"])
+    if any(not isinstance(identity.get(field), str) or not identity.get(field) for field in ("task_id", "root", "task_sheet", "task_sheet_sha256", "user")):
+        return _result("blocked", task_id, state=value.get("state"), errors=["lifecycle identity is invalid"])
+    if identity.get("task_id") != task_id:
+        return _result("blocked", task_id, state=value.get("state"), errors=["lifecycle identity task id mismatch"])
+    recorded = identity.get("task_sheet_sha256")
     observed = _sha256(_task_sheet(root, task_id)) or ""
     if recorded != observed:
         return _result("blocked", task_id, state=value.get("state"), errors=["task sheet hash drift"], observed_task_sheet_sha256=observed, recorded_task_sheet_sha256=recorded)
+    if not events:
+        return _result("blocked", task_id, state=value.get("state"), errors=["events.jsonl must be non-empty"])
     if events:
-        identity = value.get("identity")
         if events[0].get("type") != "created":
             return _result("blocked", task_id, state=value.get("state"), errors=["events.jsonl must begin with created"])
         if events[0].get("identity") != identity:
