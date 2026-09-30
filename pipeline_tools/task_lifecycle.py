@@ -232,86 +232,102 @@ def _unlock_file(handle) -> None:
     handle.close()
 
 
-def _atomic_write_state(path: Path, value: dict[str, Any]) -> None:
+def _atomic_write_state_unlocked(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _EVENT_LOCKS_GUARD:
-        lock = _EVENT_LOCKS.setdefault((path.parent / ".lifecycle.lock").resolve(), threading.Lock())
-    with lock:
-        lock_handle = _lock_file(path.parent)
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, path)
-        finally:
-            try:
-                os.unlink(temporary)
-            except FileNotFoundError:
-                pass
-            _unlock_file(lock_handle)
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
-_EVENT_LOCKS: dict[Path, threading.Lock] = {}
+def _atomic_write_state(path: Path, value: dict[str, Any]) -> None:
+    with _lifecycle_lock(path.parent):
+        _atomic_write_state_unlocked(path, value)
+
+
+_EVENT_LOCKS: dict[Path, threading.RLock] = {}
 _EVENT_LOCKS_GUARD = threading.Lock()
 
 
-def _write_event(directory: Path, event: dict[str, Any]) -> None:
-    path = directory / "events.jsonl"
+@contextmanager
+def _lifecycle_lock(directory: Path):
+    directory.mkdir(parents=True, exist_ok=True)
     with _EVENT_LOCKS_GUARD:
-        lock = _EVENT_LOCKS.setdefault((directory / ".lifecycle.lock").resolve(), threading.Lock())
-    with lock:
-        directory.mkdir(parents=True, exist_ok=True)
+        thread_lock = _EVENT_LOCKS.setdefault((directory / ".lifecycle.lock").resolve(), threading.RLock())
+    with thread_lock:
         lock_handle = _lock_file(directory)
         try:
-            lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
-            events = []
-            for line_number, line in enumerate(lines, start=1):
-                try:
-                    value = json.loads(line)
-                except json.JSONDecodeError as error:
-                    raise ValueError(f"events.jsonl is corrupted at line {line_number}") from error
-                if not isinstance(value, dict) or value.get("sequence") != line_number:
-                    raise ValueError(f"events.jsonl sequence is corrupted at line {line_number}")
-                events.append(value)
-            sequence = len(events) + 1
-            event = {"sequence": sequence, **event}
-            with path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
+            yield
         finally:
             _unlock_file(lock_handle)
 
 
-def init_task(root: Path, task_id: str, identity: str | None = None, *, create: bool = True) -> dict[str, Any]:
+def _write_event_unlocked(directory: Path, event: dict[str, Any]) -> None:
+    path = directory / "events.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    events = []
+    for line_number, line in enumerate(lines, start=1):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"events.jsonl is corrupted at line {line_number}") from error
+        if not isinstance(value, dict) or value.get("sequence") != line_number:
+            raise ValueError(f"events.jsonl sequence is corrupted at line {line_number}")
+        events.append(value)
+    sequence = len(events) + 1
+    event = {"sequence": sequence, **event}
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _write_event(directory: Path, event: dict[str, Any]) -> None:
+    with _lifecycle_lock(directory):
+        _write_event_unlocked(directory, event)
+
+
+def init_task(root: Path, task_id: str, identity: str | None = None, *, create: bool = True, _lock_held: bool = False) -> dict[str, Any]:
     task_id = _safe_task_id(task_id)
     root = root.resolve()
     directory = _directory(root, task_id, create=create)
-    existing = _read_state(root, task_id)
     bound = _identity(root, task_id, identity)
-    if existing:
-        if existing.get("status") == "blocked":
+
+    def initialize() -> dict[str, Any]:
+        existing = _read_state(root, task_id)
+        if existing:
+            if existing.get("status") == "blocked":
+                return existing
+            if existing.get("identity") != bound:
+                return _result("blocked", task_id, errors=["task identity drift"], identity=existing.get("identity"), observed=bound)
             return existing
-        if existing.get("identity") != bound:
-            return _result("blocked", task_id, errors=["task identity drift"], identity=existing.get("identity"), observed=bound)
-        return existing
-    if not create:
-        return _result("blocked", task_id, errors=["lifecycle state is not initialized"], next_actions=["resume with role=main-agent"])
-    directory.mkdir(parents=True, exist_ok=True)
-    state = {"schema": 1, "task_id": task_id, "state": "pending", "identity": bound, "created_at": _now(), "updated_at": _now(), "evidence": _evidence(root, task_id)}
-    state_path = directory / "lifecycle.json"
-    _atomic_write_state(state_path, state)
-    try:
-        _write_event(directory, {"type": "created", "at": _now(), "identity": bound})
-    except (OSError, ValueError) as error:
+        if not create:
+            return _result("blocked", task_id, errors=["lifecycle state is not initialized"], next_actions=["resume with role=main-agent"])
+        state = {"schema": 1, "task_id": task_id, "state": "pending", "identity": bound, "created_at": _now(), "updated_at": _now(), "evidence": _evidence(root, task_id)}
+        state_path = directory / "lifecycle.json"
+        _atomic_write_state_unlocked(state_path, state)
         try:
-            state_path.unlink()
-        except OSError:
-            pass
-        return _result("blocked", task_id, errors=[str(error), _EVENT_FAILURE])
-    return _summary(state, root, task_id)
+            _write_event_unlocked(directory, {"type": "created", "at": _now(), "identity": bound})
+        except (OSError, ValueError) as error:
+            try:
+                state_path.unlink()
+            except OSError:
+                pass
+            return _result("blocked", task_id, errors=[str(error), _EVENT_FAILURE])
+        return _summary(state, root, task_id)
+
+    if _lock_held:
+        return initialize()
+    with _lifecycle_lock(directory):
+        return initialize()
 
 
 def list_tasks(root: Path) -> dict[str, Any]:
@@ -359,37 +375,38 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
             return _result("blocked", task_id, errors=["task sheet must be committed at HEAD with no uncommitted changes"])
     except OSError:
         return _result("blocked", task_id, errors=["unable to verify frozen task sheet"])
-    state = init_task(root, task_id, identity, create=True)
-    if state.get("status") == "blocked":
-        return state
-    current = state["state"]
-    if current in {"merged", "abandoned"}:
-        return _result("blocked", task_id, state=current, errors=[f"terminal state {current} is immutable"])
-    if target == current:
-        return _result("blocked", task_id, state=current, errors=[f"self-transition is not allowed: {current} -> {target}"])
-    if target not in TRANSITIONS.get(current, set()):
-        return _result("blocked", task_id, state=current, errors=[f"illegal transition: {current} -> {target}"], allowed_transitions=sorted(TRANSITIONS.get(current, set())))
-    evidence_value = _evidence(root, task_id, evidence)
-    if target in {"ready", "merged"}:
-        phase = "pre-merge" if target == "ready" else "post-merge"
-        current_head, current_branch, current_worktree = _git_identity(root)
-        evidence_errors = gate_check(Path(evidence_value["directory"]), task_id, current_branch, phase)
-        if evidence_errors or not evidence_value["ready"]:
-            return _result("blocked", task_id, state=current, errors=[f"{phase} gate failed", *evidence_errors], evidence=evidence_value)
-        head, branch, worktree = current_head, current_branch, current_worktree
-        if not head or not branch or not worktree:
-            return _result("blocked", task_id, state=current, errors=["main worktree identity could not be verified"])
-        evidence_value["main_worktree"] = {"head": head, "branch": branch, "worktree": worktree}
     directory = _directory(root, task_id)
-    previous = dict(state)
-    state.update({"state": target, "updated_at": _now(), "evidence": evidence_value, "status": "pass"})
-    _atomic_write_state(directory / "lifecycle.json", state)
-    try:
-        _write_event(directory, {"type": "transition", "from": current, "to": target, "at": _now(), "identity": state["identity"]})
-    except (OSError, ValueError) as error:
-        _atomic_write_state(directory / "lifecycle.json", previous)
-        return _result("blocked", task_id, state=current, errors=[str(error), _EVENT_FAILURE])
-    return state
+    with _lifecycle_lock(directory):
+        state = init_task(root, task_id, identity, create=True, _lock_held=True)
+        if state.get("status") == "blocked":
+            return state
+        current = state["state"]
+        if current in {"merged", "abandoned"}:
+            return _result("blocked", task_id, state=current, errors=[f"terminal state {current} is immutable"])
+        if target == current:
+            return _result("blocked", task_id, state=current, errors=[f"self-transition is not allowed: {current} -> {target}"])
+        if target not in TRANSITIONS.get(current, set()):
+            return _result("blocked", task_id, state=current, errors=[f"illegal transition: {current} -> {target}"], allowed_transitions=sorted(TRANSITIONS.get(current, set())))
+        evidence_value = _evidence(root, task_id, evidence)
+        if target in {"ready", "merged"}:
+            phase = "pre-merge" if target == "ready" else "post-merge"
+            current_head, current_branch, current_worktree = _git_identity(root)
+            evidence_errors = gate_check(Path(evidence_value["directory"]), task_id, current_branch, phase)
+            if evidence_errors or not evidence_value["ready"]:
+                return _result("blocked", task_id, state=current, errors=[f"{phase} gate failed", *evidence_errors], evidence=evidence_value)
+            head, branch, worktree = current_head, current_branch, current_worktree
+            if not head or not branch or not worktree:
+                return _result("blocked", task_id, state=current, errors=["main worktree identity could not be verified"])
+            evidence_value["main_worktree"] = {"head": head, "branch": branch, "worktree": worktree}
+        previous = dict(state)
+        state.update({"state": target, "updated_at": _now(), "evidence": evidence_value, "status": "pass"})
+        _atomic_write_state_unlocked(directory / "lifecycle.json", state)
+        try:
+            _write_event_unlocked(directory, {"type": "transition", "from": current, "to": target, "at": _now(), "identity": state["identity"]})
+        except (OSError, ValueError) as error:
+            _atomic_write_state_unlocked(directory / "lifecycle.json", previous)
+            return _result("blocked", task_id, state=current, errors=[str(error), _EVENT_FAILURE])
+        return state
 
 
 def append_event(root: Path, task_id: str, event_type: str, data: dict[str, Any] | None = None, identity: str | None = None, *, role: str = "legacy") -> dict[str, Any]:

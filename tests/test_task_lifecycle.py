@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import subprocess
 import tempfile
@@ -48,6 +49,40 @@ class TaskLifecycleTests(unittest.TestCase):
             events = [json.loads(line) for line in (root / ".pipeline" / "demo" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
             self.assertEqual([event["sequence"] for event in events], list(range(1, len(events) + 1)))
             self.assertEqual([event["type"] for event in events][-2:], ["one", "two"])
+
+    def test_concurrent_init_writes_one_created_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda _: init_task(root, "demo"), range(8)))
+            self.assertTrue(all(result.get("state") == "pending" for result in results))
+            events = [json.loads(line) for line in (root / ".pipeline" / "demo" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([event["type"] for event in events], ["created"])
+
+    def test_multiprocess_init_writes_one_created_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            script = "from pathlib import Path; import sys; from pipeline_tools.task_lifecycle import init_task; init_task(Path(sys.argv[1]), 'demo')"
+            processes = [subprocess.Popen(["python", "-c", script, str(root)]) for _ in range(4)]
+            self.assertTrue(all(process.wait() == 0 for process in processes))
+            events = [json.loads(line) for line in (root / ".pipeline" / "demo" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([event["type"] for event in events], ["created"])
+
+    def test_concurrent_transition_is_replayable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "freeze"], cwd=root, check=True)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda _: transition_task(root, "demo", "active", role="main-agent"), range(8)))
+            self.assertEqual(sum(result.get("status") == "pass" for result in results), 1)
+            events = [json.loads(line) for line in (root / ".pipeline" / "demo" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([(event["from"], event["to"]) for event in events if event["type"] == "transition"], [("pending", "active")])
+            self.assertEqual(inspect_task(root, "demo")["state"], "active")
 
     def test_identity_transition_and_evidence_gate(self):
         with tempfile.TemporaryDirectory() as directory:
