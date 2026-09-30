@@ -464,6 +464,8 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
             for field in ("head", "generated_at"):
                 if not isinstance(value.get(field), str) or not value.get(field).strip():
                     errors.append(f"{name} {field} must be a non-empty string")
+            if isinstance(value.get("head"), str) and not re.fullmatch(r"[0-9a-fA-F]{40}", value["head"]):
+                errors.append(f"{name} head is not a valid commit")
             if isinstance(value.get("generated_at"), str):
                 try:
                     datetime.fromisoformat(value["generated_at"].replace("Z", "+00:00"))

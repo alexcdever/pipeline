@@ -142,6 +142,15 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             self.assertEqual(value["status"], "BLOCKED")
             self.assertTrue(any("布局冲突" in error for error in value["errors"]))
 
+    def test_empty_reconcile_selection_is_not_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertNotEqual(reconcile_task(root, root / "docs" / "tasks" / "missing.md")["status"], "PASS")
+            from pipeline_tools.reconcile import reconcile_tasks
+            result = reconcile_tasks(root)
+            self.assertEqual(result["status"], "blocked")
+            self.assertNotEqual(result["exit_code"], 0)
+
     def test_cli_reconcile_returns_machine_result_and_does_not_write_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

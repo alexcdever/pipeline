@@ -21,7 +21,25 @@ from typing import Any
 
 from .layout import active_pipeline_dir, read_pipeline_dirs
 from .contract import validate_task
-from .core import evidence_verify
+from .core import evidence_verify, gate_check, git
+
+
+_EVENT_FAILURE = "lifecycle event write failed; state was rolled back"
+
+
+
+def _git_identity(root: Path) -> tuple[str | None, str | None, str | None]:
+    rc, head = git(root, "rev-parse", "--verify", "HEAD")
+    if rc:
+        return None, None, None
+    rc_branch, branch = git(root, "branch", "--show-current")
+    rc_worktree, worktree = git(root, "rev-parse", "--show-toplevel", redact_output=False)
+    return head.strip(), branch.strip() if not rc_branch else None, worktree.strip() if not rc_worktree else None
+
+
+
+def _state_event_error(root: Path, task_id: str) -> dict[str, Any]:
+    return _result("blocked", task_id, errors=[_EVENT_FAILURE], state=_read_state(root, task_id))
 
 STATES = ("pending", "active", "review", "ready", "merged", "blocked", "abandoned")
 TRANSITIONS = {
@@ -92,6 +110,10 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
                     return _result("blocked", task_id, errors=[f"events.jsonl sequence is corrupted at line {sequence}"])
         except (OSError, UnicodeError, json.JSONDecodeError):
             return _result("blocked", task_id, errors=["events.jsonl is corrupted"])
+    if not path.is_file():
+        if events_path.is_file():
+            return _result("blocked", task_id, errors=["events.jsonl exists but lifecycle.json is missing"])
+        return None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -219,40 +241,26 @@ def _write_event(directory: Path, event: dict[str, Any]) -> None:
         lock = _EVENT_LOCKS.setdefault((directory / ".lifecycle.lock").resolve(), threading.Lock())
     with lock:
         directory.mkdir(parents=True, exist_ok=True)
-        lock_path = directory / ".lifecycle.lock"
-        with lock_path.open("a+b") as lock_handle:
-            if os.name == "nt":
-                lock_handle.seek(0, os.SEEK_END)
-                if lock_handle.tell() == 0:
-                    lock_handle.write(b"0")
-                    lock_handle.flush()
-                lock_handle.seek(0)
-                msvcrt.locking(lock_handle.fileno(), msvcrt.LK_LOCK, 1)
-            else:
-                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
-            try:
-                lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
-                events = []
-                for line_number, line in enumerate(lines, start=1):
-                    try:
-                        value = json.loads(line)
-                    except json.JSONDecodeError as error:
-                        raise ValueError(f"events.jsonl is corrupted at line {line_number}") from error
-                    if not isinstance(value, dict) or value.get("sequence") != line_number:
-                        raise ValueError(f"events.jsonl sequence is corrupted at line {line_number}")
-                    events.append(value)
-                sequence = len(events) + 1
-                event = {"sequence": sequence, **event}
-                with path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-            finally:
-                if os.name == "nt":
-                    lock_handle.seek(0)
-                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        lock_handle = _lock_file(directory)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+            events = []
+            for line_number, line in enumerate(lines, start=1):
+                try:
+                    value = json.loads(line)
+                except json.JSONDecodeError as error:
+                    raise ValueError(f"events.jsonl is corrupted at line {line_number}") from error
+                if not isinstance(value, dict) or value.get("sequence") != line_number:
+                    raise ValueError(f"events.jsonl sequence is corrupted at line {line_number}")
+                events.append(value)
+            sequence = len(events) + 1
+            event = {"sequence": sequence, **event}
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            _unlock_file(lock_handle)
 
 
 def init_task(root: Path, task_id: str, identity: str | None = None, *, create: bool = True) -> dict[str, Any]:
@@ -271,11 +279,16 @@ def init_task(root: Path, task_id: str, identity: str | None = None, *, create: 
         return _result("blocked", task_id, errors=["lifecycle state is not initialized"], next_actions=["resume with role=main-agent"])
     directory.mkdir(parents=True, exist_ok=True)
     state = {"schema": 1, "task_id": task_id, "state": "pending", "identity": bound, "created_at": _now(), "updated_at": _now(), "evidence": _evidence(root, task_id)}
-    _atomic_write_state(directory / "lifecycle.json", state)
+    state_path = directory / "lifecycle.json"
+    _atomic_write_state(state_path, state)
     try:
         _write_event(directory, {"type": "created", "at": _now(), "identity": bound})
-    except ValueError as error:
-        return _result("blocked", task_id, state="pending", errors=[str(error)])
+    except (OSError, ValueError) as error:
+        try:
+            state_path.unlink()
+        except OSError:
+            pass
+        return _result("blocked", task_id, errors=[str(error), _EVENT_FAILURE])
     return _summary(state, root, task_id)
 
 
@@ -334,16 +347,23 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
         return _result("blocked", task_id, state=current, errors=[f"illegal transition: {current} -> {target}"], allowed_transitions=sorted(TRANSITIONS.get(current, set())))
     evidence_value = _evidence(root, task_id, evidence)
     if target in {"ready", "merged"}:
-        evidence_errors = evidence_verify(Path(evidence_value["directory"]), task_id)
+        phase = "pre-merge" if target == "ready" else "post-merge"
+        evidence_errors = gate_check(Path(evidence_value["directory"]), task_id, None, phase)
         if evidence_errors or not evidence_value["ready"]:
-            return _result("blocked", task_id, state=current, errors=["structured evidence verification failed", *evidence_errors], evidence=evidence_value)
+            return _result("blocked", task_id, state=current, errors=[f"{phase} gate failed", *evidence_errors], evidence=evidence_value)
+        head, branch, worktree = _git_identity(root)
+        if not head or not branch or not worktree:
+            return _result("blocked", task_id, state=current, errors=["main worktree identity could not be verified"])
+        evidence_value["main_worktree"] = {"head": head, "branch": branch, "worktree": worktree}
     directory = _directory(root, task_id)
+    previous = dict(state)
     state.update({"state": target, "updated_at": _now(), "evidence": evidence_value, "status": "pass"})
     _atomic_write_state(directory / "lifecycle.json", state)
     try:
         _write_event(directory, {"type": "transition", "from": current, "to": target, "at": _now(), "identity": state["identity"]})
-    except ValueError as error:
-        return _result("blocked", task_id, state=target, errors=[str(error)])
+    except (OSError, ValueError) as error:
+        _atomic_write_state(directory / "lifecycle.json", previous)
+        return _result("blocked", task_id, state=current, errors=[str(error), _EVENT_FAILURE])
     return state
 
 
@@ -359,8 +379,8 @@ def append_event(root: Path, task_id: str, event_type: str, data: dict[str, Any]
     event = {"type": event_type, "at": _now(), "identity": state["identity"], "data": data or {}}
     try:
         _write_event(_directory(root, task_id), event)
-    except ValueError as error:
-        return _result("blocked", task_id, errors=[str(error)])
+    except (OSError, ValueError) as error:
+        return _result("blocked", task_id, state=state.get("state"), errors=[str(error)])
     return _result("pass", task_id, event=event)
 
 

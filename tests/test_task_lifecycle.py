@@ -28,6 +28,7 @@ class TaskLifecycleTests(unittest.TestCase):
     def write_evidence(self, root):
         directory = root / ".pipeline" / "demo"
         directory.mkdir(parents=True, exist_ok=True)
+        (directory / "run.log").write_text("fixture run output\n", encoding="utf-8")
         for role, report in (("executor", "executor-report.md"), ("reviewer", "review-report.md"), ("main-final", "final-check.md")):
             (directory / f"{role}.log").write_text("ok\n", encoding="utf-8")
             value = {"schema": 1, "task_id": "demo", "worktree": str(root), "branch": "main", "role": role, "round": 1, "status": "pass", "commands": [{"command": "python -m unittest", "exit_code": 0, "cwd": str(root), "evidence_ref": f"{role}.log"}], "assertions": ["fixture evidence is valid"], "evidence_refs": [f"{role}.log"], "unverified": []}
@@ -65,6 +66,48 @@ class TaskLifecycleTests(unittest.TestCase):
             self.assertEqual(inspect_task(root, "demo")["identity"]["task_sheet_sha256"], inspect_task(root, "demo")["identity"]["task_sheet_sha256"])
             self.assertEqual(append_event(root, "demo", "note", role="main-agent")["status"], "pass")
             self.assertEqual(resume_task(root, "demo")["next_actions"], ["transition:abandoned", "transition:active", "transition:blocked", "transition:merged"])
+
+    def test_ready_and_merged_require_their_phase_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "freeze"], check=True)
+            transition_task(root, "demo", "active", role="main-agent")
+            transition_task(root, "demo", "review", role="main-agent")
+            blocked = transition_task(root, "demo", "ready", role="main-agent")
+            self.assertEqual(blocked["status"], "blocked")
+            self.write_evidence(root)
+            self.assertEqual(transition_task(root, "demo", "ready", role="main-agent")["state"], "ready")
+            (root / ".pipeline" / "demo" / "final-check.md").write_text("```pipeline-evidence\\n{}\\n```\\n", encoding="utf-8")
+            blocked = transition_task(root, "demo", "merged", role="main-agent")
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(inspect_task(root, "demo")["state"], "ready")
+
+    def test_events_without_lifecycle_state_are_blocked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            evidence = root / ".pipeline" / "demo"
+            evidence.mkdir(parents=True)
+            (evidence / "events.jsonl").write_text(json.dumps({"sequence": 1, "type": "created"}) + "\n", encoding="utf-8")
+            result = inspect_task(root, "demo")
+            self.assertEqual(result["status"], "blocked")
+            self.assertTrue(any("lifecycle.json is missing" in error for error in result["errors"]))
+
+    def test_corrupt_or_truncated_events_are_not_appended(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_repo(root)
+            append_event(root, "demo", "one", role="main-agent")
+            events = root / ".pipeline" / "demo" / "events.jsonl"
+            original = events.read_text(encoding="utf-8")
+            with events.open("a", encoding="utf-8") as handle:
+                handle.write('{"sequence": 2, "type":')
+            result = append_event(root, "demo", "two", role="main-agent")
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(events.read_text(encoding="utf-8"), original + '{"sequence": 2, "type":')
 
     def test_illegal_transition_and_list(self):
         with tempfile.TemporaryDirectory() as directory:

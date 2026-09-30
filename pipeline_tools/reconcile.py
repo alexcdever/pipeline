@@ -110,6 +110,14 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         identity_errors.append("report identity conflict")
     if reports and any(not value.get(key) for value in reports.values() for key in ("task_id", "branch", "worktree")):
         identity_errors.append("report identity is incomplete")
+    heads = identity_values["head"]
+    strict_reports = [value for value in reports.values() if value.get("schema") == 2]
+    if heads and any(not isinstance(head, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", head) for head in heads):
+        identity_errors.append("report HEAD is not a valid commit")
+    if strict_reports and len(strict_reports) != len(reports):
+        identity_errors.append("report schema versions are inconsistent")
+    if strict_reports and not heads:
+        identity_errors.append("new-schema reports must declare HEAD")
     try:
         verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"))
         readiness = evidence_readiness(evidence, str(task_id))
@@ -124,8 +132,19 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     except (LegacyPipelineLayoutError, OSError) as error:
         freshness = {"status": "blocked", "errors": [f"布局冲突：{error}"]}
     statuses = [value.get("status") for value in reports.values()]
+    post_merge_errors = []
+    if not reports:
+        post_merge_errors.append("no reports available")
+    elif reports.get("final-check.md", {}).get("role") != "main-final":
+        post_merge_errors.append("final-check is required for post-merge finalization")
+    if not any(
+        isinstance(command, dict) and command.get("exit_code") == 0 and command.get("cwd")
+        and Path(command["cwd"]).resolve() == root
+        for command in reports.get("final-check.md", {}).get("commands", [])
+    ):
+        post_merge_errors.append("main worktree post-merge re-verification is missing")
     direct_pass = (not contract_errors and not report_errors and not result_errors and not identity_errors and not verify_errors
-                   and readiness["status"] == "ready" and freshness["status"] == "pass"
+                   and not post_merge_errors and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
                    and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
     status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
@@ -136,7 +155,7 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
               "freshness": freshness["status"], "readiness": readiness["status"],
               "verify": "PASS" if not verify_errors else "BLOCKED",
               "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
-              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
+              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + post_merge_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
               "unverified": [] if direct_pass else ["task completion"], "updated": False}
     if update:
         output["errors"].append("--update is deprecated and cannot modify task sheets")
@@ -150,4 +169,5 @@ def reconcile_tasks(root: Path, task_id: str | None = None, *, update: bool = Fa
     sheets = sorted((root / "docs" / "tasks").glob("*.md"))
     selected = [sheet for sheet in sheets if task_id is None or sheet.stem == task_id]
     tasks = [reconcile_task(root, sheet, update=update) for sheet in selected]
-    return {"schema": 1, "command": "evidence.reconcile", "status": "pass" if all(item["status"] == "PASS" for item in tasks) else "blocked", "tasks": tasks, "updated": False, "exit_code": 0 if all(item["status"] == "PASS" for item in tasks) else 3}
+    complete = bool(tasks) and all(item["status"] == "PASS" for item in tasks)
+    return {"schema": 1, "command": "evidence.reconcile", "status": "pass" if complete else "blocked", "tasks": tasks, "updated": False, "exit_code": 0 if complete else 3}
