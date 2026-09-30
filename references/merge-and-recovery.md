@@ -44,7 +44,7 @@
 
 **合并后复验是硬要求，不是建议**：post-merge gate 需要 `final-check.md` 里至少一条 `exit_code == 0` 的命令证据，且该命令的 `cwd` 解析到主工作树根（`gate_check` 的 `_post_merge_reverified_in_main_worktree`）。只在任务 worktree 里跑过、或只在报告里写“主工作树已验证”而没有可解析的命令条目，都不算复验通过。
 
-worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。
+worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。`finalization.json` 必须可解析且绑定当前 task；缺失、旧 marker 或身份不一致时 reconcile 不能 PASS。schema 1 报告仅用于 legacy/unverified 查询，ready/merged/reconcile 最终 PASS 需要 schema 2 的 branch、worktree、HEAD 身份一致。events.jsonl 还必须从 `created` 开始、transition 可重放且终态与 lifecycle.json 一致。
 
 ## 状态恢复与并发护栏
 

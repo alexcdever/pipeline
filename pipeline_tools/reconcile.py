@@ -118,6 +118,8 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         identity_errors.append("report schema versions are inconsistent")
     if strict_reports and not heads:
         identity_errors.append("new-schema reports must declare HEAD")
+    if reports and len(strict_reports) != len(_REPORTS):
+        identity_errors.append("schema 1 reports are legacy/unverified and cannot support final PASS")
     try:
         verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"))
         readiness = evidence_readiness(evidence, str(task_id))
@@ -132,6 +134,12 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     except (LegacyPipelineLayoutError, OSError) as error:
         freshness = {"status": "blocked", "errors": [f"布局冲突：{error}"]}
     statuses = [value.get("status") for value in reports.values()]
+    finalization_errors: list[str] = []
+    finalization = _json(evidence / "finalization.json")
+    if finalization is None:
+        finalization_errors.append("missing or invalid finalization.json")
+    elif finalization.get("task_id") != task_id or finalization.get("status") != "finalized":
+        finalization_errors.append("finalization identity or status is invalid")
     post_merge_errors = []
     if not reports:
         post_merge_errors.append("no reports available")
@@ -144,10 +152,10 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     ):
         post_merge_errors.append("main worktree post-merge re-verification is missing")
     direct_pass = (not contract_errors and not report_errors and not result_errors and not identity_errors and not verify_errors
-                   and not post_merge_errors and readiness["status"] == "ready" and freshness["status"] == "pass"
+                   and not finalization_errors and not post_merge_errors and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
                    and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
-    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or freshness["status"] == "blocked" else "UNVERIFIED")
+    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or finalization_errors or freshness["status"] == "blocked" else "UNVERIFIED")
     if layout_error:
         status = "BLOCKED"
     output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,
@@ -155,7 +163,7 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
               "freshness": freshness["status"], "readiness": readiness["status"],
               "verify": "PASS" if not verify_errors else "BLOCKED",
               "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
-              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + post_merge_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
+              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + finalization_errors + post_merge_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
               "unverified": [] if direct_pass else ["task completion"], "updated": False}
     if update:
         output["errors"].append("--update is deprecated and cannot modify task sheets")

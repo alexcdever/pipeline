@@ -102,12 +102,14 @@ def _state_path(root: Path, task_id: str) -> Path:
 def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
     path = _state_path(root, task_id)
     events_path = path.parent / "events.jsonl"
+    events: list[dict[str, Any]] = []
     if events_path.is_file():
         try:
             for sequence, line in enumerate(events_path.read_text(encoding="utf-8").splitlines(), start=1):
                 value = json.loads(line)
                 if not isinstance(value, dict) or value.get("sequence") != sequence:
                     return _result("blocked", task_id, errors=[f"events.jsonl sequence is corrupted at line {sequence}"])
+                events.append(value)
         except (OSError, UnicodeError, json.JSONDecodeError):
             return _result("blocked", task_id, errors=["events.jsonl is corrupted"])
     if not path.is_file():
@@ -124,6 +126,24 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
     observed = _sha256(_task_sheet(root, task_id)) or ""
     if recorded != observed:
         return _result("blocked", task_id, state=value.get("state"), errors=["task sheet hash drift"], observed_task_sheet_sha256=observed, recorded_task_sheet_sha256=recorded)
+    if events:
+        identity = value.get("identity")
+        if events[0].get("type") != "created":
+            return _result("blocked", task_id, state=value.get("state"), errors=["events.jsonl must begin with created"])
+        if events[0].get("identity") != identity:
+            return _result("blocked", task_id, state=value.get("state"), errors=["created event identity mismatch"])
+        replayed = "pending"
+        for event in events[1:]:
+            if event.get("identity") != identity:
+                return _result("blocked", task_id, state=value.get("state"), errors=[f"event identity mismatch at sequence {event.get('sequence')}"])
+            if event.get("type") != "transition":
+                continue
+            source, target = event.get("from"), event.get("to")
+            if source != replayed or target not in TRANSITIONS.get(replayed, set()):
+                return _result("blocked", task_id, state=value.get("state"), errors=[f"invalid lifecycle transition event at sequence {event.get('sequence')}"])
+            replayed = target
+        if replayed != value.get("state"):
+            return _result("blocked", task_id, state=value.get("state"), errors=["events.jsonl final state does not match lifecycle.json"])
     return value
 
 
@@ -348,10 +368,11 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
     evidence_value = _evidence(root, task_id, evidence)
     if target in {"ready", "merged"}:
         phase = "pre-merge" if target == "ready" else "post-merge"
-        evidence_errors = gate_check(Path(evidence_value["directory"]), task_id, None, phase)
+        current_head, current_branch, current_worktree = _git_identity(root)
+        evidence_errors = gate_check(Path(evidence_value["directory"]), task_id, current_branch, phase)
         if evidence_errors or not evidence_value["ready"]:
             return _result("blocked", task_id, state=current, errors=[f"{phase} gate failed", *evidence_errors], evidence=evidence_value)
-        head, branch, worktree = _git_identity(root)
+        head, branch, worktree = current_head, current_branch, current_worktree
         if not head or not branch or not worktree:
             return _result("blocked", task_id, state=current, errors=["main worktree identity could not be verified"])
         evidence_value["main_worktree"] = {"head": head, "branch": branch, "worktree": worktree}
@@ -369,19 +390,21 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
 
 def append_event(root: Path, task_id: str, event_type: str, data: dict[str, Any] | None = None, identity: str | None = None, *, role: str = "legacy") -> dict[str, Any]:
     if _require_writer(role):
-        return _result("blocked", task_id, errors=_require_writer(role), forbidden_actions=["event"], next_actions=["retry with role=main-agent"])
+        return _result("blocked", task_id, state_unchanged=True, event_appended=False, errors=_require_writer(role), forbidden_actions=["event"], next_actions=["retry with role=main-agent"])
     state = init_task(root, task_id, identity, create=True)
     if state.get("state") in {"merged", "abandoned"}:
-        return _result("blocked", task_id, state=state.get("state"), errors=[f"terminal state {state.get('state')} is immutable"])
+        return _result("blocked", task_id, state=state.get("state"), state_unchanged=True, event_appended=False, errors=[f"terminal state {state.get('state')} is immutable"])
 
     if state.get("status") == "blocked":
+        state.setdefault("state_unchanged", True)
+        state.setdefault("event_appended", False)
         return state
     event = {"type": event_type, "at": _now(), "identity": state["identity"], "data": data or {}}
     try:
         _write_event(_directory(root, task_id), event)
     except (OSError, ValueError) as error:
-        return _result("blocked", task_id, state=state.get("state"), errors=[str(error)])
-    return _result("pass", task_id, event=event)
+        return _result("blocked", task_id, state=state.get("state"), state_unchanged=True, event_appended=False, errors=[str(error), _EVENT_FAILURE])
+    return _result("pass", task_id, state=state.get("state"), state_unchanged=True, event_appended=True, event=event)
 
 
 def lifecycle_status(root: Path, task_id: str, evidence_directory: Path | None = None) -> dict[str, Any]:

@@ -38,7 +38,7 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
 
     def _report(self, role, task_id="demo", branch="demo-branch", worktree=".worktrees/demo"):
         return "report\n```pipeline-evidence\n" + json.dumps({
-            "schema": 1, "task_id": task_id, "worktree": worktree, "branch": branch,
+            "schema": 2, "task_id": task_id, "worktree": worktree, "branch": branch, "head": "0" * 40, "generated_at": "2026-01-01T00:00:00+00:00",
             "role": role, "round": 1, "status": "PASS",
             "commands": [{"command": "python -m unittest", "exit_code": 0, "evidence_ref": "test.log"}],
             "assertions": ["direct evidence is present"], "evidence_refs": ["test.log"], "unverified": [],

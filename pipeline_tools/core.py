@@ -1799,6 +1799,8 @@ def gate_check(
         value, parse_errors = _read_machine_evidence(directory / name)
         if not parse_errors and value is not None:
             reports[name] = value
+            if phase == "post-merge" and value.get("schema") != 2:
+                errors.append(f"{name} schema 1 is legacy/unverified and cannot support {phase} gate")
 
     errors.extend(_machine_result_errors(directory, phase))
     expected_acceptance_ids = {

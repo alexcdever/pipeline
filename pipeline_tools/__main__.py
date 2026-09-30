@@ -1260,8 +1260,14 @@ def _main(argv: list[str] | None = None) -> int:
                 print(f"{value['status'].upper()} dispatch.derived-create task={args.child_task_id}")
             return PASS if value["status"] == "pass" else BLOCKED
         if args.group == "result" and args.action == "verify":
-            errors = verify_structured_result(args.path, args.task_id, args.role)
-            value = _envelope("result.verify", "pass" if not errors else "fail", task_id=args.task_id, errors=errors)
+            try:
+                errors = verify_structured_result(args.path, args.task_id, args.role)
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+                value = _envelope("result.verify", "config", task_id=args.task_id, errors=[str(error)])
+                if args.format == "json":
+                    _emit(value, args)
+                return CONFIG
+            value = _envelope("result.verify", "pass" if not errors else "blocked", task_id=args.task_id, errors=errors)
             if args.format == "json":
                 _emit(value, args)
             else:

@@ -31,7 +31,9 @@ class TaskLifecycleTests(unittest.TestCase):
         (directory / "run.log").write_text("fixture run output\n", encoding="utf-8")
         for role, report in (("executor", "executor-report.md"), ("reviewer", "review-report.md"), ("main-final", "final-check.md")):
             (directory / f"{role}.log").write_text("ok\n", encoding="utf-8")
-            value = {"schema": 1, "task_id": "demo", "worktree": str(root), "branch": "main", "role": role, "round": 1, "status": "pass", "commands": [{"command": "python -m unittest", "exit_code": 0, "cwd": str(root), "evidence_ref": f"{role}.log"}], "assertions": ["fixture evidence is valid"], "evidence_refs": [f"{role}.log"], "unverified": []}
+            head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            branch = subprocess.check_output(["git", "-C", str(root), "branch", "--show-current"], text=True).strip()
+            value = {"schema": 2, "task_id": "demo", "worktree": str(root), "branch": branch, "head": head, "generated_at": "2026-01-01T00:00:00+00:00", "role": role, "round": 1, "status": "pass", "commands": [{"command": "python -m unittest", "exit_code": 0, "cwd": str(root), "evidence_ref": f"{role}.log"}], "assertions": ["fixture evidence is valid"], "evidence_refs": [f"{role}.log"], "unverified": []}
             (directory / report).write_text("```pipeline-evidence\n" + json.dumps(value) + "\n```\n", encoding="utf-8")
         for role in ("executor", "reviewer", "final"):
             value = {"schema": 1, "task_id": "demo", "role": role if role != "final" else "main-final", "status": "pass", "acceptance": [{"id": "acceptance-test-1", "status": "pass", "exit_code": 0, "evidence_refs": ["run.log"]}], "unverified": []}
@@ -64,7 +66,10 @@ class TaskLifecycleTests(unittest.TestCase):
             self.write_evidence(root)
             self.assertEqual(transition_task(root, "demo", "ready", role="main-agent")["state"], "ready")
             self.assertEqual(inspect_task(root, "demo")["identity"]["task_sheet_sha256"], inspect_task(root, "demo")["identity"]["task_sheet_sha256"])
-            self.assertEqual(append_event(root, "demo", "note", role="main-agent")["status"], "pass")
+            event_result = append_event(root, "demo", "note", role="main-agent")
+            self.assertEqual(event_result["status"], "pass")
+            self.assertTrue(event_result["event_appended"])
+            self.assertTrue(event_result["state_unchanged"])
             self.assertEqual(resume_task(root, "demo")["next_actions"], ["transition:abandoned", "transition:active", "transition:blocked", "transition:merged"])
 
     def test_ready_and_merged_require_their_phase_gate(self):
