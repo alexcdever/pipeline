@@ -145,6 +145,30 @@ class CLITests(unittest.TestCase):
         for word in ('task', 'scope', 'command', 'evidence', 'gate', 'metrics', 'lifecycle', 'planning'):
             self.assertIn(word, p.stdout)
 
+    def test_json_parse_errors_are_enveloped_without_argparse_usage(self):
+        cases = (
+            ['--format', 'json', 'unknown-group'],
+            ['--format', 'json', 'task', 'validate', '--unknown-option', 'x'],
+            ['--format', 'json', 'task', 'validate'],
+        )
+        for command in cases:
+            with self.subTest(command=command):
+                result = run_cli(command)
+                self.assertEqual(result.returncode, 2, (result.stdout, result.stderr))
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload['status'], 'config')
+                self.assertEqual(payload['exit_code'], 2)
+                self.assertTrue(payload['errors'])
+                self.assertNotIn('usage:', result.stdout)
+                self.assertNotIn('usage:', result.stderr)
+                self.assertEqual(result.stderr, '')
+
+    def test_text_parse_errors_keep_argparse_usage(self):
+        result = run_cli(['task', 'validate'])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('usage:', result.stderr)
+        self.assertEqual(result.stdout, '')
+
     def test_planning_cli_commands_return_meaningful_exit_codes(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

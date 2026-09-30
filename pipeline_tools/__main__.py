@@ -72,6 +72,40 @@ from .core import (
 )
 
 
+class _ArgumentParseError(Exception):
+    def __init__(self, parser: argparse.ArgumentParser, message: str) -> None:
+        super().__init__(message)
+        self.parser = parser
+        self.message = message
+
+
+class _CLIArgumentParser(argparse.ArgumentParser):
+    json_errors = False
+
+    def error(self, message: str) -> None:
+        if self.json_errors:
+            raise _ArgumentParseError(self, message)
+        super().error(message)
+
+
+def _json_parse_requested(argv: list[str]) -> bool:
+    for index, token in enumerate(argv):
+        if token == "--format=json":
+            return True
+        if token == "--format" and index + 1 < len(argv):
+            return argv[index + 1] == "json"
+    return False
+
+
+def _parse_output_path(argv: list[str]) -> Path | None:
+    for index, token in enumerate(argv):
+        if token.startswith("--output="):
+            return Path(token.partition("=")[2])
+        if token == "--output" and index + 1 < len(argv):
+            return Path(argv[index + 1])
+    return None
+
+
 def _add_contract_command(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("root", type=Path)
     parser.add_argument("--contract", required=True)
@@ -138,7 +172,7 @@ def _run_task_lifecycle(args: argparse.Namespace) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="pipeline-tools")
+    parser = _CLIArgumentParser(prog="pipeline-tools")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument("--output", type=Path)
     groups = parser.add_subparsers(dest="group", required=True)
@@ -951,9 +985,12 @@ def _record_automatic_metrics(argv: list[str], exit_code: int, duration_s: float
 
 
 def _main(argv: list[str] | None = None) -> int:
+    actual_argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
+    parser.json_errors = _json_parse_requested(actual_argv)
+    _CLIArgumentParser.json_errors = parser.json_errors
     try:
-        args = parser.parse_args(argv)
+        args = parser.parse_args(actual_argv)
         if args.group == "planning":
             if args.action == "preflight":
                 value = planning_preflight(args.root, apply=args.apply); print(json.dumps(value, ensure_ascii=True)); return PASS if value["status"] == "pass" else BLOCKED
@@ -1295,6 +1332,13 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print(f"{value['status'].upper()} evidence.freshness")
             return PASS if value["status"] == "pass" else BLOCKED
+    except _ArgumentParseError as exc:
+        if parser.json_errors:
+            output = _parse_output_path(actual_argv)
+            args = argparse.Namespace(format="json", output=output)
+            _emit(_envelope("cli.parse", "config", errors=[exc.message]), args)
+            return CONFIG
+        raise
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         if "args" in locals() and getattr(args, "format", "text") == "json":
             group = getattr(args, "group", "pipeline")
