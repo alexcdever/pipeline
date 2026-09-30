@@ -472,7 +472,12 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(result['status'], 'finalized')
             self.assertFalse((directory / 'raw.log').exists())
             self.assertTrue((directory / 'finalization.json').exists())
+            lock = directory / '.lifecycle.lock'
+            self.assertTrue(lock.exists())
+            lock_identity = (lock.stat().st_dev, lock.stat().st_ino)
             self.assertEqual(finalize_evidence(directory, 'demo', True)['status'], 'finalized')
+            self.assertTrue(lock.exists())
+            self.assertEqual((lock.stat().st_dev, lock.stat().st_ino), lock_identity)
             (directory / 'final-check.md').write_text('tampered', encoding='utf-8')
             stale = finalize_evidence(directory, 'demo', True)
             self.assertEqual(stale['status'], 'blocked')
@@ -562,11 +567,14 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(recovered['status'], 'finalized')
             snapshot = sorted(path.relative_to(directory).as_posix() for path in directory.rglob('*'))
             self.assertEqual(snapshot, sorted([
-                'executor-report.md', 'executor-result.json', 'final-check.md',
+                '.lifecycle.lock', 'executor-report.md', 'executor-result.json', 'final-check.md',
                 'final-result.json', 'finalization.json', 'review-report.md',
                 'reviewer-result.json',
             ]))
+            lock = directory / '.lifecycle.lock'
+            lock_identity = (lock.stat().st_dev, lock.stat().st_ino)
             self.assertEqual(finalize_evidence(directory, 'demo', True)['status'], 'finalized')
+            self.assertEqual((lock.stat().st_dev, lock.stat().st_ino), lock_identity)
 
     def test_finalization_preserves_referenced_raw_evidence_on_reference_gap(self):
         with tempfile.TemporaryDirectory() as d:

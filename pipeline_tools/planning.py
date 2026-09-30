@@ -2673,12 +2673,7 @@ def _finalize_evidence_unlocked(directory: Path, task_id: str, success: bool, *,
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
         return {"status": "blocked", "missing": [f"cleanup failed: {type(error).__name__}"], "finalization": None}
-    result = {"status": "finalized", "missing": [], "finalization": str(marker)}
-    try:
-        (directory / ".lifecycle.lock").unlink()
-    except OSError:
-        pass
-    return result
+    return {"status": "finalized", "missing": [], "finalization": str(marker)}
 
 
 def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_canonical: bool = False) -> dict[str, Any]:
@@ -2690,8 +2685,3 @@ def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_c
         return result
     except (OSError, UnicodeError, ValueError, RuntimeError) as error:
         return {"status": "blocked", "missing": [f"finalization lock unavailable: {error}"], "finalization": None}
-    finally:
-        try:
-            (Path(directory) / ".lifecycle.lock").unlink()
-        except OSError:
-            pass
