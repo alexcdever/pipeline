@@ -1113,7 +1113,11 @@ def _main(argv: list[str] | None = None) -> int:
                         errors.append("finalization identity or status is invalid")
                     else:
                         errors.extend(verify_finalization_snapshot(args.directory, finalized))
-            _print_errors(errors)
+            if args.format == "json":
+                value = _envelope("evidence.verify", "pass" if not errors else "blocked", task_id=args.task_id, errors=errors, observed=[{"error_count": len(errors)}])
+                _emit(value, args)
+            else:
+                _print_errors(errors)
             return PASS if not errors else BLOCKED
         if args.group == "gate":
             unverified: list[str] = []

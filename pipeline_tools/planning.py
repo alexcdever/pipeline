@@ -2535,7 +2535,7 @@ def _evidence_directory_identity(directory: Path, task_id: str) -> bool:
     return True
 
 
-def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_canonical: bool = False) -> dict[str, Any]:
+def _finalize_evidence_unlocked(directory: Path, task_id: str, success: bool, *, require_canonical: bool = False) -> dict[str, Any]:
     """Finalize only an approved evidence set, preserving failure现场."""
     directory = Path(directory)
     required = [
@@ -2637,7 +2637,7 @@ def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_c
         staging.mkdir()
         retained_set = set(retained)
         for path in sorted(directory.rglob("*"), key=lambda item: len(item.parts)):
-            if path == staging or staging in path.parents:
+            if path == staging or staging in path.parents or path.name == ".lifecycle.lock":
                 continue
             relative = path.relative_to(directory).as_posix()
             if relative in retained_set:
@@ -2673,4 +2673,25 @@ def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_c
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
         return {"status": "blocked", "missing": [f"cleanup failed: {type(error).__name__}"], "finalization": None}
-    return {"status": "finalized", "missing": [], "finalization": str(marker)}
+    result = {"status": "finalized", "missing": [], "finalization": str(marker)}
+    try:
+        (directory / ".lifecycle.lock").unlink()
+    except OSError:
+        pass
+    return result
+
+
+def finalize_evidence(directory: Path, task_id: str, success: bool, *, require_canonical: bool = False) -> dict[str, Any]:
+    from .task_lifecycle import _lifecycle_lock
+
+    try:
+        with _lifecycle_lock(Path(directory)):
+            result = _finalize_evidence_unlocked(directory, task_id, success, require_canonical=require_canonical)
+        return result
+    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+        return {"status": "blocked", "missing": [f"finalization lock unavailable: {error}"], "finalization": None}
+    finally:
+        try:
+            (Path(directory) / ".lifecycle.lock").unlink()
+        except OSError:
+            pass

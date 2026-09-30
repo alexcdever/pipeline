@@ -111,7 +111,7 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
                     return _result("blocked", task_id, errors=[f"events.jsonl sequence is corrupted at line {sequence}"])
                 events.append(value)
         except (OSError, UnicodeError, json.JSONDecodeError):
-            return _result("blocked", task_id, errors=["events.jsonl is corrupted"])
+            return _result("blocked", task_id, errors=["events.jsonl is corrupted", "events.jsonl must be valid UTF-8 JSONL"])
     if not path.is_file():
         if path.exists():
             return _result("blocked", task_id, errors=["lifecycle.json is corrupted"])
@@ -138,6 +138,8 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
         for event in events[1:]:
             if event.get("identity") != identity:
                 return _result("blocked", task_id, state=value.get("state"), errors=[f"event identity mismatch at sequence {event.get('sequence')}"])
+            if event.get("type") == "created":
+                return _result("blocked", task_id, state=value.get("state"), errors=[f"duplicate created event at sequence {event.get('sequence')}"])
             if event.get("type") != "transition":
                 continue
             source, target = event.get("from"), event.get("to")
@@ -211,15 +213,19 @@ def _lock_file(directory: Path):
     lock_path = directory / ".lifecycle.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     handle = lock_path.open("a+b")
-    if os.name == "nt":
-        handle.seek(0, os.SEEK_END)
-        if handle.tell() == 0:
-            handle.write(b"0")
-            handle.flush()
-        handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-    else:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    try:
+        if os.name == "nt":
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    except (OSError, ValueError):
+        handle.close()
+        raise
     return handle
 
 
@@ -263,11 +269,13 @@ def _lifecycle_lock(directory: Path):
     with _EVENT_LOCKS_GUARD:
         thread_lock = _EVENT_LOCKS.setdefault((directory / ".lifecycle.lock").resolve(), threading.RLock())
     with thread_lock:
-        lock_handle = _lock_file(directory)
+        lock_handle = None
         try:
+            lock_handle = _lock_file(directory)
             yield
         finally:
-            _unlock_file(lock_handle)
+            if lock_handle is not None:
+                _unlock_file(lock_handle)
 
 
 def _write_event_unlocked(directory: Path, event: dict[str, Any]) -> None:
@@ -326,8 +334,11 @@ def init_task(root: Path, task_id: str, identity: str | None = None, *, create: 
 
     if _lock_held:
         return initialize()
-    with _lifecycle_lock(directory):
-        return initialize()
+    try:
+        with _lifecycle_lock(directory):
+            return initialize()
+    except (OSError, ValueError) as error:
+        return _result("blocked", task_id, errors=[f"lifecycle lock unavailable: {error}"], state_unchanged=True)
 
 
 def list_tasks(root: Path) -> dict[str, Any]:
@@ -356,7 +367,7 @@ def resume_task(root: Path, task_id: str, identity: str | None = None) -> dict[s
     return _result("pass", task_id, state=state.get("state"), recovery_summary={"current_state": state.get("state"), "can_resume": bool(allowed), "allowed_transitions": allowed}, next_actions=[f"transition:{target}" for target in allowed], forbidden_actions=["implicit state transition"], must_read=[f"docs/tasks/{task_id}.md", ".pipeline/<task-id>/lifecycle.json"], evidence=_evidence(root, task_id))
 
 
-def transition_task(root: Path, task_id: str, target: str, identity: str | None = None, evidence: Path | None = None, *, role: str = "legacy") -> dict[str, Any]:
+def _transition_task_unlocked(root: Path, task_id: str, target: str, identity: str | None = None, evidence: Path | None = None, *, role: str = "legacy") -> dict[str, Any]:
     task_id = _safe_task_id(task_id)
     if _require_writer(role):
         return _result("blocked", task_id, errors=_require_writer(role), forbidden_actions=["transition"], next_actions=["retry with role=main-agent"])
@@ -409,23 +420,34 @@ def transition_task(root: Path, task_id: str, target: str, identity: str | None 
         return state
 
 
+def transition_task(root: Path, task_id: str, target: str, identity: str | None = None, evidence: Path | None = None, *, role: str = "legacy") -> dict[str, Any]:
+    try:
+        return _transition_task_unlocked(root, task_id, target, identity, evidence, role=role)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+        return _result("blocked", task_id, errors=[f"lifecycle lock unavailable: {error}"], state_unchanged=True)
+
+
 def append_event(root: Path, task_id: str, event_type: str, data: dict[str, Any] | None = None, identity: str | None = None, *, role: str = "legacy") -> dict[str, Any]:
     if _require_writer(role):
         return _result("blocked", task_id, state_unchanged=True, event_appended=False, errors=_require_writer(role), forbidden_actions=["event"], next_actions=["retry with role=main-agent"])
-    state = init_task(root, task_id, identity, create=True)
-    if state.get("state") in {"merged", "abandoned"}:
-        return _result("blocked", task_id, state=state.get("state"), state_unchanged=True, event_appended=False, errors=[f"terminal state {state.get('state')} is immutable"])
-
-    if state.get("status") == "blocked":
-        state.setdefault("state_unchanged", True)
-        state.setdefault("event_appended", False)
-        return state
-    event = {"type": event_type, "at": _now(), "identity": state["identity"], "data": data or {}}
+    task_id = _safe_task_id(task_id)
+    if event_type == "created":
+        return _result("blocked", task_id, state_unchanged=True, event_appended=False, errors=["created events may only be written by init_task"])
+    directory = _directory(root.resolve(), task_id)
     try:
-        _write_event(_directory(root, task_id), event)
-    except (OSError, ValueError) as error:
-        return _result("blocked", task_id, state=state.get("state"), state_unchanged=True, event_appended=False, errors=[str(error), _EVENT_FAILURE])
-    return _result("pass", task_id, state=state.get("state"), state_unchanged=True, event_appended=True, event=event)
+        with _lifecycle_lock(directory):
+            state = init_task(root, task_id, identity, create=True, _lock_held=True)
+            if state.get("status") == "blocked":
+                state.setdefault("state_unchanged", True)
+                state.setdefault("event_appended", False)
+                return state
+            if state.get("state") in {"merged", "abandoned"}:
+                return _result("blocked", task_id, state=state.get("state"), state_unchanged=True, event_appended=False, errors=[f"terminal state {state.get('state')} is immutable"])
+            event = {"type": event_type, "at": _now(), "identity": state["identity"], "data": data or {}}
+            _write_event_unlocked(directory, event)
+            return _result("pass", task_id, state=state.get("state"), state_unchanged=True, event_appended=True, event=event)
+    except (OSError, UnicodeError, ValueError) as error:
+        return _result("blocked", task_id, state_unchanged=True, event_appended=False, errors=[str(error), _EVENT_FAILURE])
 
 
 def lifecycle_status(root: Path, task_id: str, evidence_directory: Path | None = None) -> dict[str, Any]:
