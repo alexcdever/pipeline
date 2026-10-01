@@ -30,6 +30,11 @@ def report(role, task_id='demo', branch='feature/demo', status='PASS'):
 
 
 class EvidenceTests(unittest.TestCase):
+    def _canonical_evidence_dir(self, root, task_id='demo'):
+        directory = Path(root) / '.pipeline' / task_id
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
     def _make_git_repo(self, root):
         import subprocess
 
@@ -213,12 +218,11 @@ class EvidenceTests(unittest.TestCase):
 
     def test_missing_report_blocks(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertTrue(evidence_verify(Path(d) / 'demo', 'demo'))
+            self.assertTrue(evidence_verify(self._canonical_evidence_dir(d), 'demo'))
 
     def test_identity_mismatch_blocks(self):
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'demo'
-            p.mkdir()
+            p = self._canonical_evidence_dir(d)
             for name, role in (
                 ('executor-report.md', 'executor'),
                 ('review-report.md', 'reviewer'),
@@ -229,8 +233,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_prose_markers_without_machine_block_are_rejected(self):
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'demo'
-            p.mkdir()
+            p = self._canonical_evidence_dir(d)
             text = 'task-id demo worktree x branch feature/demo round 1 command c exit code 0 assertion a evidence e'
             for name in ('executor-report.md', 'review-report.md', 'final-check.md'):
                 (p / name).write_text(text, encoding='utf-8')
@@ -239,8 +242,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_gate_requires_pass_statuses(self):
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'demo'
-            p.mkdir()
+            p = self._canonical_evidence_dir(d)
             (p / 'executor-report.md').write_text(report('executor'), encoding='utf-8')
             (p / 'review-report.md').write_text(report('reviewer', status='BLOCKED'), encoding='utf-8')
             (p / 'final-check.md').write_text(report('main-final', status='READY-TO-MERGE'), encoding='utf-8')
@@ -381,8 +383,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_evidence_block_parses_when_body_contains_other_code_fences(self):
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'demo'
-            p.mkdir()
+            p = self._canonical_evidence_dir(d)
             for name, role in (
                 ('executor-report.md', 'executor'),
                 ('review-report.md', 'reviewer'),
@@ -395,8 +396,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_evidence_block_without_closing_fence_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'demo'
-            p.mkdir()
+            p = self._canonical_evidence_dir(d)
             for name, role in (
                 ('executor-report.md', 'executor'),
                 ('review-report.md', 'reviewer'),
