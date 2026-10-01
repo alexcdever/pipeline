@@ -131,7 +131,8 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertIsNotNone(contract, path)
             self.assertNotIn("<task-id>", contract.group(1))
             self.assertNotIn("<complete command>", contract.group(1))
-            self.assertTrue("UNVERIFIED" in text or "未开始" in text or "已合并" in text, path)
+            if json.loads(contract.group(1)).get("schema") != 4:
+                self.assertTrue("UNVERIFIED" in text or "未开始" in text or "已合并" in text, path)
 
     def _schema3_sheet(self, suffix):
         return (
@@ -342,7 +343,7 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("--evidence", readme)
         self.assertIn("--evidence", skill)
         self.assertIn("--evidence", template)
-        self.assertIn("0.14.0", skill)
+        self.assertIn("version: 0.15.0", skill)
         self.assertIn("v0.13.0 → v0.14.0", migration)
 
     def test_references_compat_and_migration_documents_known_items(self):

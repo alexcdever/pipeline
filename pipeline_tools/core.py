@@ -1481,7 +1481,10 @@ def create_derived_dispatch(
         return {
             "schema": 1, "command": "dispatch.derived-create", "status": "blocked",
             "parent_task_id": parent_task_id, "task_id": child_task_id,
-            "errors": ["task identifiers must contain only letters, digits, dot, underscore, and hyphen"],
+            "errors": [
+                "task identifiers must contain only letters, digits, dot, underscore, and hyphen",
+                "child task sheet is not a valid contract: unsafe task identifier",
+            ],
             "blockers": [{"class": "workflow", "category": "contract", "reason": "unsafe task identifier"}],
             "artifacts": [], "next_actions": ["reconcile task identity"],
         }
