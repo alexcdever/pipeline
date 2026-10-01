@@ -47,6 +47,49 @@ ACCEPTANCE_STATUSES = ("pass", "fail", "blocked", "flaky", "unverified")
 # The only status spelling that ever shipped but belongs to neither vocabulary.
 LEGACY_STATUS_ALIASES = {"pass_with_conditions": "pass"}
 RESULT_ROLE_ALIASES = {"main": "main-final", "final": "main-final"}
+_TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _safe_task_identifier(value: Any) -> bool:
+    return isinstance(value, str) and bool(_TASK_ID_RE.fullmatch(value)) and value not in {".", ".."}
+
+
+def _has_reparse_or_symlink(path: Path) -> bool:
+    current = path
+    while True:
+        try:
+            if current.is_symlink():
+                return True
+            stat_result = current.lstat()
+            attributes = getattr(stat_result, "st_file_attributes", 0)
+            if attributes & 0x400:
+                return True
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return True
+        if current.parent == current:
+            return False
+        current = current.parent
+
+
+def _canonical_workflow_directory(root: Path, workflow_directory: Path) -> tuple[Path | None, str | None]:
+    root = Path(root)
+    if not _safe_task_identifier(workflow_directory.name):
+        return None, "workflow directory task identifier is unsafe"
+    canonical = root / ".pipeline" / workflow_directory.name
+    try:
+        if Path(workflow_directory).is_absolute():
+            supplied = Path(workflow_directory)
+        else:
+            supplied = root / workflow_directory
+        if supplied.absolute() != canonical.absolute():
+            return None, "workflow directory must exactly match canonical .pipeline/<task-id>"
+    except OSError:
+        return None, "workflow directory path is invalid"
+    if _has_reparse_or_symlink(root) or _has_reparse_or_symlink(root / ".pipeline") or _has_reparse_or_symlink(canonical):
+        return None, "workflow directory or its parents must not be a symlink or reparse point"
+    return canonical, None
 
 _SECRET_RE = re.compile(
     r"(?i)\b(password|passwd|token|secret|authorization|api[_-]?key|cvc)\b"
@@ -366,7 +409,21 @@ def _evidence_root(directory: Path) -> Path:
 
 
 def _canonical_evidence_dir(directory: Path) -> Path:
-    return canonical_evidence_dir(directory)
+    supplied = Path(directory)
+    candidate = supplied if supplied.is_absolute() else Path.cwd() / supplied
+    candidate = candidate.absolute()
+    if candidate.parent.name != ".pipeline":
+        raise ValueError("evidence directory must exactly match canonical .pipeline/<task-id>")
+    task_id = candidate.name
+    if not _safe_task_identifier(task_id):
+        raise ValueError("evidence task identifier is unsafe")
+    root = candidate.parent.parent
+    canonical = root / ".pipeline" / task_id
+    if candidate != canonical:
+        raise ValueError("evidence directory must exactly match canonical .pipeline/<task-id>")
+    if _has_reparse_or_symlink(root) or _has_reparse_or_symlink(root / ".pipeline") or _has_reparse_or_symlink(candidate):
+        raise ValueError("evidence directory or its parents must not be a symlink or reparse point")
+    return canonical
 
 
 def _evidence_file_exists(directory: Path, reference: Any) -> bool:
@@ -884,10 +941,21 @@ def capability_handshake(
     required_commands: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a bounded, machine-readable agent capability handshake."""
+    root = Path(root).resolve()
+    canonical, path_error = _canonical_workflow_directory(root, Path(workflow_directory))
+    if path_error:
+        return {
+            "schema": 1,
+            "role": role,
+            "status": "blocked",
+            "checks": {"repository_read": root.is_dir(), "workflow_write": False, "product_write": product_write_allowed, "runtime": False},
+            "runtime": {"status": "unverified", "errors": []},
+            "errors": [path_error],
+        }
     runtime = runtime_preflight(root, expected_node, expected_pnpm, required_commands)
     checks = {
         "repository_read": root.is_dir(),
-        "workflow_write": workflow_directory.is_dir() or workflow_directory.parent.is_dir(),
+        "workflow_write": canonical is not None and (canonical.is_dir() or canonical.parent.is_dir()),
         "product_write": product_write_allowed,
         "runtime": runtime["status"] == "pass",
     }
@@ -906,8 +974,9 @@ def capability_handshake(
         "runtime": runtime,
         "errors": errors,
     }
-    workflow_directory.mkdir(parents=True, exist_ok=True)
-    (workflow_directory / "capability-handshake.json").write_text(
+    assert canonical is not None
+    canonical.mkdir(parents=True, exist_ok=True)
+    (canonical / "capability-handshake.json").write_text(
         json.dumps(result, ensure_ascii=True, sort_keys=True), encoding="utf-8"
     )
     return result
@@ -1408,6 +1477,17 @@ def create_derived_dispatch(
     """
     root = Path(root).resolve()
     parent_task_sheet = Path(parent_task_sheet).resolve()
+    if not _safe_task_identifier(parent_task_id) or not _safe_task_identifier(child_task_id):
+        return {
+            "schema": 1, "command": "dispatch.derived-create", "status": "blocked",
+            "parent_task_id": parent_task_id, "task_id": child_task_id,
+            "errors": [
+                "task identifiers must contain only letters, digits, dot, underscore, and hyphen",
+                "child task sheet is not a valid contract: unsafe task identifier",
+            ],
+            "blockers": [{"class": "workflow", "category": "contract", "reason": "unsafe task identifier"}],
+            "artifacts": [], "next_actions": ["reconcile task identity"],
+        }
     target = root / ".worktrees" / child_task_id
     result: dict[str, Any] = {
         "schema": 1, "command": "dispatch.derived-create", "status": "blocked",

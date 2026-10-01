@@ -1131,13 +1131,20 @@ def _main(argv: list[str] | None = None) -> int:
                     print(json.dumps(value, ensure_ascii=True, sort_keys=True))
                 return _status_exit_code(value)
             if args.action == "readiness":
-                value = evidence_readiness(args.directory, args.task_id)
+                try:
+                    value = evidence_readiness(args.directory, args.task_id)
+                except (OSError, ValueError) as error:
+                    value = {"status": "blocked", "errors": [str(error)], "blockers": [{"class": "workflow", "reason": str(error)}]}
                 if args.format == "json":
                     _emit(value, args)
                 else:
                     print(f"{value['status'].upper()} evidence.readiness")
+                    _print_errors(value.get("errors", []))
                 return PASS if value["status"] == "ready" else BLOCKED
-            errors = evidence_verify(args.directory, args.task_id, args.branch)
+            try:
+                errors = evidence_verify(args.directory, args.task_id, args.branch)
+            except (OSError, ValueError) as error:
+                errors = [str(error)]
             marker = args.directory / "finalization.json"
             if args.phase == "finalized":
                 if not marker.is_file():
@@ -1159,7 +1166,10 @@ def _main(argv: list[str] | None = None) -> int:
             return PASS if not errors else BLOCKED
         if args.group == "gate":
             unverified: list[str] = []
-            errors = gate_check(args.directory, args.task_id, args.branch, args.action, unverified=unverified)
+            try:
+                errors = gate_check(args.directory, args.task_id, args.branch, args.action, unverified=unverified)
+            except (OSError, ValueError) as error:
+                errors = [str(error)]
             if args.result:
                 role = args.role or ("reviewer" if "reviewer" in args.result.name else "executor")
                 errors.extend(verify_structured_result(args.result, args.task_id, role, strict=True))

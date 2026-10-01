@@ -125,7 +125,7 @@ def validate(path: Path) -> list[str]:
     acceptance_matches = list(
         re.finditer(r"^### 验收测试\d+[：:].*$", text, flags=re.MULTILINE)
     )
-    if not acceptance_matches:
+    if not acceptance_matches and schema != 4:
         errors.append("at least one acceptance test (验收测试1, 验收测试2, ...) is required")
     else:
         for index, match in enumerate(acceptance_matches, start=1):
