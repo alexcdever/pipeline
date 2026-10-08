@@ -10,7 +10,7 @@
 
 - `goal_status(root, contract, task_id=None)`：比较契约记录的哈希与实时文件的哈希，返回**四元组** `(errors, recorded, observed, unverified)`。调用方必须按四元组解包；只解三元的代码会抛 `ValueError`。`recorded` 的完整回退顺序是：schema 4 契约的 `goal.sha256`（schema 1-3 读旧 `implement_plan.sha256`）→ `.pipeline/planning/*/dispatch.json|lifecycle.json|result.json` 里的 `requirements_sha256`（或 `identity.requirements_sha256`，见 `_planning_requirements_sha256`）→ `.pipeline/<task-id>/goal.json` 里的 `sha256`（历史任务回退到 `implement-plan.json`，见 `_recorded_goal_sha256`）。
 - 第四个返回值 `unverified` 是未验证项列表，不是可以忽略的附加信息：任务没有记录哈希时，即使文件可读、`errors` 为空，也会返回 `goal hash unrecorded: <path>`；既无记录又读不到文件时返回 `goal hash unrecorded and plan unreadable: <path>`。这表示哈希未被强制，必须按未验证处理，不能当作通过。
-- `_record_goal_hash(root, task_id, observed)`：把观察到的哈希写入 `.pipeline/<task-id>/goal.json`（内容为 `{"schema": 1, "task_id": ..., "sha256": observed}`）；schema 1-3 的旧任务仍写 `implement-plan.json`，因此历史契约保持可读。创建 worktree 后调用一次；冻结检查也会调用它（见下）。
+- `_record_goal_hash(root, task_id, observed, task_sheet_sha256=None, *, legacy=False, task_sheet_contract=None)`：把观察到的哈希写入 `.pipeline/<task-id>/goal.json`（内容形如 `{"schema": 1, "task_id": ..., "sha256": observed, "task_sheet_sha256": ..., "task_sheet_contract": {...}}`；后两个字段由 `freeze_check` 写入，用来把冻结版本的任务单哈希与契约快照一起留存，供后续 `task amend` 对照上一版）；schema 1-3 的旧任务仍写 `implement-plan.json`，因此历史契约保持可读。创建 worktree 后调用一次；冻结检查也会调用它（见下）。
 
 执行时的检查点：
 
