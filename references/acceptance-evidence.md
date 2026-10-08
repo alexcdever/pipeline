@@ -65,6 +65,8 @@
 
 `evidence_freshness` 用 `evidence_only` 判断 `product_head..HEAD` 的改动是否全部落在证据目录内。`.pipeline/metrics/` 是工作流元数据（见 `references/metrics-contract.md`），始终豁免：`is_metrics_path` 命中的路径不破坏 `evidence_only`，与 `scope_check` 口径一致。否则任何跑过 pipeline-tools 的任务都会因 metrics 事件翻转为 `evidence_only: false` 并误报 `product/test HEAD drifted`。产品代码、测试或证据目录之外的其它改动仍照常触发 `product/test HEAD drifted`。
 
+同一套基准（`pipeline_tools/core.py` 的 `evidence_only_paths`）也决定 schema-2 报告的 `head` 是否仍然有效：报告写的是它评判的实现提交，而提交这份报告本身就会移动 `HEAD`，因此 `head != HEAD` 时只要 `head` 是 `HEAD` 的祖先、且 `head..HEAD` 只动本任务证据目录（含 `.pipeline/metrics/`）就仍然通过（`head_advanced_by_evidence_only`）。`head` 不是 `HEAD` 的祖先（例如未知提交），或区间内改动了产品/测试路径时，`evidence verify` 仍报 `<report> head does not match current Git identity`。这条规则不是“任何 head 都接受”：它只豁免任务自身证据的提交。
+
 ## 状态词表与读取侧归一
 
 markdown 证据块与机器结果 JSON 各有自己的规范拼写：markdown 侧用大写（`PASS`、`READY-TO-MERGE`、`MERGED`），JSON 侧用小写（`pass`、`fail`、`blocked`、`flaky`）。历史证据里两侧都是各自的大多数派，因此词表本身保持不变，归一发生在**读取侧**。

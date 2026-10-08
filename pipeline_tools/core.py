@@ -551,9 +551,17 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
         if value.get("task_id") != task_id:
             errors.append(f"{name} task identity mismatch")
         if value.get("schema") == 2:
-            for key in ("head", "branch"):
-                if value.get(key) != (current_identity.get(key) if key == "head" else (branch or current_identity.get(key))):
-                    errors.append(f"{name} {key} does not match current Git identity")
+            # The report names the commit it judged. Committing the report itself
+            # (task evidence only) moves HEAD, so accept an evidence-only advance
+            # instead of letting the record invalidate itself; anything else keeps
+            # the strict identity rule.
+            reported_head = value.get("head")
+            if reported_head != current_identity.get("head") and not head_advanced_by_evidence_only(
+                root, reported_head, current_identity.get("head"), directory
+            ):
+                errors.append(f"{name} head does not match current Git identity")
+            if value.get("branch") != (branch or current_identity.get("branch")):
+                errors.append(f"{name} branch does not match current Git identity")
             try:
                 report_worktree = Path(value.get("worktree", "")).resolve()
             except (OSError, ValueError):
@@ -1741,20 +1749,11 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
             else:
                 diff_rc, diff = git(root, "diff", "--name-only", product_head, current_head, redact_output=False)
                 changed_paths = [path.replace("\\", "/") for path in diff.splitlines() if path.strip()]
-                try:
-                    evidence_root = evidence_directory.resolve().relative_to(root.resolve()).as_posix()
-                except (OSError, ValueError):
-                    evidence_root = ""
                 # Metrics events are workflow metadata that may be committed to the
                 # host project (see references/metrics-contract.md). scope_check
                 # already exempts them; evidence_only must use the same basis or
                 # every task that ran pipeline-tools flips to a false product drift.
-                evidence_only = bool(evidence_root) and all(
-                    path == evidence_root
-                    or path.startswith(evidence_root + "/")
-                    or is_metrics_path(path)
-                    for path in changed_paths
-                )
+                evidence_only = evidence_only_paths(root, evidence_directory, changed_paths)
                 observed.append({"fact": "product_head", "value": product_head})
                 observed.append({"fact": "changed_paths", "value": changed_paths})
                 observed.append({"fact": "evidence_only", "value": evidence_only})
@@ -2621,6 +2620,57 @@ def changed_paths_between(root: Path, base: str, head: str | None = None) -> lis
     if rc:
         return None
     return [path.replace("\\", "/") for path in output.splitlines() if path.strip()]
+
+
+def evidence_only_paths(root: Path, evidence_directory: Path, changed_paths: list[str]) -> bool:
+    """Whether every changed path belongs to this task's own evidence.
+
+    Committing the task's evidence tree (and the metrics stream) is workflow
+    bookkeeping: it advances HEAD without changing the product or the tests, so
+    it must never invalidate evidence.  This is the single basis shared by
+    ``evidence_freshness`` and the schema-2 report head check.
+    """
+    try:
+        evidence_root = Path(evidence_directory).resolve().relative_to(Path(root).resolve()).as_posix()
+    except (OSError, ValueError):
+        return False
+    if not evidence_root:
+        return False
+    return all(
+        path == evidence_root
+        or path.startswith(evidence_root + "/")
+        or is_metrics_path(path)
+        for path in changed_paths
+    )
+
+
+def head_advanced_by_evidence_only(
+    root: Path,
+    reported_head: Any,
+    current_head: Any,
+    evidence_directory: Path,
+) -> bool:
+    """Whether HEAD moved past ``reported_head`` by committing only task evidence.
+
+    A record names the commit it judged.  Publishing that record moves HEAD, so
+    requiring exact equality would make every report invalidate itself.  Only a
+    plain commit range whose changed paths are all this task's evidence (or the
+    metrics stream) is accepted; an unknown, non-ancestor or product-touching
+    range keeps the strict rule.
+    """
+    if not isinstance(reported_head, str) or not isinstance(current_head, str):
+        return False
+    if reported_head == current_head:
+        return True
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", reported_head):
+        return False
+    rc, _ = git(root, "merge-base", "--is-ancestor", reported_head, current_head)
+    if rc:
+        return False
+    changed = changed_paths_between(root, reported_head, current_head)
+    if changed is None:
+        return False
+    return evidence_only_paths(root, evidence_directory, changed)
 
 
 def evidence_revision_status(

@@ -611,6 +611,7 @@ class TaskSheetAmendmentTests(unittest.TestCase):
         directory = root / ".pipeline" / TASK_ID
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "test.log").write_text("observed\n", encoding="utf-8")
+        branch = git(root, "branch", "--show-current").stdout.strip()
         binding = (
             {"sheet_revision": revision, "sheet_sha256": baseline, "observed_at_commit": head}
             if bind else {}
@@ -621,7 +622,7 @@ class TaskSheetAmendmentTests(unittest.TestCase):
             ("final-check.md", "main-final"),
         ):
             report = {
-                "schema": 2, "task_id": TASK_ID, "worktree": str(root), "branch": "master",
+                "schema": 2, "task_id": TASK_ID, "worktree": str(root), "branch": branch,
                 "head": head, "generated_at": "2026-01-01T00:00:00+00:00", "role": role, "round": 1,
                 "status": "PASS",
                 "commands": [{"command": "python -m pytest -q", "exit_code": 0, "evidence_ref": "test.log"}],
@@ -678,6 +679,48 @@ class TaskSheetAmendmentTests(unittest.TestCase):
         self.assertEqual(accepted["adjudication_ref"], "docs/decisions/evidence-floor.md")
         # The floor the lifecycle reads really did move from 3 down to 2.
         self.assertEqual(lifecycle_status(root, TASK_ID)["evidence"]["required_level"], 2)
+
+    def test_report_head_survives_evidence_only_commits(self):
+        """A report must not invalidate itself when its own evidence is committed."""
+        from pipeline_tools.core import evidence_verify
+
+        root, sheet, head = self._frozen_repo()
+        revision, baseline = task_sheet_revision(root, TASK_ID)
+        evidence = self._write_bound_evidence(root, head, revision, baseline)
+        branch = git(root, "branch", "--show-current").stdout.strip()
+        reports = ("executor-report.md", "review-report.md", "final-check.md")
+        head_error = [
+            f"{name} head does not match current Git identity" for name in reports
+        ]
+        self.assertEqual(evidence_verify(evidence, TASK_ID, branch), [])
+
+        # Publishing the evidence (and the metrics stream) moves HEAD without
+        # touching the product, so the reports stay valid.
+        metrics = root / ".pipeline" / "metrics"
+        metrics.mkdir(parents=True, exist_ok=True)
+        (metrics / "event.json").write_text("{}\n", encoding="utf-8")
+        git(root, "add", ".pipeline")
+        git(root, "commit", "-qm", "task evidence and metrics")
+        self.assertNotEqual(git(root, "rev-parse", "HEAD").stdout.strip(), head)
+        self.assertEqual(evidence_verify(evidence, TASK_ID, branch), [])
+
+        # A path outside the task evidence is not evidence-only.
+        (root / "docs" / "notes.md").write_text("unrelated\n", encoding="utf-8")
+        git(root, "add", "docs/notes.md")
+        git(root, "commit", "-qm", "unrelated docs")
+        self.assertEqual(evidence_verify(evidence, TASK_ID, branch), head_error)
+
+        # A verified product path changing after the reported head still invalidates it.
+        (root / "pipeline_tools" / "core.py").write_text("# changed\n", encoding="utf-8")
+        git(root, "add", "pipeline_tools/core.py")
+        git(root, "commit", "-qm", "product change")
+        self.assertEqual(evidence_verify(evidence, TASK_ID, branch), head_error)
+
+        # A head that is not an ancestor of HEAD keeps the strict rule.
+        for name in reports:
+            text = (evidence / name).read_text(encoding="utf-8")
+            write_exact(evidence / name, text.replace(f'"head": "{head}"', '"head": "' + "0" * 40 + '"'))
+        self.assertEqual(evidence_verify(evidence, TASK_ID, branch), head_error)
 
     def test_reconcile_reports_the_revision_bound_evidence(self):
         root, sheet, head = self._frozen_repo()

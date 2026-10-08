@@ -71,6 +71,7 @@ python -m pipeline_tools gate post-merge .pipeline/<task-id> --task-id <task-id>
 - 修订记录是追加式的：`revision` 从 2 起单调递增，旧条目字节不变，每条给出前版与新版哈希、理由、发起角色、裁决引用和结构性差异；拒绝或校验失败时不留下任何记录、哈希变化或文件移动。
 - `freeze_check` 以最新修订版的 `sheet_sha256` 为基准（没有修订记录时回退到 `.pipeline/<task-id>/goal.json`），所以已登记的修订不再报漂移，未走 `task amend` 的直接改动仍报 `task sheet changed after freeze`。
 - 证据有效性绑定修订版本：报告与机器结果写明 `sheet_revision`、`sheet_sha256` 和 `observed_at_commit`；只有当修订版本与当前版本不一致，或 `observed_at_commit..HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交时，证据才失效——`HEAD` 单纯前移不影响有效性。
+- 报告里的 `head` 是它评判的实现提交：`evidence verify`/`gate` 接受 `head` 是 `HEAD` 的祖先且 `head..HEAD` 只动本任务证据目录（含 `.pipeline/metrics/`）的情形（提交报告本身就会移动 `HEAD`，不能让报告自判失效）；`head` 不是祖先、或区间内动了产品/测试路径时仍报 `head does not match current Git identity`。
 - `task amend` 的退出码沿用统一语义：`0` 接受并登记、`2` 参数或契约结构错误、`3` 被拒绝（角色不符、改身份字段、缺少裁决、依赖缺失或成环）。
 
 新任务单使用 `templates/task-sheet.md`，填完后复制其 `pipeline-contract` 区块；用 `templates/pipeline-evidence.json` 为 executor、reviewer 和 main-final 报告生成机器证据。空模板本身故意不能通过校验，填入真实字段后才应通过。
