@@ -349,7 +349,14 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("--evidence", readme)
         self.assertIn("--evidence", skill)
         self.assertIn("--evidence", template)
-        self.assertRegex(skill, r"version: 0\.\d+\.\d+")
+        # 版本号必须真的不低于本次下限：只匹配格式会让版本回退溜过去。
+        declared_version = re.search(r"^version:\s*(\d+)\.(\d+)\.(\d+)\s*$", skill, re.MULTILINE)
+        self.assertIsNotNone(declared_version, "SKILL.md must declare version: X.Y.Z")
+        self.assertGreaterEqual(
+            tuple(int(part) for part in declared_version.groups()),
+            (0, 16, 0),
+            f"SKILL.md version must be at least 0.16.0 (found {declared_version.group(0).strip()})",
+        )
         self.assertIn("v0.13.0 → v0.14.0", migration)
 
     def test_references_compat_and_migration_documents_known_items(self):

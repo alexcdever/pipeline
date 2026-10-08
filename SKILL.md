@@ -29,7 +29,7 @@ metadata:
 
 ## 实现 worktree 约定
 
-- 任务单契约提交后冻结，之后只按记录的修订版本演进：主代理先手工改任务单，再用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 校验并登记一条修订记录（`.pipeline/<task-id>/amendments.json`）；身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订，放松约束（删除或放宽验收测试、降低证据等级、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；未记录的改动仍是静默篡改，会被 `freeze_check` 判为漂移。合并后不再修订，需求变化走重新规划或新建 `derived` 任务，不回写已合并的历史。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
+- 任务单契约提交后冻结，之后只按记录的修订版本演进：主代理先手工改任务单，再用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 校验并登记一条修订记录（`.pipeline/<task-id>/amendments.json`）；身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订，放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；未记录的改动仍是静默篡改，会被 `freeze_check` 判为漂移。合并后不再修订，需求变化走重新规划或新建 `derived` 任务，不回写已合并的历史。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
 - 必须从主工作树根目录执行：
 
   ```bash

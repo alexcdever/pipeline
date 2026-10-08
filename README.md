@@ -17,7 +17,7 @@
 - 临时目录与原始日志：系统临时目录下的 `pipeline-tools/`；`command run` 未指定 `--log` 时不会写入仓库
 - 项目级统计：`.pipeline/metrics/`（由工具自动生成；是否纳入 Git 由项目开发者决定）
 - 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
-- 任务契约提交后冻结，之后按记录的修订版本演进；每次修订用 `pipeline-tools task amend` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录（`.pipeline/<task-id>/amendments.json`）。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束（删除或放宽验收测试、降低证据等级、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；合并后不再修订，需求变化重新规划或新建 `derived` 任务，不回写历史
+- 任务契约提交后冻结，之后按记录的修订版本演进；每次修订用 `pipeline-tools task amend` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录（`.pipeline/<task-id>/amendments.json`）。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；合并后不再修订，需求变化重新规划或新建 `derived` 任务，不回写历史
 - 任务级状态只由 lifecycle API/CLI 管理；状态写入（`transition`、`event`）只允许主代理角色接口（`role=main-agent`），其他角色只能读取或报告 findings
 - 任务单只承载冻结契约与人类可读的契约说明；过程记录和阶段报告写入 `.pipeline/<task-id>/`，不另行维护项目级状态文档
 - 跨会话优先使用 `lifecycle resume/status/list/inspect` 恢复和读取任务状态，不从通知、自然语言报告或项目级状态文件推断
@@ -66,7 +66,7 @@ python -m pipeline_tools gate post-merge .pipeline/<task-id> --task-id <task-id>
 `task amend` 只校验、分类与登记修订，不生成也不重写任务单内容：主代理先手工改 `docs/tasks/<task-id>.md`，再调用 `task amend`，由工具把新契约与上一版契约做结构性比对，并把结果追加到 `.pipeline/<task-id>/amendments.json`。
 
 - 判据一「是否改变验证面」：`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk` 任一实质变化即 `verification_surface_changed: true`，已有阶段证据作废。
-- 判据二「是否放松约束」：删除验收测试、降低某条 `evidence_level`、改写该条的 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标即 `loosened: true`；缺少 `--adjudication` 时拒绝。
+- 判据二「是否放松约束」：删除验收测试、降低某条 `evidence_level`、降低任务级 `required_evidence_levels` 的下限（`max(required_evidence_levels)` 下降，或元素移除后下限随之下降）、改写该条的 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标即 `loosened: true`；缺少 `--adjudication` 时拒绝。下限上升不算放松。
 - 身份字段 `schema`、`task_id`、`task_type`、`derived_from` 不可修订；`dependencies` 的增删只需理由，但必须校验依赖任务单真实存在（解析顺序 `docs/tasks/<id>.md` → `.pipeline/<id>/<id>.md` → `.pipeline/archive/<id>.md`）且依赖图无环。
 - 修订记录是追加式的：`revision` 从 2 起单调递增，旧条目字节不变，每条给出前版与新版哈希、理由、发起角色、裁决引用和结构性差异；拒绝或校验失败时不留下任何记录、哈希变化或文件移动。
 - `freeze_check` 以最新修订版的 `sheet_sha256` 为基准（没有修订记录时回退到 `.pipeline/<task-id>/goal.json`），所以已登记的修订不再报漂移，未走 `task amend` 的直接改动仍报 `task sheet changed after freeze`。

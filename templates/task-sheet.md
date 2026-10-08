@@ -53,7 +53,7 @@
 Revision rules worth restating here:
 
 - A revision appends one entry to `.pipeline/<task-id>/amendments.json`: previous and new sheet hash, reason, requesting role, adjudication reference, and the structural difference. Old entries are never rewritten.
-- 两个判据独立：改变验证面（`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk`）作废已有阶段证据；放松约束（删除或放宽验收测试、降低证据等级、改写 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带裁决引用。
+- 两个判据独立：改变验证面（`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk`）作废已有阶段证据；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、改写 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带裁决引用。
 - Reports and machine results must name the sheet revision they judged (`sheet_revision`, `sheet_sha256`) and the commit they were observed at (`observed_at_commit`).
 
 Schema 4 rules worth restating here:

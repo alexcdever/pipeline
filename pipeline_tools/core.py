@@ -2371,7 +2371,17 @@ def _verification_surface_changed(previous: dict[str, Any], current: dict[str, A
     )
 
 
-def _contract_loosened(changes: dict[str, Any]) -> bool:
+def required_evidence_floor(contract: dict[str, Any]) -> int | None:
+    """The task-level evidence floor the lifecycle reads: max(required_evidence_levels)."""
+    levels = contract.get("required_evidence_levels") if isinstance(contract, dict) else None
+    values = [
+        item for item in (levels if isinstance(levels, list) else [])
+        if isinstance(item, int) and not isinstance(item, bool)
+    ]
+    return max(values) if values else None
+
+
+def _contract_loosened(previous: dict[str, Any], current: dict[str, Any], changes: dict[str, Any]) -> bool:
     """Whether a revision relaxes what the contract requires."""
     tests = changes["acceptance_tests"]
     if tests["removed"]:
@@ -2387,6 +2397,12 @@ def _contract_loosened(changes: dict[str, Any]) -> bool:
                         return True
             elif name in LOOSENING_ACCEPTANCE_FIELDS:
                 return True
+    # The task-level floor is the number the lifecycle turns into "ready"; lowering
+    # it (by dropping or shrinking the levels) lowers what the task must prove.
+    before_floor = required_evidence_floor(previous)
+    after_floor = required_evidence_floor(current)
+    if before_floor is not None and (after_floor is None or after_floor < before_floor):
+        return True
     if changes["allowed_paths"]["added"]:
         return True
     if changes["forbidden_paths"]["removed"]:
@@ -2495,7 +2511,7 @@ def amend_task_sheet(
         if cycle:
             return outcome("blocked", ["dependency cycle: " + " -> ".join(cycle)])
     surface_changed = _verification_surface_changed(previous, contract)
-    loosened = _contract_loosened(changes)
+    loosened = _contract_loosened(previous, contract, changes)
     if loosened and not (isinstance(adjudication, str) and adjudication.strip()):
         return outcome(
             "blocked",
@@ -2618,6 +2634,11 @@ def evidence_revision_status(
     Evidence is stale when the revision it names is not the current revision, or
     when a path its operations verify changed between the commit it was observed
     at and HEAD.  HEAD moving on its own never invalidates evidence.
+
+    Only evidence that declares ``sheet_revision`` is judged this way.  Evidence
+    in the historical shape (no revision field) keeps exactly the verdict the
+    older rules gave it, so a missing new field never adds an error by itself;
+    it is reported as unverified instead.
     """
     root = Path(root)
     revision, baseline = task_sheet_revision(root, task_id)
@@ -2625,38 +2646,56 @@ def evidence_revision_status(
     current_head = head.strip() if rc == 0 else None
     details: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
+    unverified: list[str] = []
     for name in sorted(records):
         value = records[name]
         reasons: list[str] = []
         declared = value.get("sheet_revision")
         declared_hash = value.get("sheet_sha256")
         observed_at = value.get("observed_at_commit")
-        if isinstance(declared, bool) or not isinstance(declared, int):
-            reasons.append(f"{name} does not record the task sheet revision it was produced against")
-        elif declared != revision:
-            reasons.append(
-                f"{name} was produced against task sheet revision {declared} "
-                f"but the current revision is {revision}"
-            )
-        elif baseline is not None and declared_hash != baseline:
-            reasons.append(f"{name} task sheet hash does not match revision {revision}")
-        if not isinstance(observed_at, str) or not observed_at.strip():
-            reasons.append(f"{name} does not record the commit it was observed at")
-        elif current_head:
-            changed = changed_paths_between(root, observed_at.strip(), current_head)
-            if changed is None:
-                reasons.append(f"{name} observed_at_commit is not a reachable commit: {observed_at.strip()}")
+        bound = isinstance(declared, int) and not isinstance(declared, bool)
+        judged = False
+        if bound:
+            if declared != revision:
+                reasons.append(
+                    f"{name} was produced against task sheet revision {declared} "
+                    f"but the current revision is {revision}"
+                )
+            elif baseline is not None and declared_hash != baseline:
+                reasons.append(f"{name} task sheet hash does not match revision {revision}")
+            if not isinstance(observed_at, str) or not observed_at.strip():
+                unverified.append(
+                    f"{name} does not record the commit it was observed at; "
+                    "the changed-path criterion was not evaluated"
+                )
+            elif current_head is None:
+                unverified.append(
+                    f"{name} declares an observation commit but HEAD is unavailable; "
+                    "the changed-path criterion was not evaluated"
+                )
             else:
-                resources = sheet_operation_resources(contract, _evidence_acceptance_ids(value))
-                touched = sorted({path for path in changed if any(_matches(path, pattern, root) for pattern in resources)})
-                if touched:
-                    reasons.append(
-                        f"{name} was produced before changes to paths it verifies: " + ", ".join(touched)
-                    )
+                changed = changed_paths_between(root, observed_at.strip(), current_head)
+                if changed is None:
+                    reasons.append(f"{name} observed_at_commit is not a reachable commit: {observed_at.strip()}")
+                else:
+                    judged = True
+                    resources = sheet_operation_resources(contract, _evidence_acceptance_ids(value))
+                    touched = sorted({path for path in changed if any(_matches(path, pattern, root) for pattern in resources)})
+                    if touched:
+                        reasons.append(
+                            f"{name} was produced before changes to paths it verifies: " + ", ".join(touched)
+                        )
+        else:
+            unverified.append(
+                f"{name} does not record the task sheet revision it was judged against; "
+                "the revision criteria were not applied"
+            )
         details[name] = {
-            "sheet_revision": declared if isinstance(declared, int) and not isinstance(declared, bool) else None,
+            "sheet_revision": declared if bound else None,
             "sheet_sha256": declared_hash if isinstance(declared_hash, str) else None,
             "observed_at_commit": observed_at if isinstance(observed_at, str) else None,
+            "revision_bound": bound,
+            "changed_paths_judged": judged,
             "stale": bool(reasons),
             "reasons": reasons,
         }
@@ -2669,6 +2708,7 @@ def evidence_revision_status(
         "records": details,
         "stale": bool(errors),
         "errors": errors,
+        "unverified": unverified,
     }
 
 

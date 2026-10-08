@@ -152,8 +152,9 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         revision_status = evidence_revision_status(root, str(task_id), contract or {}, bound_records)
     except (LegacyPipelineLayoutError, OSError) as error:
         revision_status = {"schema": 1, "sheet_revision": None, "sheet_sha256": None, "head": None,
-                           "records": {}, "stale": True, "errors": [f"布局冲突：{error}"]}
+                           "records": {}, "stale": True, "errors": [f"布局冲突：{error}"], "unverified": []}
     revision_errors = revision_status["errors"]
+    revision_unverified = revision_status.get("unverified", [])
     statuses = [value.get("status") for value in reports.values()]
     finalization_errors: list[str] = []
     finalization = _json(evidence / "finalization.json")
@@ -195,7 +196,7 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
               "verify": "PASS" if not verify_errors else "BLOCKED",
               "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
               "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + finalization_errors + post_merge_errors + revision_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
-              "unverified": [] if direct_pass else ["task completion"], "updated": False}
+              "unverified": ([] if direct_pass else ["task completion"]) + revision_unverified, "updated": False}
     if update:
         output["errors"].append("--update is deprecated and cannot modify task sheets")
         output["status"] = "BLOCKED"

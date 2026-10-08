@@ -606,12 +606,15 @@ class TaskSheetAmendmentTests(unittest.TestCase):
         self.assertEqual(document["revisions"][0]["loosened"], True)
         self.assertEqual(document["revisions"][0]["reason"], "drop an acceptance test")
 
-    def test_reconcile_reports_the_revision_bound_evidence(self):
-        root, sheet, head = self._frozen_repo()
-        revision, baseline = task_sheet_revision(root, TASK_ID)
-        evidence = root / ".pipeline" / TASK_ID
-        evidence.mkdir(parents=True, exist_ok=True)
-        (evidence / "test.log").write_text("observed\n", encoding="utf-8")
+    def _write_bound_evidence(self, root, head, revision, baseline, *, bind=True):
+        """Write a complete evidence set, optionally with the revision binding."""
+        directory = root / ".pipeline" / TASK_ID
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "test.log").write_text("observed\n", encoding="utf-8")
+        binding = (
+            {"sheet_revision": revision, "sheet_sha256": baseline, "observed_at_commit": head}
+            if bind else {}
+        )
         for name, role in (
             ("executor-report.md", "executor"),
             ("review-report.md", "reviewer"),
@@ -623,9 +626,9 @@ class TaskSheetAmendmentTests(unittest.TestCase):
                 "status": "PASS",
                 "commands": [{"command": "python -m pytest -q", "exit_code": 0, "evidence_ref": "test.log"}],
                 "assertions": ["observed"], "evidence_refs": ["test.log"], "unverified": [],
-                "sheet_revision": revision, "sheet_sha256": baseline, "observed_at_commit": head,
+                **binding,
             }
-            (evidence / name).write_text(
+            (directory / name).write_text(
                 "report\n```pipeline-evidence\n" + json.dumps(report) + "\n```\n", encoding="utf-8"
             )
         for name, role in (
@@ -633,21 +636,108 @@ class TaskSheetAmendmentTests(unittest.TestCase):
             ("reviewer-result.json", "reviewer"),
             ("final-result.json", "main-final"),
         ):
-            (evidence / name).write_text(
+            (directory / name).write_text(
                 json.dumps({
                     "schema": 1, "task_id": TASK_ID, "role": role, "status": "pass", "exit_code": 0,
-                    "sheet_revision": revision, "sheet_sha256": baseline, "observed_at_commit": head,
                     "acceptance": [{"id": "acceptance-test-1", "status": "pass", "exit_code": 0,
                                     "evidence_refs": ["test.log"]}],
                     "unverified": [],
+                    **binding,
                 }),
                 encoding="utf-8",
             )
+        return directory
+
+    def test_loosening_covers_the_task_level_evidence_floor(self):
+        from pipeline_tools.task_lifecycle import init_task, lifecycle_status
+
+        strict = self._contract(required_evidence_levels=[3])
+        strict["acceptance_tests"][0]["evidence_level"] = 3
+        root, sheet, _head = self._frozen_repo(contract=strict)
+        self.assertEqual(init_task(root, TASK_ID)["evidence"]["required_level"], 3)
+
+        lowered = dict(strict, required_evidence_levels=[2])
+        refused = self._amend(root, sheet, lowered, reason="lower the task evidence floor")
+        self.assertEqual(refused["status"], "blocked", refused)
+        self.assertTrue(any("adjudication" in error for error in refused["errors"]), refused["errors"])
+        self.assertFalse((root / ".pipeline" / TASK_ID / "amendments.json").exists())
+        self.assertEqual(
+            hashlib.sha256(self.last_sheet_text.encode("utf-8")).hexdigest(), digest(sheet)
+        )
+        write_exact(sheet, self._sheet_text(strict))
+        self.assertEqual(lifecycle_status(root, TASK_ID)["evidence"]["required_level"], 3)
+
+        accepted = self._amend(
+            root, sheet, lowered, reason="lower the task evidence floor",
+            adjudication="docs/decisions/evidence-floor.md",
+        )
+        self.assertEqual(accepted["status"], "pass", accepted)
+        self.assertTrue(accepted["loosened"])
+        self.assertTrue(accepted["verification_surface_changed"])
+        self.assertEqual(accepted["changes"]["required_evidence_levels"], {"added": [2], "removed": [3]})
+        self.assertEqual(accepted["adjudication_ref"], "docs/decisions/evidence-floor.md")
+        # The floor the lifecycle reads really did move from 3 down to 2.
+        self.assertEqual(lifecycle_status(root, TASK_ID)["evidence"]["required_level"], 2)
+
+    def test_reconcile_reports_the_revision_bound_evidence(self):
+        root, sheet, head = self._frozen_repo()
+        revision, baseline = task_sheet_revision(root, TASK_ID)
+        self._write_bound_evidence(root, head, revision, baseline)
         value = reconcile_task(root, sheet)
         self.assertEqual(value["sheet_revision"], revision)
         self.assertEqual(value["sheet_sha256"], baseline)
         self.assertFalse(value["evidence_validity"]["executor-report.md"]["stale"], value["evidence_validity"])
         self.assertEqual([error for error in value["errors"] if "produced against task sheet revision" in error], [])
+
+    def test_legacy_evidence_without_revision_fields_keeps_its_verdict(self):
+        """Evidence in the historical shape must not collect new errors."""
+        root, sheet, head = self._frozen_repo()
+        revision, baseline = task_sheet_revision(root, TASK_ID)
+
+        legacy_records = {
+            "executor-report.md": {"schema": 2, "acceptance": [{"id": "acceptance-test-1"}]},
+            "executor-result.json": {"schema": 1, "acceptance": [{"id": "acceptance-test-1"}]},
+        }
+        status = evidence_revision_status(root, TASK_ID, self._contract(), legacy_records)
+        self.assertEqual(status["errors"], [], status)
+        self.assertFalse(status["stale"])
+        for name, detail in status["records"].items():
+            self.assertFalse(detail["revision_bound"], detail)
+            self.assertFalse(detail["stale"], detail)
+            self.assertEqual(detail["reasons"], [])
+            self.assertIsNone(detail["sheet_revision"])
+        self.assertEqual(status["unverified"], [
+            f"{name} does not record the task sheet revision it was judged against; "
+            "the revision criteria were not applied"
+            for name in sorted(legacy_records)
+        ], status["unverified"])
+
+        # The same evidence set with and without the binding fields must reach the
+        # same verdict: a missing new field never changes PASS/BLOCKED on its own.
+        self._write_bound_evidence(root, head, revision, baseline, bind=False)
+        legacy = reconcile_task(root, sheet)
+        self.assertEqual([error for error in legacy["errors"] if "revision" in error], [], legacy["errors"])
+        self.assertEqual(
+            [error for error in legacy["errors"] if "produced before changes" in error], [], legacy["errors"]
+        )
+        self._write_bound_evidence(root, head, revision, baseline)
+        bound = reconcile_task(root, sheet)
+        self.assertEqual(bound["status"], legacy["status"], (bound, legacy))
+        self.assertEqual(bound["errors"], legacy["errors"], (bound["errors"], legacy["errors"]))
+
+        # A record that does claim a revision is still judged by the new criteria.
+        mismatched = evidence_revision_status(
+            root, TASK_ID, self._contract(),
+            {"executor-result.json": {
+                "schema": 1, "sheet_revision": revision + 1,
+                "sheet_sha256": baseline, "observed_at_commit": head,
+                "acceptance": [{"id": "acceptance-test-1"}],
+            }},
+        )
+        self.assertTrue(mismatched["stale"], mismatched)
+        self.assertTrue(
+            any("current revision" in reason for reason in mismatched["errors"]), mismatched["errors"]
+        )
 
 
     def test_lifecycle_follows_the_recorded_revision(self):

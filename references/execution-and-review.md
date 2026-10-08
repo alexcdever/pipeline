@@ -29,7 +29,7 @@
 - `freeze_check` 和 lifecycle 的 `task_sheet_sha256` 漂移检查共用同一基准——最新修订版的 `sheet_sha256`，没有修订记录时回退到 `.pipeline/<task-id>/goal.json` 的记录。因此已登记的修订不再报漂移，未经 `task amend` 的直接改文件仍报 `task sheet changed after freeze`。
 - 每份阶段报告与机器结果写明它评判的修订版本（`sheet_revision`、`sheet_sha256`）和观察提交（`observed_at_commit`）。`observed_at_commit` 只是事实记录：`HEAD` 单纯前移不让证据失效。
 - 证据失效只有两条判据：修订版本与当前版本不一致；或 `git diff --name-only <observed_at_commit> HEAD` 命中的路径与该证据所属 operation 的 `resources` 相交。`pipeline_tools/core.py` 的 `evidence_revision_status` 实现这两条，`evidence reconcile` 用它判定 PASS/BLOCKED；`evidence_freshness` 在结果只记录 `observed_at_commit`（没有 `product_head`）时用同一路径判据，并且不再要求 `HEAD` 等于观察提交。
-- 判据一「是否改变验证面」命中时，已有阶段证据作废，必须对最新修订版重做独立审查；判据二「是否放松约束」命中时，除了修订记录还必须先有裁决引用。
+- 判据一「是否改变验证面」命中时，已有阶段证据作废，必须对最新修订版重做独立审查；判据二「是否放松约束」命中时，除了修订记录还必须先有裁决引用。判据二包含任务级证据下限：`required_evidence_levels` 的 `max` 下降（含元素被移除后下限随之下降）同样算放松，因为它直接降低 `task_lifecycle._evidence` 判定的 `required_level`。
 
 ## 执行子代理
 
