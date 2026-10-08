@@ -2,7 +2,7 @@
 
 ## Worktree 身份
 
-主代理在契约提交后冻结不可变任务单，再创建唯一的 `<仓库根目录>/.worktrees/<task-id>`，并在 dispatch 中传入绝对路径。执行子代理和审查子代理必须先核对该路径、branch、task-id 与 `git worktree list --porcelain` 一致，再在指定 worktree 工作；不得自行运行 `git worktree add`，不得改用仓库同级目录或为同一任务创建第二个 worktree。独立审查上下文不要求新建 Git worktree。工具首次访问任务证据时会自动把 `.workflow/<task-id>/` 迁移为 `.pipeline/<task-id>/`，并核对文件哈希、路径引用和工具测试；若 `.pipeline/` 已存在则报告冲突并停止。迁移完成后不能继续写入旧目录。
+主代理在契约提交后冻结任务单（之后只能按记录的修订版本演进），再创建唯一的 `<仓库根目录>/.worktrees/<task-id>`，并在 dispatch 中传入绝对路径。执行子代理和审查子代理必须先核对该路径、branch、task-id 与 `git worktree list --porcelain` 一致，再在指定 worktree 工作；不得自行运行 `git worktree add`，不得改用仓库同级目录或为同一任务创建第二个 worktree。独立审查上下文不要求新建 Git worktree。工具首次访问任务证据时会自动把 `.workflow/<task-id>/` 迁移为 `.pipeline/<task-id>/`，并核对文件哈希、路径引用和工具测试；若 `.pipeline/` 已存在则报告冲突并停止。迁移完成后不能继续写入旧目录。
 
 ## 执行期 goal 哈希稳定性
 
@@ -22,9 +22,20 @@
 
 结论：哈希漂移等于需求在执行期被改动，正确反应是**停下重新规划**，不是放宽断言、改契约或继续合并。审查子代理和主代理终检都不得把漂移解释成可接受的差异。
 
+## 任务单修订版本与证据新鲜度
+
+任务单是版本化契约：修订 1 是 `freeze_check` 记录的冻结版本，之后每次 `pipeline-tools task amend` 都会往 `.pipeline/<task-id>/amendments.json` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束必须带 `--adjudication`；`dependencies` 的增删只需理由，但必须校验依赖任务单存在且依赖图无环。
+
+- `freeze_check` 和 lifecycle 的 `task_sheet_sha256` 漂移检查共用同一基准——最新修订版的 `sheet_sha256`，没有修订记录时回退到 `.pipeline/<task-id>/goal.json` 的记录。因此已登记的修订不再报漂移，未经 `task amend` 的直接改文件仍报 `task sheet changed after freeze`。
+- 每份阶段报告与机器结果写明它评判的修订版本（`sheet_revision`、`sheet_sha256`）和观察提交（`observed_at_commit`）。`observed_at_commit` 只是事实记录：`HEAD` 单纯前移不让证据失效。
+- 证据失效只有两条判据：修订版本与当前版本不一致；或 `git diff --name-only <observed_at_commit> HEAD` 命中的路径与该证据所属 operation 的 `resources` 相交。`pipeline_tools/core.py` 的 `evidence_revision_status` 实现这两条，`evidence reconcile` 用它判定 PASS/BLOCKED；`evidence_freshness` 在结果只记录 `observed_at_commit`（没有 `product_head`）时用同一路径判据，并且不再要求 `HEAD` 等于观察提交。
+- 判据一「是否改变验证面」命中时，已有阶段证据作废，必须对最新修订版重做独立审查；判据二「是否放松约束」命中时，除了修订记录还必须先有裁决引用。
+
 ## 执行子代理
 
-收到的是已提交、冻结且不可变的任务单，不是可自由重写的目标；不得通过编辑任务单或手工写状态推进任务。任务级状态由 lifecycle API/CLI 管理，跨会话恢复优先使用 `lifecycle resume/status/list/inspect`；只有主代理可通过 `role=main-agent` 写入状态。标准循环：
+收到的是已提交、冻结的任务单，不是可自由重写的目标；不得通过编辑任务单或手工写状态推进任务。契约不是绝对不可变，但**执行子代理和审查子代理都不得修改任务单**：发现契约缺陷（断言不可执行、范围与事实矛盾、依赖缺失、验收覆盖不足）时，提交结构化反馈给主代理——写明现象、期望、复现命令、证据定位和影响面——由主代理裁决并决定是否用 `pipeline-tools task amend` 登记一条修订版本，再在同一 worktree 继续交付。修订记录里的 `requested_by`（`executor`/`reviewer`）与 `feedback_ref` 就是这条反馈的落点。
+
+任务级状态由 lifecycle API/CLI 管理，跨会话恢复优先使用 `lifecycle resume/status/list/inspect`；只有主代理可通过 `role=main-agent` 写入状态。标准循环：
 
 1. 读任务单和项目规则，确认 task-id、branch、worktree 与允许范围。
 2. 每个行为先写失败测试，真实运行确认按预期失败；失败原因不符合预期时先诊断，不进入实现。

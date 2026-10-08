@@ -7,6 +7,9 @@
   "role": "executor",
   "round": 1,
   "status": "PASS",
+  "sheet_revision": 1,
+  "sheet_sha256": "<sha256 of the task sheet revision this evidence judged>",
+  "observed_at_commit": "<commit this evidence was observed at>",
   "commands": [
     {
       "command": "<complete command>",

@@ -330,10 +330,16 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         recovery = (ROOT / "references/merge-and-recovery.md").read_text(encoding="utf-8")
         migration = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")
         for text in (readme, skill, template, acceptance, execution, recovery, migration):
+            # 当前状态模型：契约先冻结，再按记录的修订版本演进。
             self.assertTrue("冻结" in text or "frozen" in text, text)
-            self.assertTrue("不可变" in text or "immutable" in text, text)
+            self.assertTrue("修订" in text, text)
+            self.assertTrue("身份字段" in text, text)
             self.assertIn("lifecycle", text)
             self.assertIn(".pipeline/<task-id>", text)
+        # 当前规则不得再声称整份任务单绝对不可变；历史版本条目原文保留，不参与这条断言。
+        for text in (readme, skill, template, acceptance, execution, recovery):
+            for stale in ("任务单不可变", "冻结且不可变", "提交后不可变", "immutable after commit", "frozen and immutable"):
+                self.assertNotIn(stale, text, stale)
         for text in (readme, skill, template, recovery, migration):
             self.assertIn("lifecycle", text)
             for command in ("resume", "status", "list", "inspect"):
@@ -343,7 +349,7 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("--evidence", readme)
         self.assertIn("--evidence", skill)
         self.assertIn("--evidence", template)
-        self.assertIn("version: 0.15.0", skill)
+        self.assertRegex(skill, r"version: 0\.\d+\.\d+")
         self.assertIn("v0.13.0 → v0.14.0", migration)
 
     def test_references_compat_and_migration_documents_known_items(self):

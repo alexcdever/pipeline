@@ -21,7 +21,14 @@ from typing import Any
 
 from .layout import active_pipeline_dir, read_pipeline_dirs
 from .contract import validate_task
-from .core import evidence_verify, gate_check, git, verify_finalization_snapshot
+from .core import (
+    evidence_verify,
+    gate_check,
+    git,
+    recorded_task_sheet_hashes,
+    task_sheet_baseline_sha256,
+    verify_finalization_snapshot,
+)
 
 
 _EVENT_FAILURE = "lifecycle event write failed; state was rolled back"
@@ -135,8 +142,12 @@ def _read_state(root: Path, task_id: str) -> dict[str, Any] | None:
         return _result("blocked", task_id, state=value.get("state"), errors=["lifecycle identity task id mismatch"])
     recorded = identity.get("task_sheet_sha256")
     observed = _sha256(_task_sheet(root, task_id)) or ""
-    if recorded != observed:
-        return _result("blocked", task_id, state=value.get("state"), errors=["task sheet hash drift"], observed_task_sheet_sha256=observed, recorded_task_sheet_sha256=recorded)
+    # A recorded amendment moves the baseline on purpose; the lifecycle identity
+    # hash captured at init is only the fallback when no revision is recorded.
+    amended_baseline = task_sheet_baseline_sha256(root, task_id)
+    expected = amended_baseline or recorded
+    if expected != observed:
+        return _result("blocked", task_id, state=value.get("state"), errors=["task sheet hash drift"], observed_task_sheet_sha256=observed, recorded_task_sheet_sha256=expected)
     if not events:
         return _result("blocked", task_id, state=value.get("state"), errors=["events.jsonl must be non-empty"])
     if events:
@@ -175,6 +186,27 @@ def _summary(state: dict[str, Any], root: Path, task_id: str) -> dict[str, Any]:
 
 def _require_writer(role: str) -> list[str]:
     return [] if role == "main-agent" else ["role=main-agent is required for lifecycle writes"]
+
+
+def _identity_matches(root: Path, task_id: str, recorded: Any, observed: dict[str, str]) -> bool:
+    """Whether a recorded lifecycle identity still describes this task.
+
+    The lifecycle identity keeps the sheet hash captured when the task was
+    initialized.  A recorded amendment legitimately moves that hash, so any hash
+    the amendment chain accounts for is accepted while every other identity
+    field still has to match; an unrecorded edit stays drift.
+    """
+    if recorded == observed:
+        return True
+    if not isinstance(recorded, dict):
+        return False
+    recorded_hash = recorded.get("task_sheet_sha256")
+    if not isinstance(recorded_hash, str) or recorded_hash not in recorded_task_sheet_hashes(root, task_id):
+        return False
+    return (
+        {key: value for key, value in recorded.items() if key != "task_sheet_sha256"}
+        == {key: value for key, value in observed.items() if key != "task_sheet_sha256"}
+    )
 
 
 def _load_contract(root: Path, task_id: str) -> dict[str, Any]:
@@ -324,7 +356,7 @@ def init_task(root: Path, task_id: str, identity: str | None = None, *, create: 
         if existing:
             if existing.get("status") == "blocked":
                 return existing
-            if existing.get("identity") != bound:
+            if not _identity_matches(root, task_id, existing.get("identity"), bound):
                 return _result("blocked", task_id, errors=["task identity drift"], identity=existing.get("identity"), observed=bound)
             return existing
         if not create:
