@@ -900,5 +900,154 @@ class PlanningTests(unittest.TestCase):
             )
             self.assertTrue(any('parent_task_type' in error for error in validate_task_plan(mismatched, root=root)))
 
+    # --- Finalization accepts the report schema the templates produce --------
+
+    def _finalization_contract(self):
+        return {
+            'schema': 2, 'task_id': 'demo', 'task_type': 'repair',
+            'implement_plan': {'path': 'implement-plan.md'},
+            'allowed_paths': ['pipeline_tools/**', 'tests/**', 'docs/tasks/**'],
+            'forbidden_paths': ['implement-plan.md', 'IDEA.md', '.pipeline/**'],
+            'operations': [{'id': 'finalize', 'kind': 'repair', 'scope': 'evidence',
+                            'acceptance_tests': ['acceptance-test-demo']}],
+            'chain': {name: ['pipeline_tools/core.py'] for name in (
+                'entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')},
+            'dependencies': [], 'required_evidence_levels': [3],
+            'acceptance_tests': [{
+                'id': 'acceptance-test-demo', 'evidence_level': 3,
+                'test_ref': 'tests/test_planning.py',
+                'command_ref': 'python -m pytest -q tests/test_planning.py',
+            }],
+        }
+
+    def _write_schema_two_evidence(self, directory, *, branch, worktree, head, revision=1,
+                                   main_cwd=None, task_id='demo'):
+        """Write the six finalization inputs in the schema 2 shape the templates emit."""
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, role in (('executor-report.md', 'executor'), ('review-report.md', 'reviewer'),
+                           ('final-check.md', 'main-final')):
+            (directory / name).write_text(
+                '```pipeline-evidence\n' + json.dumps({
+                    'schema': 2, 'task_id': task_id, 'worktree': worktree, 'branch': branch,
+                    'head': head, 'sheet_revision': revision, 'observed_at_commit': head,
+                    'generated_at': '2026-01-01T00:00:00+00:00',
+                    'role': role, 'round': 1, 'status': 'PASS',
+                    'commands': [{
+                        'command': 'python -m pytest -q tests/test_planning.py', 'exit_code': 0,
+                        'cwd': main_cwd if name == 'final-check.md' else worktree,
+                        'evidence_ref': name,
+                    }],
+                    'assertions': ['the observed result matches the contract'],
+                    'evidence_refs': [name], 'unverified': [],
+                }) + '\n```\n', encoding='utf-8')
+        for name, role in (('executor-result.json', 'executor'), ('reviewer-result.json', 'reviewer'),
+                           ('final-result.json', 'main-final')):
+            value = {
+                'schema': 1, 'task_id': task_id, 'role': role, 'status': 'pass', 'exit_code': 0,
+                'acceptance': [{'id': 'acceptance-test-demo', 'status': 'pass', 'exit_code': 0,
+                                'evidence_refs': ['executor-report.md']}],
+                'unverified': [],
+            }
+            if name == 'final-result.json':
+                value['decision'] = 'READY_FOR_EVIDENCE_FINALIZATION'
+            (directory / name).write_text(json.dumps(value), encoding='utf-8')
+
+    def _rewrite_schema_two_report(self, directory, name, **fields):
+        path = directory / name
+        lines = path.read_text(encoding='utf-8').splitlines()
+        value = json.loads(lines[1])
+        for key, item in fields.items():
+            if item is None:
+                value.pop(key, None)
+            else:
+                value[key] = item
+        path.write_text('```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8')
+
+    def test_finalization_accepts_schema_two_reports(self):
+        import sys
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+
+            def git(*args, cwd=root, check=True):
+                return subprocess.run(['git', '-C', str(cwd), *args], check=check, capture_output=True, text=True)
+
+            git('init', '-q', '-b', 'main')
+            git('config', 'user.email', 'test@example.invalid')
+            git('config', 'user.name', 'Test')
+            (root / 'src').mkdir()
+            (root / 'src' / 'app.py').write_text('stable\n', encoding='utf-8')
+            (root / '.gitignore').write_text('/.worktrees/\n', encoding='utf-8')
+            sheet = root / 'docs' / 'tasks' / 'demo.md'
+            sheet.parent.mkdir(parents=True)
+            sheet.write_text(
+                '<!-- Task ID: demo -->\n```pipeline-contract\n'
+                + json.dumps(self._finalization_contract()) + '\n```\n', encoding='utf-8')
+            git('add', '.')
+            git('commit', '-qm', 'baseline')
+            baseline = git('rev-parse', 'HEAD').stdout.strip()
+            worktree = root / '.worktrees' / 'demo'
+            git('worktree', 'add', '-b', 'demo-task', str(worktree), baseline)
+            # The task branch writes the stage reports under its own identity: the
+            # recorded branch and worktree are the task branch and task worktree.
+            self._write_schema_two_evidence(
+                worktree / '.pipeline' / 'demo',
+                branch='demo-task', worktree=str(worktree), head=baseline, main_cwd=str(root),
+            )
+            git('add', '.pipeline', cwd=worktree)
+            git('commit', '-qm', 'task stage reports', cwd=worktree)
+            (worktree / 'src' / 'app.py').write_text('task change\n', encoding='utf-8')
+            git('add', 'src/app.py', cwd=worktree)
+            git('commit', '-qm', 'task product change', cwd=worktree)
+            git('merge', '--no-ff', '-m', 'merge demo-task', 'demo-task')
+            merged = git('rev-parse', 'HEAD').stdout.strip()
+            self.assertNotEqual(baseline, merged)
+            evidence = root / '.pipeline' / 'demo'
+            self.assertTrue((evidence / 'executor-report.md').is_file())
+            recorded = json.loads((evidence / 'executor-report.md').read_text(
+                encoding='utf-8').split('```pipeline-evidence\n')[1].split('\n```')[0])
+            self.assertEqual('demo-task', recorded['branch'])
+            self.assertEqual(str(worktree), recorded['worktree'])
+
+            env = {**os.environ, 'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '1',
+                   'PYTHONPATH': str(Path(__file__).resolve().parent.parent)}
+            finalize = subprocess.run(
+                [sys.executable, '-m', 'pipeline_tools', 'planning', 'evidence-finalize', str(evidence),
+                 '--task-id', 'demo', '--success'],
+                cwd=root, env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(finalize.returncode, 0, finalize.stdout + finalize.stderr)
+            self.assertEqual(json.loads(finalize.stdout)['status'], 'finalized')
+            self.assertTrue((evidence / 'finalization.json').is_file())
+            verify = subprocess.run(
+                [sys.executable, '-m', 'pipeline_tools', 'evidence', 'verify', str(evidence),
+                 '--task-id', 'demo', '--phase', 'finalized'],
+                cwd=root, env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
+
+    def test_finalization_still_rejects_incomplete_reports(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d) / '.pipeline' / 'demo'
+            self._write_schema_two_evidence(
+                directory, branch='demo-task', worktree='worktree', head='a' * 40)
+            self.assertEqual(finalize_evidence(directory, 'demo', True)['status'], 'finalized')
+
+        cases = (
+            ('executor-report.md', 'missing-field', {'assertions': None}),
+            ('review-report.md', 'role-mismatch', {'role': 'executor'}),
+            ('executor-report.md', 'task-mismatch', {'task_id': 'other-task'}),
+        )
+        observed = []
+        for name, label, fields in cases:
+            with tempfile.TemporaryDirectory() as d:
+                directory = Path(d) / '.pipeline' / 'demo'
+                self._write_schema_two_evidence(
+                    directory, branch='demo-task', worktree='worktree', head='a' * 40)
+                self._rewrite_schema_two_report(directory, name, **fields)
+                result = finalize_evidence(directory, 'demo', True)
+                self.assertEqual(result['status'], 'blocked', (label, result))
+                self.assertIn(f'invalid {name}', result['missing'], label)
+                self.assertFalse((directory / 'finalization.json').exists(), label)
+                observed.append(label)
+        self.assertEqual(sorted(observed), ['missing-field', 'role-mismatch', 'task-mismatch'])
+
 
 if __name__ == '__main__': unittest.main()

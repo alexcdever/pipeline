@@ -2411,15 +2411,30 @@ def _read_evidence_block(path: Path) -> dict[str, Any] | None:
 
 
 def _validate_finalization_report(path: Path, task_id: str, expected_role: str) -> bool:
+    """Validate a stage report as finalization input.
+
+    Both report schemas the toolchain has ever produced are acceptable: schema 1
+    is the historical shape and schema 2 is what the current templates write.  A
+    schema 2 report additionally records the commit it judged, so its ``head``
+    must be present and be a commit hash; every other required field, the role,
+    the task identity and the post-merge status vocabulary are checked the same
+    way for both schemas.
+    """
     value = _read_evidence_block(path)
     if value is None:
         return False
     required = ("schema", "task_id", "worktree", "branch", "round", "status", "commands", "assertions", "evidence_refs", "unverified")
     if any(field not in value for field in required):
         return False
+    schema = value.get("schema")
+    if schema not in {1, 2}:
+        return False
+    if schema == 2:
+        head = value.get("head")
+        if not isinstance(head, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", head):
+            return False
     return (
-        value.get("schema") == 1
-        and value.get("task_id") == task_id
+        value.get("task_id") == task_id
         and value.get("role") == expected_role
         and isinstance(value.get("worktree"), str)
         and bool(value.get("worktree"))

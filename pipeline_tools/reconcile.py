@@ -14,6 +14,7 @@ from .core import (
     evidence_readiness,
     evidence_revision_status,
     evidence_verify,
+    git,
     normalize_status,
     verify_structured_result,
     verify_finalization_snapshot,
@@ -66,6 +67,34 @@ def _safe_cwd_is_root(value: Any, root: Path) -> bool:
         return candidate.resolve() == root.resolve()
     except (OSError, TypeError, ValueError, RuntimeError):
         return False
+
+
+def _delivery_is_merged(root: Path, task_id: str, evidence: Path, branches: set[Any]) -> bool:
+    """Return whether a delivery is already merged, so reconcile judges post-merge.
+
+    Two mechanical signals are accepted, and either one is sufficient:
+
+    - the task carries a ``finalized`` marker, which the post-merge sequence only
+      writes at its end; and
+    - a branch named by the reports resolves to a ref whose tip is already an
+      ancestor of the current ``HEAD``.
+
+    The two signals cannot contradict each other: each is a positive proof of a
+    merge, while a branch ref that is missing (deleted after the merge) or not an
+    ancestor is only absence of that second proof, never a claim that the
+    delivery is unmerged.  Taking their union therefore cannot weaken the active
+    binding: an unmerged task keeps its branch tip strictly ahead of ``HEAD`` and
+    carries no marker, so it is still judged active.
+    """
+    marker = _json(evidence / "finalization.json")
+    if isinstance(marker, dict) and marker.get("task_id") == task_id and marker.get("status") == "finalized":
+        return True
+    for branch in sorted(item for item in branches if isinstance(item, str) and item.strip()):
+        if git(root, "rev-parse", "--verify", f"refs/heads/{branch}")[0]:
+            continue
+        if git(root, "merge-base", "--is-ancestor", branch, "HEAD")[0] == 0:
+            return True
+    return False
 
 
 def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dict[str, Any]:
@@ -148,7 +177,14 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     if reports and len(strict_reports) != len(_REPORTS):
         identity_errors.append("schema 1 reports are legacy/unverified and cannot support final PASS")
     try:
-        verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"))
+        # The phase selects the identity criterion set.  A merged delivery is
+        # identified by the task id plus the sheet revision: merging always moves
+        # HEAD past the commits the reports recorded, so the active commit binding
+        # could never hold there.  An unmerged task keeps that binding.
+        phase = "finalized" if _delivery_is_merged(
+            root, str(task_id), evidence, identity_values["branch"]
+        ) else "active"
+        verify_errors = evidence_verify(evidence, str(task_id), identity.get("branch"), phase)
         readiness = evidence_readiness(evidence, str(task_id))
     except (LegacyPipelineLayoutError, OSError) as error:
         verify_errors = [f"布局冲突：{error}"]
