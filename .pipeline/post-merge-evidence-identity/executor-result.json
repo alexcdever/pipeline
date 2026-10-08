@@ -5,12 +5,12 @@
   "status": "pass",
   "exit_code": 0,
   "identity": {
-    "product_head": "f39d1f9024facb2998757f0ea23350f492325c63",
-    "head": "f39d1f9024facb2998757f0ea23350f492325c63",
+    "product_head": "270ebc0192bbd7273b1c207eec26872bc744bbc8",
+    "head": "270ebc0192bbd7273b1c207eec26872bc744bbc8",
     "branch": "post-merge-evidence-identity",
     "worktree": "D:/Projects/Skills/pipeline/.worktrees/post-merge-evidence-identity",
-    "sheet_revision": 3,
-    "sheet_sha256": "78a64de3081de590cb4dcab497a644edb6940cebae4a4a57c214407458c4d69b"
+    "sheet_revision": 4,
+    "sheet_sha256": "c32e3c23c23cb830ff867374e1be927880700fc8cd21a88c0654eff1a7dc91a9"
   },
   "acceptance": [
     {
@@ -59,11 +59,7 @@
   "unverified": [
     "independent review of this round is not produced by this executor run",
     "post-merge re-verification of the merged head in the main worktree is not produced by this executor run",
-    "the post-merge identity regime is not reachable through `evidence verify --phase finalized` because pipeline_tools/__main__.py is outside the frozen allowed_paths; the gate path and the Python API do carry the phase",
-    "task_sheet_revision reads the amendment record from the worktree that ran `task amend` (the main worktree), so this worktree reports revision 1 while the contract revision is 3",
-    "whether the dependency task can now finish finalization is the main agent's decision; its post-merge gate still reports the missing observed_at_commit and the BLOCKED final check, and reconcile still applies the active commit binding"
-  ],
-  "blockers": [
-    "decision point 4: wiring the phase into `evidence verify --phase finalized` needs one line in pipeline_tools/__main__.py, which is not in the frozen allowed_paths; adjudication or an amended scope is required"
+    "task_sheet_revision reads the amendment record from the worktree that ran `task amend` (the main worktree), so this worktree reports revision 1 while the contract revision is 4; the main agent's post-merge gate runs in the main worktree where the record exists and matches this evidence",
+    "whether the dependency task can now finish finalization is the main agent's decision: its post-merge identity is accepted, but its post-merge gate still reports the missing observed_at_commit and the BLOCKED final check, and reconcile still applies the active commit binding"
   ]
 }
