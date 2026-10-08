@@ -44,7 +44,9 @@
 
 **合并后复验是硬要求，不是建议**：post-merge gate 需要 `final-check.md` 里至少一条 `exit_code == 0` 的命令证据，且该命令的 `cwd` 解析到主工作树根（`gate_check` 的 `_post_merge_reverified_in_main_worktree`）。只在任务 worktree 里跑过、或只在报告里写“主工作树已验证”而没有可解析的命令条目，都不算复验通过。
 
-worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。`finalization.json` 必须可解析且绑定当前 task；缺失、旧 marker 或身份不一致时 reconcile 不能 PASS。schema 1 报告仅用于 legacy/unverified 查询，ready/merged/reconcile 最终 PASS 需要 schema 2 的 branch、worktree、HEAD 身份一致。events.jsonl 还必须从 `created` 开始、transition 可重放且终态与 lifecycle.json 一致。
+worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。`finalization.json` 必须可解析且绑定当前 task；缺失、旧 marker 或身份不一致时 reconcile 不能 PASS。schema 1 报告仅用于 legacy/unverified 查询；schema 2 报告的身份判据按阶段分工，见下文。events.jsonl 还必须从 `created` 开始、transition 可重放且终态与 lifecycle.json 一致。
+
+**证据身份的阶段分工**：`active`（pre-merge）阶段把报告绑定到它观察的提交——`head` 等于 `HEAD` 或仅被本任务证据提交推进，`branch`/`worktree` 等于当前 Git 身份；`finalized`（post-merge）阶段**只用任务单 id 与 `sheet_revision` 识别证据**，`head`、`branch`、`worktree`、`observed_at_commit` 降为记录事实（仍必须存在且格式合法），不再作任何相等性或路径相交判定——合并必然在当前 `HEAD` 上引入产品路径提交，所以该阶段这些判据都不可能成立，闸门因此不再要求刷新 head 或改写报告身份。fail-closed：`sheet_revision` 缺失或与当前修订版本不符、`task_id` 与受验任务不符、证据目录名与任务 id 不符、阶段取值无法确定，一律报错。`reconcile` 的报告身份一致与完整判据同样只看 `task_id` 与 `sheet_revision`（`branch`、`worktree`、`head` 不再参与一致性比较），任务分支报告与主工作树终审报告并存不再判为 `report identity conflict`。`active` 阶段的判定与错误文本与改动前逐字一致；`gate post-merge` 与 `evidence verify --phase finalized` 走 post-merge 判据，`gate pre-merge` 与默认（`--phase active`）走 active 判据。
 
 合并后不再修订任务单：`amendments.json` 是追加式哈希链（旧条目字节不变），合并不会改写它；此后的需求变化重新规划或开新任务。post-merge 复验证据同样写明它评判的 `sheet_revision`、`sheet_sha256` 与 `observed_at_commit`，并按修订版本加被验证路径两条判据判定有效性。
 

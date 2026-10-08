@@ -36,21 +36,28 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
             }, ensure_ascii=True) + "\n```\n", encoding="utf-8")
         return path
 
-    def _report(self, role, task_id="demo", branch="demo-branch", worktree=".worktrees/demo"):
+    def _report(self, role, task_id="demo", branch="demo-branch", worktree=".worktrees/demo", revision=None):
         return "report\n```pipeline-evidence\n" + json.dumps({
             "schema": 2, "task_id": task_id, "worktree": worktree, "branch": branch, "head": "0" * 40, "generated_at": "2026-01-01T00:00:00+00:00",
+            "sheet_revision": revision,
             "role": role, "round": 1, "status": "PASS",
             "commands": [{"command": "python -m unittest", "exit_code": 0, "evidence_ref": "test.log"}],
             "assertions": ["direct evidence is present"], "evidence_refs": ["test.log"], "unverified": [],
         }) + "\n```\n"
 
-    def _evidence(self, root, task_id="demo", conflicting_branch=None):
+    def _evidence(self, root, task_id="demo", conflicting_branch=None, override=None):
         directory = root / ".pipeline" / task_id
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "test.log").write_text("direct test output\n", encoding="utf-8")
         for filename, role in (("executor-report.md", "executor"), ("review-report.md", "reviewer"), ("final-check.md", "main-final")):
             branch = conflicting_branch if filename == "review-report.md" else "demo-branch"
-            (directory / filename).write_text(self._report(role, branch=branch), encoding="utf-8")
+            text = self._report(role, branch=branch)
+            extra = (override or {}).get(filename)
+            if extra:
+                value = json.loads(text.splitlines()[2])
+                value.update(extra)
+                text = "report\n```pipeline-evidence\n" + json.dumps(value) + "\n```\n"
+            (directory / filename).write_text(text, encoding="utf-8")
         for filename, role in (("executor-result.json", "executor"), ("reviewer-result.json", "reviewer"), ("final-result.json", "main-final")):
             (directory / filename).write_text(json.dumps({
                 "schema": 1, "task_id": task_id, "role": role, "status": "pass",
@@ -72,11 +79,69 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             sheet = self._sheet(root)
-            self._evidence(root, conflicting_branch="other-branch")
+            # Identity is the task id plus the sheet revision, so the conflict has
+            # to come from one of those; the branch still diverges and stays a
+            # recorded fact.
+            self._evidence(
+                root,
+                conflicting_branch="other-branch",
+                override={"review-report.md": {"sheet_revision": 2}},
+            )
             value = reconcile_task(root, sheet)
             self.assertEqual(value["status"], "BLOCKED")
             self.assertIn("report identity conflict", value["errors"])
             self.assertIsNone(value["identity"]["branch"])
+
+    def test_reconcile_identity_agrees_on_task_and_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sheet = self._sheet(root)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "base"], check=True)
+            # Task-branch reports plus a main-worktree final check: branch,
+            # worktree and head all differ, while task id and revision agree.
+            mixed = {
+                "executor-report.md": {"sheet_revision": 1},
+                "review-report.md": {"sheet_revision": 1},
+                "final-check.md": {
+                    "sheet_revision": 1, "branch": "main", "worktree": str(root), "head": "a" * 40,
+                },
+            }
+            self._evidence(root, override=mixed)
+            value = reconcile_task(root, sheet)
+            # Only the identity comparison is at stake here: reconcile still runs
+            # the shared active-phase commit binding through evidence_verify, so the
+            # recorded branch/worktree/head keep being reported against the current
+            # Git identity; they must no longer be an identity *conflict*.
+            self.assertNotIn("report identity conflict", value["errors"])
+            self.assertNotIn("report identity is incomplete", value["errors"])
+            self.assertEqual("demo", value["identity"]["task_id"])
+            self.assertEqual(1, value["identity"]["sheet_revision"])
+            self.assertIsNone(value["identity"]["branch"])
+
+            diverging = dict(mixed, **{"review-report.md": {"sheet_revision": 2}})
+            self._evidence(root, override=diverging)
+            value = reconcile_task(root, sheet)
+            self.assertIn("report identity conflict", value["errors"])
+            self.assertIsNone(value["identity"]["sheet_revision"])
+
+            other_task = dict(mixed, **{"review-report.md": {"sheet_revision": 1, "task_id": "other"}})
+            self._evidence(root, override=other_task)
+            value = reconcile_task(root, sheet)
+            self.assertIn("report identity conflict", value["errors"])
+            self.assertIsNone(value["identity"]["task_id"])
+
+            # Evidence in the historical shape declares no revision at all:
+            # reconcile must not add a new error for it (the revision criteria are
+            # reported as unverified by evidence_revision_status instead).
+            self._evidence(root)
+            value = reconcile_task(root, sheet)
+            self.assertNotIn("report identity is incomplete", value["errors"])
+            self.assertTrue(
+                any("does not record the task sheet revision" in item for item in value["unverified"]),
+                value["unverified"],
+            )
 
     def test_default_reconcile_is_read_only(self):
         with tempfile.TemporaryDirectory() as directory:

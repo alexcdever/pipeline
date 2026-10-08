@@ -79,9 +79,10 @@ metadata:
 - 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`；迁移只移动并校验文件，不改写 evidence 内部历史路径文本，后续工具统一使用 `.pipeline/`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
+- 证据身份按阶段分工：`active`（pre-merge）阶段把报告绑定到它观察的提交——`head` 必须等于当前 HEAD 或仅被本任务证据提交推进、`branch`/`worktree` 必须等于当前 Git 身份；`finalized`（post-merge）阶段**只用任务单 id 与 `sheet_revision` 识别证据**，不再判定提交引用（合并本身必然在当前 HEAD 上引入产品路径提交，任何提交相对判据都不成立）。两个阶段都要求 `head`、`branch`、`worktree`、`observed_at_commit` 存在且格式合法——post-merge 只是把它们降为记录事实。fail-closed：`sheet_revision` 缺失或与当前修订版本不符、`task_id` 不符、证据目录名与任务 id 不符、阶段取值无法确定时一律报错。`active` 的判定与错误文本与改动前逐字一致。
 - 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
 - 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）并同时留存该版本契约快照；`freeze_check` 用「最新修订版的哈希」（有 `amendments.json` 时取最后一条修订的 `sheet_sha256`，否则取该记录）检测任务单在冻结后被改动，未经 `task amend` 登记的直接改动仍判为漂移。
-- 每份阶段报告与机器结果写明它评判的任务单**修订版本**（`sheet_revision`、`sheet_sha256`）与观察提交（`observed_at_commit`）。证据失效的判据只有两条：修订版本与当前版本不一致，或从 `observed_at_commit` 到 `HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交；`HEAD` 单纯前移不让证据失效。
+- 每份阶段报告与机器结果写明它评判的任务单**修订版本**（`sheet_revision`、`sheet_sha256`）与观察提交（`observed_at_commit`）。`active` 阶段的证据失效判据有两条：修订版本与当前版本不一致，或从 `observed_at_commit` 到 `HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交；`HEAD` 单纯前移不让证据失效。`finalized`（post-merge）阶段只保留第一条，身份是任务单 id 加修订版本——合并必然前移 `HEAD`，路径相交判据在该阶段不被判定。
 - `planning_to_dispatch` 支持 `expected_requirements_sha256` 绑定规划期需求基线；传入后 preflight 用它在派发前核对 `goal.md` 哈希是否漂移。
 - `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。
 - 生成的 schema-4 契约携带 `goal` 字段（`path`/`sha256`/`planning_run_id`）与 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结；schema 1-3 只保留历史读取，继续使用旧 `implement_plan` 字段。
@@ -94,7 +95,7 @@ metadata:
 2. 契约冻结与修订：不得为迁就实现改验收测试或手工改状态；修订必须留痕（理由、发起角色、裁决引用、结构性差异），身份字段不可修订，放松约束必须带裁决引用；设计真变时记裁决并开 `derived` 任务——任务类型字段写 `derived`，机器 task-id/path 保留 `continuation`——保留原历史，合并后不再修订。
 3. 验收测试即用例：每条必须指向当前测试文件、用例、断言、命令、结果边界。
 4. 独立审查：独立上下文直接复验；转述他人结果不算。
-5. 证据属当前任务：task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成。
+5. 证据属当前任务：`active` 阶段 task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成；`finalized`（post-merge）阶段身份是 task-id 加 `sheet_revision`，提交引用只作记录，不改写报告。
 6. 真实链路不可替代：单元/组件/协议/持久化/真实浏览器/设备各自证明各自边界。
 7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）；post-merge `final-check.md`、`final-result.json` 与 `finalization.json` 作为独立 evidence 提交。
 8. 超时有界：单条测试默认 3 分钟硬上限，超时必须停止诊断；整套用更大的明确累计上限。

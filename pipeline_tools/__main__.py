@@ -1170,7 +1170,10 @@ def _main(argv: list[str] | None = None) -> int:
                     _print_errors(value.get("errors", []))
                 return PASS if value["status"] == "ready" else BLOCKED
             try:
-                errors = evidence_verify(args.directory, args.task_id, args.branch)
+                # The phase selects the identity criterion set: active binds the
+                # reports to the commits they observed, finalized identifies the
+                # evidence by the task id and the sheet revision alone.
+                errors = evidence_verify(args.directory, args.task_id, args.branch, args.phase)
             except (OSError, ValueError) as error:
                 errors = [str(error)]
             marker = args.directory / "finalization.json"
