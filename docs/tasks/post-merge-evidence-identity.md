@@ -72,31 +72,31 @@
     {
       "id": "acceptance-test-1",
       "evidence_level": 3,
-      "test_ref": "tests/test_evidence.py: EvidenceVerifyTests.test_merged_task_branch_reports_pass_the_post_merge_gate",
+      "test_ref": "tests/test_evidence.py: EvidenceTests.test_merged_task_branch_reports_pass_the_post_merge_gate",
       "command_ref": "python -m pytest -q tests/test_evidence.py -k merged_task_branch_reports_pass_the_post_merge_gate"
     },
     {
       "id": "acceptance-test-2",
       "evidence_level": 3,
-      "test_ref": "tests/test_evidence.py: EvidenceVerifyTests.test_unmerged_branch_report_identity_is_still_rejected",
+      "test_ref": "tests/test_evidence.py: EvidenceTests.test_unmerged_branch_report_identity_is_still_rejected",
       "command_ref": "python -m pytest -q tests/test_evidence.py -k unmerged_branch_report_identity_is_still_rejected"
     },
     {
       "id": "acceptance-test-3",
       "evidence_level": 3,
-      "test_ref": "tests/test_evidence.py: EvidenceVerifyTests.test_foreign_worktree_report_identity_is_still_rejected",
+      "test_ref": "tests/test_evidence.py: EvidenceTests.test_foreign_worktree_report_identity_is_still_rejected",
       "command_ref": "python -m pytest -q tests/test_evidence.py -k foreign_worktree_report_identity_is_still_rejected"
     },
     {
       "id": "acceptance-test-4",
       "evidence_level": 3,
-      "test_ref": "tests/test_evidence.py: EvidenceVerifyTests.test_schema_two_report_identity_stays_strict_for_bogus_values",
+      "test_ref": "tests/test_evidence.py: EvidenceTests.test_schema_two_report_identity_stays_strict_for_bogus_values",
       "command_ref": "python -m pytest -q tests/test_evidence.py -k schema_two_report_identity_stays_strict"
     },
     {
       "id": "acceptance-test-5",
       "evidence_level": 3,
-      "test_ref": "tests/test_evidence.py: EvidenceVerifyTests.test_product_change_after_reported_head_is_still_stale",
+      "test_ref": "tests/test_evidence.py: EvidenceTests.test_product_change_after_reported_head_is_still_stale",
       "command_ref": "python -m pytest -q tests/test_evidence.py -k product_change_after_reported_head_is_still_stale"
     },
     {
@@ -197,7 +197,7 @@
 
 - 触发：在临时仓库中创建任务 worktree 与任务分支，在其中写入三份身份为"任务分支 + 任务 worktree"的 schema-2 报告，随后把该分支合并进主分支并运行 `gate post-merge`。
 - 断言：闸门通过（退出码 0）；报告文件字节未被改写。
-- 测试：`tests/test_evidence.py: EvidenceVerifyTests.test_merged_task_branch_reports_pass_the_post_merge_gate`
+- 测试：`tests/test_evidence.py: EvidenceTests.test_merged_task_branch_reports_pass_the_post_merge_gate`
 - 命令：`python -m pytest -q tests/test_evidence.py -k merged_task_branch_reports_pass_the_post_merge_gate`
 - 验收模式：集成
 - 证据等级：3
@@ -207,7 +207,7 @@
 
 - 触发：报告记录的 `branch` 尖端不是当前 HEAD 的祖先（未合并）。
 - 断言：仍报出分支身份不匹配，校验失败；报告未被修改。
-- 测试：`tests/test_evidence.py: EvidenceVerifyTests.test_unmerged_branch_report_identity_is_still_rejected`
+- 测试：`tests/test_evidence.py: EvidenceTests.test_unmerged_branch_report_identity_is_still_rejected`
 - 命令：`python -m pytest -q tests/test_evidence.py -k unmerged_branch_report_identity_is_still_rejected`
 - 验收模式：单元
 - 证据等级：3
@@ -217,7 +217,7 @@
 
 - 触发：报告记录的 `worktree` 不是该任务的规范实现 worktree（例如别的任务的 worktree、仓库同级目录或不存在的路径）。
 - 断言：仍报出 worktree 身份不匹配，校验失败。
-- 测试：`tests/test_evidence.py: EvidenceVerifyTests.test_foreign_worktree_report_identity_is_still_rejected`
+- 测试：`tests/test_evidence.py: EvidenceTests.test_foreign_worktree_report_identity_is_still_rejected`
 - 命令：`python -m pytest -q tests/test_evidence.py -k foreign_worktree_report_identity_is_still_rejected`
 - 验收模式：单元
 - 证据等级：3
@@ -227,7 +227,7 @@
 
 - 触发：运行既有断言——错误 head（非祖先的 40 位值）、错误 branch、错误 worktree 必须报错。
 - 断言：既有严格用例全部保持通过，错误文本不变。
-- 测试：`tests/test_evidence.py: EvidenceVerifyTests.test_schema_two_report_identity_stays_strict_for_bogus_values`
+- 测试：`tests/test_evidence.py: EvidenceTests.test_schema_two_report_identity_stays_strict_for_bogus_values`
 - 命令：`python -m pytest -q tests/test_evidence.py -k schema_two_report_identity_stays_strict`
 - 验收模式：组件
 - 证据等级：3
@@ -237,7 +237,7 @@
 
 - 触发：报告 head 之后出现一个改动产品路径的提交。
 - 断言：报告仍被判失效。
-- 测试：`tests/test_evidence.py: EvidenceVerifyTests.test_product_change_after_reported_head_is_still_stale`
+- 测试：`tests/test_evidence.py: EvidenceTests.test_product_change_after_reported_head_is_still_stale`
 - 命令：`python -m pytest -q tests/test_evidence.py -k product_change_after_reported_head_is_still_stale`
 - 验收模式：集成
 - 证据等级：3
