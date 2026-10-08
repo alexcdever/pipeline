@@ -43,10 +43,9 @@
     }
   ],
   "unverified": [
-    "the schema distribution of the sixteen historical finalization markers was not enumerated; both schema 1 and schema 2 are accepted so neither historical nor current evidence is broken",
     "all end-to-end fixtures ran in disposable temporary repositories; their raw output is recorded in review-report.md rather than in a tracked artifact",
-    "finding F1: an unmerged delivery whose final-check records branch 'main' loses the active commit binding, because _delivery_is_merged accepts any report branch whose tip is an ancestor of HEAD; reconcile still cannot PASS without finalization.json, so no false PASS is reachable"
+    "finding F1-residual: in detached HEAD there is no current branch to exclude, so the wider ancestor signal still applies; no exception is raised and finalization.json keeps reconcile from a false PASS"
   ],
   "blockers": [],
-  "recommendation": "PASS: the implementation commit 9f4fbcc satisfies all six acceptance tests and the full suite (392 passed, 28 subtests passed). Track F1 as a follow-up repair to narrow the merged-delivery signal to candidate task branches."
+  "recommendation": "PASS: implementation commit eae01331b701eb310d35bbccfd17c994b46e259b fixes F1 in both directions, guarded by a strengthened acceptance-test-4 fixture that fails against the pre-fix logic; all six acceptance tests and the full suite (392 passed, 28 subtests passed) are green and no pre-existing assertion was weakened."
 }
