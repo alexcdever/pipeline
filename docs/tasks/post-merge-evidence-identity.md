@@ -12,6 +12,7 @@
   "goal": {"path": "docs/goal.md"},
   "allowed_paths": [
     "pipeline_tools/core.py",
+    "pipeline_tools/__main__.py",
     "pipeline_tools/reconcile.py",
     "tests/test_evidence.py",
     "tests/test_task_evidence_reconcile.py",
@@ -40,8 +41,8 @@
       "id": "post-merge-identity-by-task-and-revision",
       "kind": "repair",
       "scope": "post-merge evidence identity is task_id plus sheet revision, not commit references",
-      "resources": ["pipeline_tools/core.py"],
-      "resource_mode": "single",
+      "resources": ["pipeline_tools/core.py", "pipeline_tools/__main__.py"],
+      "resource_mode": "batch",
       "acceptance_tests": ["acceptance-test-1", "acceptance-test-2", "acceptance-test-3", "acceptance-test-4"]
     },
     {
