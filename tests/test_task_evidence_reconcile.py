@@ -143,6 +143,141 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
                 value["unverified"],
             )
 
+    def _git(self, cwd, *args, check=True):
+        return subprocess.run(["git", "-C", str(cwd), *args], check=check, capture_output=True, text=True)
+
+    def _schema_two_report(self, role, *, branch, worktree, head, command_cwd):
+        return "report\n```pipeline-evidence\n" + json.dumps({
+            "schema": 2, "task_id": "demo", "worktree": worktree, "branch": branch,
+            "head": head, "sheet_revision": 1, "observed_at_commit": head,
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "role": role, "round": 1, "status": "PASS",
+            "commands": [{"command": "python -m pytest -q tests/test_task_evidence_reconcile.py",
+                          "exit_code": 0, "cwd": command_cwd, "evidence_ref": "final-check.md"}],
+            "assertions": ["the recorded identity is judged by the phase criteria"],
+            "evidence_refs": ["final-check.md"], "unverified": [],
+        }) + "\n```\n"
+
+    def _reconcile_repo(self, root):
+        """Main repo plus a task worktree whose branch carries a product change."""
+        self._git(root, "init", "-q", "-b", "main")
+        self._git(root, "config", "user.email", "test@example.invalid")
+        self._git(root, "config", "user.name", "Test")
+        (root / "src").mkdir()
+        (root / "src" / "app.py").write_text("base\n", encoding="utf-8")
+        (root / ".gitignore").write_text("/.worktrees/\n", encoding="utf-8")
+        self._git(root, "add", ".")
+        self._git(root, "commit", "-qm", "baseline")
+        baseline = self._git(root, "rev-parse", "HEAD").stdout.strip()
+        worktree = root / ".worktrees" / "demo"
+        self._git(root, "worktree", "add", "-b", "demo-task", str(worktree), baseline)
+        (worktree / "src" / "app.py").write_text("task change\n", encoding="utf-8")
+        self._git(worktree, "add", "src/app.py")
+        self._git(worktree, "commit", "-qm", "task product change")
+        task_head = self._git(worktree, "rev-parse", "HEAD").stdout.strip()
+        return worktree, task_head
+
+    def _write_reconcile_results(self, evidence):
+        for name, role in (("executor-result.json", "executor"), ("reviewer-result.json", "reviewer"),
+                           ("final-result.json", "main-final")):
+            (evidence / name).write_text(json.dumps({
+                "schema": 1, "task_id": "demo", "role": role, "status": "pass", "exit_code": 0,
+                "acceptance": [{"id": "acceptance-test-reconcile", "status": "pass",
+                                "exit_code": 0, "evidence_refs": ["final-check.md"]}],
+                "unverified": [],
+            }), encoding="utf-8")
+
+    def test_reconcile_reaches_pass_for_a_merged_delivery(self):
+        from pipeline_tools.core import git_identity, retained_evidence_snapshot
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sheet = self._sheet(root)
+            worktree, task_head = self._reconcile_repo(root)
+            self._git(root, "merge", "--no-ff", "-m", "merge demo-task", "demo-task")
+            merged_head = self._git(root, "rev-parse", "HEAD").stdout.strip()
+            self.assertNotEqual(task_head, merged_head)
+
+            evidence = root / ".pipeline" / "demo"
+            evidence.mkdir(parents=True)
+            # Task-branch execution and review reports next to a main-worktree final
+            # check: branch, worktree and head all disagree, which is exactly what
+            # the merged phase must stop judging.
+            for name, role, branch, tree, head, cwd in (
+                ("executor-report.md", "executor", "demo-task", str(worktree), task_head, str(worktree)),
+                ("review-report.md", "reviewer", "demo-task", str(worktree), task_head, str(worktree)),
+                ("final-check.md", "main-final", "main", str(root), merged_head, str(root)),
+            ):
+                (evidence / name).write_text(
+                    self._schema_two_report(role, branch=branch, worktree=tree, head=head, command_cwd=cwd),
+                    encoding="utf-8")
+            self._write_reconcile_results(evidence)
+            (evidence / "finalization.json").write_text(json.dumps({
+                "schema": 2, "task_id": "demo", "status": "finalized",
+                "retained": sorted(retained_evidence_snapshot(evidence)),
+                "retained_sha256": retained_evidence_snapshot(evidence),
+                "identity": git_identity(root),
+                "finalized_at": "2026-01-01T00:00:00+00:00", "approved_by": "main",
+            }), encoding="utf-8")
+
+            value = reconcile_task(root, sheet)
+            self.assertEqual(value["status"], "PASS", value["errors"])
+            self.assertEqual(value["verify"], "PASS")
+            self.assertFalse([error for error in value["errors"] if "current Git identity" in error])
+
+    def test_reconcile_keeps_active_binding_for_an_unmerged_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sheet = self._sheet(root)
+            worktree, task_head = self._reconcile_repo(root)
+            # The task branch is not merged: HEAD is still the untouched baseline.
+            self.assertNotEqual(
+                0, self._git(root, "merge-base", "--is-ancestor", "demo-task", "HEAD", check=False).returncode)
+            current = self._git(root, "rev-parse", "HEAD").stdout.strip()
+            self.assertNotEqual(task_head, current)
+            current_branch = self._git(root, "branch", "--show-current").stdout.strip()
+
+            evidence = root / ".pipeline" / "demo"
+            evidence.mkdir(parents=True)
+            for name, role in (("executor-report.md", "executor"), ("review-report.md", "reviewer"),
+                               ("final-check.md", "main-final")):
+                (evidence / name).write_text(
+                    self._schema_two_report(role, branch="demo-task", worktree=str(worktree),
+                                            head=task_head, command_cwd=str(worktree)),
+                    encoding="utf-8")
+            self._write_reconcile_results(evidence)
+
+            value = reconcile_task(root, sheet)
+            self.assertEqual(value["status"], "BLOCKED")
+            self.assertEqual("BLOCKED", value["verify"])
+            # Unmerged evidence keeps the full commit binding: the recorded head and
+            # worktree are reported against the current Git identity.
+            for field in ("head", "worktree"):
+                self.assertTrue(
+                    any(f"{field} does not match current Git identity" in error for error in value["errors"]),
+                    (field, value["errors"]),
+                )
+            all_task_branch_errors = [error for error in value["errors"] if "current Git identity" in error]
+
+            # The same unmerged task, this time with a main-worktree final check that
+            # records the branch HEAD is on.  That branch's tip is trivially an
+            # ancestor of HEAD, so it must never be read as proof of a merge.
+            (evidence / "final-check.md").write_text(
+                self._schema_two_report("main-final", branch=current_branch, worktree=str(root),
+                                        head=current, command_cwd=str(root)),
+                encoding="utf-8")
+            value = reconcile_task(root, sheet)
+            self.assertEqual(value["status"], "BLOCKED")
+            self.assertEqual("BLOCKED", value["verify"])
+            for field in ("head", "worktree"):
+                self.assertTrue(
+                    any(f"{field} does not match current Git identity" in error for error in value["errors"]),
+                    (field, value["errors"]),
+                )
+            main_worktree_errors = [error for error in value["errors"] if "current Git identity" in error]
+            self.assertTrue(all_task_branch_errors)
+            self.assertTrue(main_worktree_errors)
+            self.assertNotEqual("PASS", value["status"])
+
     def test_default_reconcile_is_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

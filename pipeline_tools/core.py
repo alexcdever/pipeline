@@ -509,8 +509,11 @@ def evidence_verify(
     only be advanced by its own evidence, and its ``branch``/``worktree`` must
     equal the current Git identity.  ``finalized`` (post-merge) identifies the
     evidence by the task id and the task sheet revision alone, because merging
-    always adds product-path commits to the current head; ``head``, ``branch``,
-    ``worktree`` and ``observed_at_commit`` stay required, format-checked records.
+    always adds product-path commits to the current head; ``head``, ``branch``
+    and ``worktree`` stay required, format-checked records, while
+    ``observed_at_commit`` is optional and, when present, must be a non-empty
+    string.  Evidence that declares no ``sheet_revision`` at all keeps the
+    historical shape's verdict instead of gaining a new error.
     """
     if phase not in EVIDENCE_PHASES:
         raise ValueError(f"evidence phase must be one of {EVIDENCE_PHASES}")
@@ -600,19 +603,27 @@ def evidence_verify(
                 if not current_worktree or report_worktree != Path(current_worktree):
                     errors.append(f"{name} worktree does not match current Git identity")
             else:
-                declared_revision = value.get("sheet_revision")
-                if isinstance(declared_revision, bool) or not isinstance(declared_revision, int):
-                    errors.append(f"{name} sheet_revision must be a positive integer")
-                elif declared_revision != current_revision:
-                    errors.append(
-                        f"{name} was produced against task sheet revision {declared_revision} "
-                        f"but the current revision is {current_revision}"
-                    )
+                # Only a report that claims a revision is judged by it.  Evidence
+                # in the historical shape, which carries no revision field at all,
+                # keeps the verdict the older rules gave it, so a missing new field
+                # never adds an error by itself (evidence_revision_status reports it
+                # as unverified).  A field that is present must still be usable.
+                if "sheet_revision" in value:
+                    declared_revision = value.get("sheet_revision")
+                    if isinstance(declared_revision, bool) or not isinstance(declared_revision, int):
+                        errors.append(f"{name} sheet_revision must be a positive integer")
+                    elif declared_revision != current_revision:
+                        errors.append(
+                            f"{name} was produced against task sheet revision {declared_revision} "
+                            f"but the current revision is {current_revision}"
+                        )
                 if not isinstance(value.get("branch"), str) or not value["branch"].strip():
                     errors.append(f"{name} branch must be a non-empty string")
-                if (
-                    not isinstance(value.get("observed_at_commit"), str)
-                    or not value["observed_at_commit"].strip()
+                # observed_at_commit is an optional recorded fact in this phase: it
+                # is checked for shape only when a report does carry it.
+                observed_at = value.get("observed_at_commit")
+                if observed_at is not None and (
+                    not isinstance(observed_at, str) or not observed_at.strip()
                 ):
                     errors.append(f"{name} observed_at_commit must be a non-empty string")
         if commit_bound and branch and value.get("branch") != branch:

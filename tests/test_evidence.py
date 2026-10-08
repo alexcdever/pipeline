@@ -3,7 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline_tools.core import evidence_freshness, evidence_verify, gate_check, verify_structured_result
+from pipeline_tools.core import (
+    evidence_freshness,
+    evidence_revision_status,
+    evidence_verify,
+    gate_check,
+    verify_structured_result,
+)
 
 
 def report(role, task_id='demo', branch='feature/demo', status='PASS'):
@@ -1022,6 +1028,67 @@ class EvidenceTests(unittest.TestCase):
             self.assertIn('worktree does not match current Git identity', active.stdout + active.stderr)
             self.assertEqual('FAIL: finalization.json is missing', finalized.stdout.strip())
             self.assertEqual('', finalized.stderr.strip())
+
+    def test_legacy_evidence_gains_no_new_finalized_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._make_git_repo(root)
+            self._task_contract_sheet(root)
+            directory = self._canonical_evidence_dir(root)
+            (directory / 'test.log').write_text('observed test output\n', encoding='utf-8')
+
+            def write_historical(**fields):
+                for name, role in (
+                    ('executor-report.md', 'executor'),
+                    ('review-report.md', 'reviewer'),
+                    ('final-check.md', 'main-final'),
+                ):
+                    value = {
+                        'schema': 2, 'task_id': 'demo', 'worktree': str(root), 'branch': 'main',
+                        'head': 'a' * 40, 'generated_at': '2026-01-01T00:00:00+00:00',
+                        'role': role, 'round': 1, 'status': 'PASS',
+                        'commands': [{'command': 'python -m pytest -q tests/test_evidence.py',
+                                      'exit_code': 0, 'evidence_ref': 'test.log'}],
+                        'assertions': ['the observed result matches the contract'],
+                        'evidence_refs': ['test.log'], 'unverified': [],
+                    }
+                    value.update(fields)
+                    (directory / name).write_text(
+                        '```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8')
+
+            # Historical shape: neither the revision nor the observation commit is
+            # recorded, so the finalized criteria do not apply and nothing is added.
+            write_historical()
+            self.assertEqual([], evidence_verify(directory, 'demo', 'main', phase='finalized'))
+            status = evidence_revision_status(
+                root, 'demo', {},
+                {name: self._report_value(directory / name) for name in self.REPORT_FILES},
+            )
+            self.assertEqual([], status['errors'])
+            for name in self.REPORT_FILES:
+                self.assertTrue(
+                    any(f'{name} does not record the task sheet revision' in item
+                        for item in status['unverified']),
+                    (name, status['unverified']),
+                )
+
+            # Evidence that does carry the fields is still judged by them.
+            write_historical(sheet_revision=2)
+            errors = evidence_verify(directory, 'demo', 'main', phase='finalized')
+            for name in self.REPORT_FILES:
+                self.assertIn(
+                    f'{name} was produced against task sheet revision 2 but the current revision is 1', errors)
+
+            write_historical(sheet_revision=1, observed_at_commit='')
+            errors = evidence_verify(directory, 'demo', 'main', phase='finalized')
+            for name in self.REPORT_FILES:
+                self.assertIn(f'{name} observed_at_commit must be a non-empty string', errors)
+
+            # A declared-but-unusable revision stays an error rather than a silent pass.
+            write_historical(sheet_revision=None)
+            errors = evidence_verify(directory, 'demo', 'main', phase='finalized')
+            for name in self.REPORT_FILES:
+                self.assertIn(f'{name} sheet_revision must be a positive integer', errors)
 
 
 class MachineResultGateTests(unittest.TestCase):
