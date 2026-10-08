@@ -43,6 +43,8 @@
     }
   ],
   "unverified": [
-    "the schema distribution of the sixteen historical finalization markers was not enumerated; both schema 1 and schema 2 are accepted so neither historical nor current evidence is broken"
+    "round 1 independent review found F1 (the merged-delivery signal was too wide); this round fixes it by excluding HEAD's current branch from the candidate branches",
+    "the schema distribution of the sixteen historical finalization markers was not enumerated; both schema 1 and schema 2 are accepted so neither historical nor current evidence is broken",
+    "F2 (a self-consistent forged finalization.json can make reconcile PASS an unmerged delivery) and F3 (the schema 1 wording at references/merge-and-recovery.md:47) are recorded as-is and were deliberately left unchanged"
   ]
 }
