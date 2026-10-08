@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "task_id": "finalization-and-reconcile-phase",
+  "status": "finalized",
+  "retained": [
+    "executor-report.md",
+    "review-report.md",
+    "final-check.md",
+    "executor-result.json",
+    "reviewer-result.json",
+    "final-result.json",
+    "finalization.json"
+  ],
+  "retained_sha256": {
+    "executor-report.md": "4127e66fe77c02fb3504c34f1727c4141d2e89fa392f903d25c4b6427e3e88fe",
+    "review-report.md": "f771ddcce31741af02eddbd0660e712cb2b02d309e5b32efe20526df50227b20",
+    "final-check.md": "f2a3263598d369e7f9f21ae57f54d5fb3d27cfc26b4bdb671ce7ba46fe8a32ae",
+    "executor-result.json": "484417069f83b1c30c95bd659a3e41151dfb0055f07d05f947b909413839a87c",
+    "reviewer-result.json": "74fee744c9619ec7dd23a0ccfc8ca4c0d91ba0f2fee917f691125fc9dbf8150d",
+    "final-result.json": "4e1d163c0b48f6c7e5c4001ab4e925e0bcfa3a7575b969b57b074cd31e234895"
+  },
+  "identity": {
+    "head": "5c1ae639db65aeac3b92980b7d6a53df8ad75816",
+    "branch": "main",
+    "worktree": "D:\\Projects\\Skills\\pipeline"
+  },
+  "finalized_at": "2026-10-08T23:40:43.878451+00:00",
+  "approved_by": "main"
+}
