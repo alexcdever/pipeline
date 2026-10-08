@@ -5,9 +5,12 @@
   "status": "pass",
   "exit_code": 0,
   "identity": {
-    "product_head": "8b1ba98dae6db059601697e8aa193451e9c58083",
+    "product_head": "f39d1f9024facb2998757f0ea23350f492325c63",
+    "head": "f39d1f9024facb2998757f0ea23350f492325c63",
     "branch": "post-merge-evidence-identity",
-    "worktree": "D:/Projects/Skills/pipeline/.worktrees/post-merge-evidence-identity"
+    "worktree": "D:/Projects/Skills/pipeline/.worktrees/post-merge-evidence-identity",
+    "sheet_revision": 3,
+    "sheet_sha256": "78a64de3081de590cb4dcab497a644edb6940cebae4a4a57c214407458c4d69b"
   },
   "acceptance": [
     {
@@ -45,12 +48,22 @@
       "status": "pass",
       "exit_code": 0,
       "evidence_refs": [".pipeline/post-merge-evidence-identity/executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-7",
+      "status": "pass",
+      "exit_code": 0,
+      "evidence_refs": [".pipeline/post-merge-evidence-identity/executor-report.md"]
     }
   ],
   "unverified": [
     "independent review of this round is not produced by this executor run",
-    "post-merge main-worktree re-verification of the merged head is not produced by this executor run",
-    "the real-repository probe shows the dependency task's reports still fail the post-merge gate on the unchanged head rule (docs/tasks/post-merge-evidence-identity.md landed after their recorded head), not on branch/worktree identity; whether the main agent refreshes that post-merge evidence or opens a follow-up task is its decision",
-    "raw command output is kept as untracked scratch logs in .pipeline/post-merge-evidence-identity/ because .pipeline/** may only track RETAINED_EVIDENCE_NAMES"
+    "post-merge re-verification of the merged head in the main worktree is not produced by this executor run",
+    "the post-merge identity regime is not reachable through `evidence verify --phase finalized` because pipeline_tools/__main__.py is outside the frozen allowed_paths; the gate path and the Python API do carry the phase",
+    "task_sheet_revision reads the amendment record from the worktree that ran `task amend` (the main worktree), so this worktree reports revision 1 while the contract revision is 3",
+    "whether the dependency task can now finish finalization is the main agent's decision; its post-merge gate still reports the missing observed_at_commit and the BLOCKED final check, and reconcile still applies the active commit binding"
+  ],
+  "blockers": [
+    "decision point 4: wiring the phase into `evidence verify --phase finalized` needs one line in pipeline_tools/__main__.py, which is not in the frozen allowed_paths; adjudication or an amended scope is required"
   ]
 }
