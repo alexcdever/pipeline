@@ -33,6 +33,7 @@ from .core import (
     RETAINED_EVIDENCE_NAMES,
     git_identity,
     retained_evidence_snapshot,
+    task_sheet_revision,
     verify_finalization_snapshot,
     normalize_status,
     resolve_result_role,
@@ -1506,6 +1507,11 @@ def compare_task_plan_contract(
                 "errors": [item["reason"] for item in errors], "next_actions": ["do not freeze or dispatch"]}
 
     task_id = contract.get("task_id")
+    # A sheet that was amended after the plan was written is compared against
+    # its latest revision, and a dependency difference is reported as a
+    # post-planning revision instead of a bare drift error.
+    revision_root = Path(root) if root is not None else Path(task_sheet).resolve().parent.parent.parent
+    sheet_revision = task_sheet_revision(revision_root, task_id)[0] if isinstance(task_id, str) else 1
     tasks = [item for item in task_plan.get("tasks", []) if isinstance(item, dict) and item.get("id") == task_id]
     if len(tasks) != 1:
         errors.append({"field": "task_id", "reason": "task sheet must map to exactly one task-plan task", "source": "task-plan/task-sheet"})
@@ -1553,9 +1559,26 @@ def compare_task_plan_contract(
         return {"schema": 1, "status": "fail", "task_id": task_id, "conflicts": errors,
                 "errors": [item["reason"] for item in errors], "next_actions": ["do not freeze or dispatch"]}
     actual = {key: contract.get(key) for key in expected}
+    revised_after_planning = False
     for field in expected:
-        if _canonical(actual[field]) != _canonical(expected[field]):
-            errors.append({"field": field, "reason": f"{field} differs between task-plan and task sheet", "source": "task-plan/task-sheet", "expected": expected[field], "actual": actual[field]})
+        if _canonical(actual[field]) == _canonical(expected[field]):
+            continue
+        conflict: dict[str, Any] = {
+            "field": field,
+            "reason": f"{field} differs between task-plan and task sheet",
+            "source": "task-plan/task-sheet",
+            "expected": expected[field],
+            "actual": actual[field],
+        }
+        if field == "dependencies" and sheet_revision > 1:
+            revised_after_planning = True
+            conflict["reason"] = (
+                f"task sheet dependencies were revised after planning "
+                f"(revision {sheet_revision} differs from the planned dependencies)"
+            )
+            conflict["revised_after_planning"] = True
+            conflict["sheet_revision"] = sheet_revision
+        errors.append(conflict)
 
     expected_schema = contract.get("schema")
     if expected_schema not in {2, 3, 4}:
@@ -1582,8 +1605,15 @@ def compare_task_plan_contract(
         if expected_run_id is not None and requirements_doc.get("planning_run_id") != expected_run_id:
             errors.append({"field": f"{doc_field}.planning_run_id", "reason": "planning run id differs from expected run id", "source": "task-sheet"})
     status = "pass" if not errors else "fail"
+    if status == "pass":
+        next_actions: list[str] = []
+    elif revised_after_planning:
+        next_actions = ["re-plan against the latest task sheet revision"]
+    else:
+        next_actions = ["do not freeze or dispatch"]
     return {"schema": 1, "status": status, "task_id": task_id, "conflicts": errors,
-            "errors": [item["reason"] for item in errors], "next_actions": [] if status == "pass" else ["do not freeze or dispatch"]}
+            "errors": [item["reason"] for item in errors], "sheet_revision": sheet_revision,
+            "revised_after_planning": revised_after_planning, "next_actions": next_actions}
 
 
 def task_plan_contract_consistency(*args: Any, **kwargs: Any) -> dict[str, Any]:

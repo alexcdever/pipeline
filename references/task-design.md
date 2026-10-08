@@ -182,9 +182,29 @@ schema 3 的 `risk`、`project_type`、`task_type` 共同推导每条验收测�
 
 ## 契约冻结
 
-任务单提交前必须写清：目标、范围、禁止修改、数据链路、依赖、验收测试、环境前置和决策点，并为每条验收测试指定可观察产物和证据等级。提交后执行子代理只在契约内实现、审查子代理只按冻结契约判断；实现遇冲突停下报告；设计真变时记录裁决并开 `derived` 任务——任务类型写 `derived`，机器 ID/path 保留 `continuation`。
+任务单提交前必须写清：目标、范围、禁止修改、数据链路、依赖、验收测试、环境前置和决策点，并为每条验收测试指定可观察产物和证据等级。提交后执行子代理只在契约内实现、审查子代理只按当前修订版契约判断；实现遇冲突停下报告；设计真变时记录裁决并修订任务单（见「契约修订」），只有在范围或目标已变成另一个任务时才开 `derived` 任务——任务类型写 `derived`，机器 ID/path 保留 `continuation`。
 
 不能为让测试变绿而删除困难验收测试，也不能把未验证环境降级伪装成已验证。
+
+## 契约修订
+
+契约冻结不等于绝对不可变：冻结后的每次改变都必须留痕，工具只做校验、分类与登记，不生成也不重写任务单内容。
+
+```bash
+python -m pipeline_tools task amend <root> --task-id <id> --reason '<为什么需要这次修订>' \
+    [--adjudication <裁决引用>] [--requested-by main-agent|executor|reviewer] [--feedback-ref <locator>] [--role main-agent]
+```
+
+流程：主代理先手工编辑 `docs/tasks/<task-id>.md`（契约区块与对应散文段落），再调用 `task amend`；工具读完新契约后与上一版契约做结构性比对，追加一条记录到 `.pipeline/<task-id>/amendments.json`，然后主代理提交任务单。
+
+- **身份字段不可修订**：`schema`、`task_id`、`task_type`、`derived_from` 描述"这是哪个任务"，改了就不再是同一份契约。需要换任务身份时新建任务单。
+- **判据一：是否改变验证面**。`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk` 任一实质变化即 `verification_surface_changed: true`，已有阶段证据作废，必须对最新版本重做独立审查。
+- **判据二：是否放松约束**。删除验收测试、降低某条 `evidence_level`、降低任务级 `required_evidence_levels` 的下限（`max(required_evidence_levels)` 下降，或元素移除后下限随之下降）、改写某条的 `test_ref` 或 `command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标条目都判 `loosened: true`，必须带 `--adjudication`；只收紧（新增测试、提高证据等级、抬高任务级下限、缩小允许范围）不需要裁决。
+- **`dependencies` 的增删**只需 `--reason`，但修订后必须机械校验：每个依赖 id 都能按解析顺序（`docs/tasks/<id>.md` → `.pipeline/<id>/<id>.md` → `.pipeline/archive/<id>.md`）找到对应任务单，且依赖图不成环。
+- **记录结构**：`revision` 从 2 起单调递增（revision 1 是冻结版，其哈希即 `.pipeline/<task-id>/goal.json` 里的 `task_sheet_sha256`），每条含 `at`、`by`、`requested_by`、`feedback_ref`、`reason`、`adjudication_ref`、`previous_sheet_sha256`、`sheet_sha256`、两个判据、`changes`（验收测试增删改、依赖增删、路径增删、非目标增删、风险前后值、证据等级增删、链路与 operation 变化）以及该版契约快照。记录是追加式的，旧条目字节不变，哈希链可逐条回溯。
+- **原子性**：拒绝或校验失败时不追加任何条目、不改变任何哈希、不移动任何文件。
+- **基准连锁**：`freeze_check`、lifecycle 的 `task_sheet_sha256` 漂移检查和 `freshness` 都以最新修订版的哈希为准，所以已登记的修订不再报漂移；未走 `task amend` 的直接改动仍报 `task sheet changed after freeze`。计划与契约一致性检查（`compare_task_plan_contract`）也以最新修订版为基准，依赖在规划后被修订时报告"规划后被修订过"并给出 `sheet_revision`，而不是裸的漂移错误。
+- **终止条件**：合并后不再修订；需求变化重新规划或新建任务。执行/审查子代理始终不得改任务单，发现缺陷只提交结构化反馈（`requested_by` + `feedback_ref`）。
 
 ## Worktree 创建
 

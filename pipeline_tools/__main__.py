@@ -49,6 +49,7 @@ from .core import (
     FAIL,
     PASS,
     aggregate,
+    amend_task_sheet,
     evidence_verify,
     freeze_check,
     gate_check,
@@ -228,6 +229,14 @@ def _build_parser() -> argparse.ArgumentParser:
     task_sub = task.add_subparsers(dest="action", required=True)
     validate = task_sub.add_parser("validate", help="validate a pipeline-contract block")
     validate.add_argument("path", type=Path)
+    amend = task_sub.add_parser("amend", help="record one task sheet revision")
+    amend.add_argument("root", type=Path)
+    amend.add_argument("--task-id", required=True)
+    amend.add_argument("--reason", required=True)
+    amend.add_argument("--adjudication")
+    amend.add_argument("--requested-by", choices=("main-agent", "executor", "reviewer"), default="main-agent")
+    amend.add_argument("--feedback-ref")
+    amend.add_argument("--role", default="main-agent")
     for name in ("preflight", "freeze-check"):
         item = task_sub.add_parser(name, help=f"run {name} checks")
         _add_contract_command(item)
@@ -771,6 +780,9 @@ def _auto_root_and_reference(args: argparse.Namespace) -> tuple[Path, str | None
         path = Path(args.path)
         root = _git_root(path)
         return root, _safe_project_reference(root, path)
+    if group == "task" and args.action == "amend":
+        root = _git_root(Path(args.root))
+        return root, _safe_project_reference(root, root / ".pipeline" / str(args.task_id))
     if group == "task" and args.action in {"preflight", "freeze-check"}:
         root = _git_root(Path(args.root))
         return root, _safe_project_reference(root, _path_arg(args, "task_sheet"))
@@ -1095,6 +1107,22 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 _print_errors(errors)
             return PASS if not errors else CONFIG
+        if args.group == "task" and args.action == "amend":
+            value = amend_task_sheet(
+                args.root,
+                args.task_id,
+                reason=args.reason,
+                adjudication=args.adjudication,
+                requested_by=args.requested_by,
+                feedback_ref=args.feedback_ref,
+                role=args.role,
+            )
+            if args.format == "json":
+                _emit(value, args)
+            else:
+                print(f"{value['status'].upper()} task.amend revision={value.get('previous_revision')}->{value.get('revision')}")
+                _print_errors(value["errors"])
+            return value["exit_code"]
         if args.group in {"preflight", "freeze-check"}:
             return _run_task_lifecycle(args)
         if args.group == "task" and args.action in {"preflight", "freeze-check"}:

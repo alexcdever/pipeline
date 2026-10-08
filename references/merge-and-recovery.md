@@ -12,7 +12,7 @@
 
 - 完成通知和退出码只证明生命周期变化，不作验收证据；
 - 冻结或中断时保留 worktree、分支、日志和证据；
-- 恢复以 `lifecycle resume/status/list/inspect` 的结构化状态为首要入口，再核对当前任务单、Git、`.pipeline/recovery-index.json` 和正式 evidence；活动进程和最新日志用于诊断，过程记录以 `.pipeline/<task-id>/` 的角色进度日志和阶段报告为准，不重猜用户目标；任务单冻结且不可变，任务状态不从项目级状态文件、通知或自然语言报告恢复。
+- 恢复以 `lifecycle resume/status/list/inspect` 的结构化状态为首要入口，再核对当前任务单、Git、`.pipeline/recovery-index.json` 和正式 evidence；活动进程和最新日志用于诊断，过程记录以 `.pipeline/<task-id>/` 的角色进度日志和阶段报告为准，不重猜用户目标；任务单冻结后只按记录的修订版本演进（`.pipeline/<task-id>/amendments.json`，身份字段不可修订），任务状态不从项目级状态文件、通知或自然语言报告恢复。
 - 无这些机制时主代理仍可前台执行同一生命周期。
 
 ## 冻结或失败恢复
@@ -23,7 +23,7 @@
 4. 读最新业务活动和当前子进程，区分真冻结、等待测试、权限阻塞和正常退出。
 5. 保留 worktree、branch、未提交实现和任务级证据。
 6. 必要时建 checkpoint，不为"干净"删现场。
-5. 契约需改变时先记录裁决，再开 `derived` 任务单和新证据目录——任务类型写 `derived`，机器 ID/path 保留 `continuation`。
+5. 契约需改变时先分类：仍在交付本任务时由主代理用 `pipeline-tools task amend` 记录一条修订版本（放松约束必须带裁决引用，身份字段不可修订），在同一 worktree 继续；只有范围或目标已变成另一个任务时，才记录裁决并开 `derived` 任务单和新证据目录——任务类型写 `derived`，机器 ID/path 保留 `continuation`。合并之后不再修订，需求变化重新规划。
 6. 重新派发前用新运行日志，并把后台监督（若有）重新绑定当前任务；先读上一轮报告的失败分类，同类失败重派不超过一次，仍失败先缩小任务范围或升级为决策点，不无效重派。
 
 退出码为零、通知到达或测试数量增加都不能绕过这一步。
@@ -45,6 +45,8 @@
 **合并后复验是硬要求，不是建议**：post-merge gate 需要 `final-check.md` 里至少一条 `exit_code == 0` 的命令证据，且该命令的 `cwd` 解析到主工作树根（`gate_check` 的 `_post_merge_reverified_in_main_worktree`）。只在任务 worktree 里跑过、或只在报告里写“主工作树已验证”而没有可解析的命令条目，都不算复验通过。
 
 worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。`finalization.json` 必须可解析且绑定当前 task；缺失、旧 marker 或身份不一致时 reconcile 不能 PASS。schema 1 报告仅用于 legacy/unverified 查询，ready/merged/reconcile 最终 PASS 需要 schema 2 的 branch、worktree、HEAD 身份一致。events.jsonl 还必须从 `created` 开始、transition 可重放且终态与 lifecycle.json 一致。
+
+合并后不再修订任务单：`amendments.json` 是追加式哈希链（旧条目字节不变），合并不会改写它；此后的需求变化重新规划或开新任务。post-merge 复验证据同样写明它评判的 `sheet_revision`、`sheet_sha256` 与 `observed_at_commit`，并按修订版本加被验证路径两条判据判定有效性。
 
 ## 状态恢复与并发护栏
 

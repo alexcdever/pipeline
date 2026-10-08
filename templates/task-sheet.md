@@ -1,7 +1,7 @@
 # 通用任务单
 
 <!-- Task ID: <task-id> -->
-<!-- Contract section is frozen and immutable after commit. Do not edit the task sheet or its status to reflect execution; change the contract only by recording a decision and creating a derived task. The task sheet holds only the frozen contract and human-readable design sections; task state is managed by the lifecycle API/CLI, while task anchors, the acceptance ledger, execution log and final result live in .pipeline/<task-id>/ progress logs and stage reports. -->
+<!-- The contract is frozen at commit and then evolves only as recorded revisions. Record every change with `pipeline-tools task amend <root> --task-id <id> --reason <text>` before committing it: identity fields (schema, task_id, task_type, derived_from) can never be revised, and loosening the contract (dropping or weakening acceptance tests, lowering evidence levels, rewriting a test_ref/command_ref, widening allowed_paths, narrowing forbidden_paths, deleting non-goals) requires an adjudication reference. An edit that was not recorded is silent tampering and is rejected as drift. Do not edit the task sheet or its status to reflect execution. The task sheet holds only the contract and human-readable design sections; task state is managed by the lifecycle API/CLI, while task anchors, the acceptance ledger, execution log and final result live in .pipeline/<task-id>/ progress logs and stage reports. -->
 
 ```pipeline-contract
 {
@@ -48,7 +48,13 @@
 }
 ```
 
-`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 4 with the `goal` field and complete `acceptance-test-*` IDs; schema 1-3 are retained only for deprecated historical reads (they keep the legacy `implement_plan` field). Keep it synchronized with the human-readable contract before commit; after the contract commit the complete task sheet is frozen and immutable. Use lifecycle API/CLI for task state; do not hand-edit a status line.
+`pipeline-contract` is the machine-checkable projection of this task sheet. New task sheets use schema 4 with the `goal` field and complete `acceptance-test-*` IDs; schema 1-3 are retained only for deprecated historical reads (they keep the legacy `implement_plan` field). Keep it synchronized with the human-readable contract before commit; after the contract commit the task sheet is frozen, and every later change must be recorded as a revision with `pipeline-tools task amend`. 身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束必须先记录裁决引用；身份与范围以外的字段按修订版本演进，合并后不再修订，需求变化重新规划或新建 `derived` 任务。Use lifecycle API/CLI for task state; do not hand-edit a status line.
+
+Revision rules worth restating here:
+
+- A revision appends one entry to `.pipeline/<task-id>/amendments.json`: previous and new sheet hash, reason, requesting role, adjudication reference, and the structural difference. Old entries are never rewritten.
+- 两个判据独立：改变验证面（`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk`）作废已有阶段证据；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、改写 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带裁决引用。
+- Reports and machine results must name the sheet revision they judged (`sheet_revision`, `sheet_sha256`) and the commit they were observed at (`observed_at_commit`).
 
 Schema 4 rules worth restating here:
 

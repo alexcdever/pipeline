@@ -12,6 +12,7 @@ from .core import (
     POST_MERGE_REPORT_STATUSES,
     evidence_freshness,
     evidence_readiness,
+    evidence_revision_status,
     evidence_verify,
     normalize_status,
     verify_structured_result,
@@ -146,6 +147,14 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         freshness = evidence_freshness(root, evidence, result_path if result_path.is_file() else None)
     except (LegacyPipelineLayoutError, OSError) as error:
         freshness = {"status": "blocked", "errors": [f"布局冲突：{error}"]}
+    bound_records = {**reports, **results}
+    try:
+        revision_status = evidence_revision_status(root, str(task_id), contract or {}, bound_records)
+    except (LegacyPipelineLayoutError, OSError) as error:
+        revision_status = {"schema": 1, "sheet_revision": None, "sheet_sha256": None, "head": None,
+                           "records": {}, "stale": True, "errors": [f"布局冲突：{error}"], "unverified": []}
+    revision_errors = revision_status["errors"]
+    revision_unverified = revision_status.get("unverified", [])
     statuses = [value.get("status") for value in reports.values()]
     finalization_errors: list[str] = []
     finalization = _json(evidence / "finalization.json")
@@ -172,19 +181,22 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
     if any(normalize_status(status, ("BLOCKED",)) == "BLOCKED" for status in statuses):
         post_merge_errors.append("report declares BLOCKED")
     direct_pass = (not contract_errors and not report_errors and not result_errors and not identity_errors and not verify_errors
-                   and not finalization_errors and not post_merge_errors and readiness["status"] == "ready" and freshness["status"] == "pass"
+                   and not finalization_errors and not post_merge_errors and not revision_errors
+                   and readiness["status"] == "ready" and freshness["status"] == "pass"
                    and len(reports) == len(_REPORTS)
                    and all(normalize_status(status, POST_MERGE_REPORT_STATUSES) is not None for status in statuses))
-    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or finalization_errors or post_merge_errors or freshness["status"] == "blocked" else "UNVERIFIED")
+    status = "PASS" if direct_pass else ("BLOCKED" if identity_errors or result_errors or verify_errors or finalization_errors or post_merge_errors or revision_errors or freshness["status"] == "blocked" else "UNVERIFIED")
     if layout_error:
         status = "BLOCKED"
     output = {"schema": 1, "command": "evidence.reconcile", "task_id": task_id, "status": status,
               "identity": identity, "result": {name: value.get("status") for name, value in results.items()},
               "freshness": freshness["status"], "readiness": readiness["status"],
+              "sheet_revision": revision_status["sheet_revision"], "sheet_sha256": revision_status["sheet_sha256"],
+              "evidence_validity": revision_status["records"],
               "verify": "PASS" if not verify_errors else "BLOCKED",
               "observed": {"task_sheet": task_sheet.relative_to(root).as_posix(), "evidence_dir": evidence.relative_to(root).as_posix(), "reports": sorted(reports)},
-              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + finalization_errors + post_merge_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
-              "unverified": [] if direct_pass else ["task completion"], "updated": False}
+              "errors": contract_errors + report_errors + result_errors + identity_errors + verify_errors + finalization_errors + post_merge_errors + revision_errors + ([f"布局冲突：{layout_error}"] if layout_error else []),
+              "unverified": ([] if direct_pass else ["task completion"]) + revision_unverified, "updated": False}
     if update:
         output["errors"].append("--update is deprecated and cannot modify task sheets")
         output["status"] = "BLOCKED"

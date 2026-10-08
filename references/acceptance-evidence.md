@@ -20,7 +20,7 @@
 
 ## 验收台账
 
-每条验收测试一行。契约中的稳定 ID 使用 `acceptance-test-*` 完整形式；新 schema 2/3 任务单、台账、模板和 evidence 示例不得使用诸如 `AT1`、`AT2B` 的缩写。旧 schema 1 契约仅保留历史读取兼容，新任务不得以该兼容规则生成缩写 ID。任务单提交后冻结且不可变，台账是过程记录，写在 `.pipeline/<task-id>/` 的进度日志和阶段报告中，不写入任务单；任务级状态由 lifecycle API/CLI 管理，不能通过编辑任务单产生。
+每条验收测试一行。契约中的稳定 ID 使用 `acceptance-test-*` 完整形式；新 schema 2/3 任务单、台账、模板和 evidence 示例不得使用诸如 `AT1`、`AT2B` 的缩写。旧 schema 1 契约仅保留历史读取兼容，新任务不得以该兼容规则生成缩写 ID。任务单提交后冻结，之后只按记录的修订版本演进：身份字段不可修订，其余字段的改变必须经 `pipeline-tools task amend` 留痕。台账是过程记录，写在 `.pipeline/<task-id>/` 的进度日志和阶段报告中，不写入任务单；任务级状态由 lifecycle API/CLI 管理，不能通过编辑任务单产生。
 
 | 字段 | 要求 |
 |---|---|
@@ -44,7 +44,16 @@
 
 每份报告必须标明：task-id、worktree、branch、角色、轮次、生成时间、当前测试数量和关键命令；报告目录与任务单必须完全同名。
 
-失效情形：引用其他任务/worktree/旧 branch；worktree 在报告后继续变化而未重生成；reviewer 只复制执行报告；报告只有结论没有命令和断言；任务单验收测试或范围已变而无对应 `derived` 任务（任务类型写 `derived`，机器 ID/path 保留 `continuation`）。
+每份阶段报告与机器结果还写明它评判的任务单修订版本（`sheet_revision`、`sheet_sha256`）和证据观察提交（`observed_at_commit`）：修订版本标识契约，`observed_at_commit` 只记录事实。
+
+失效情形：引用其他任务/worktree/旧 branch；被验证路径在上次观察之后发生变化；reviewer 只复制执行报告；报告只有结论没有命令和断言；报告记的 `sheet_revision` 不是当前修订版（验收测试或范围已修订却没有按最新版本重建证据）；报告没有记录修订版本或观察提交。
+
+有效性判据只有两条，二者相互独立：
+
+1. **修订版本不一致**：证据记录的 `sheet_revision`/`sheet_sha256` 不是当前修订版。任何修订（含只改散文）都会让旧证据的修订号落后，因此新修订版必须重新生成受影响的阶段证据。
+2. **被验证路径变化**：`git diff --name-only <observed_at_commit> HEAD` 命中的路径与该证据所属 operation 的 `resources` 有交集。证据没有声明 `acceptance` 时按任务的**全部** operation 资源判定；声明了就只按它覆盖的那些 operation 的资源判定（`sheet_operation_resources`）。
+
+`HEAD` 单纯前移本身**不**让证据失效：只有上面两条之一成立才作废。实现见 `pipeline_tools/core.py` 的 `evidence_revision_status`，`evidence reconcile` 用它判定 PASS/BLOCKED，`freshness` 在结果只记录 `observed_at_commit` 时用同一路径判据。
 
 ### 证据引用解析基准
 
@@ -55,6 +64,8 @@
 ### evidence_only 与 `.pipeline/metrics/`
 
 `evidence_freshness` 用 `evidence_only` 判断 `product_head..HEAD` 的改动是否全部落在证据目录内。`.pipeline/metrics/` 是工作流元数据（见 `references/metrics-contract.md`），始终豁免：`is_metrics_path` 命中的路径不破坏 `evidence_only`，与 `scope_check` 口径一致。否则任何跑过 pipeline-tools 的任务都会因 metrics 事件翻转为 `evidence_only: false` 并误报 `product/test HEAD drifted`。产品代码、测试或证据目录之外的其它改动仍照常触发 `product/test HEAD drifted`。
+
+同一套基准（`pipeline_tools/core.py` 的 `evidence_only_paths`）也决定 schema-2 报告的 `head` 是否仍然有效：报告写的是它评判的实现提交，而提交这份报告本身就会移动 `HEAD`，因此 `head != HEAD` 时只要 `head` 是 `HEAD` 的祖先、且 `head..HEAD` 只动本任务证据目录（含 `.pipeline/metrics/`）就仍然通过（`head_advanced_by_evidence_only`）。`head` 不是 `HEAD` 的祖先（例如未知提交），或区间内改动了产品/测试路径时，`evidence verify` 仍报 `<report> head does not match current Git identity`。这条规则不是“任何 head 都接受”：它只豁免任务自身证据的提交。
 
 ## 状态词表与读取侧归一
 

@@ -1,7 +1,7 @@
 ---
 name: pipeline
 description: "Use when an agent plans, builds, reviews, or merges code."
-version: 0.15.0
+version: 0.16.0
 author: Alex Chen (alexcdever)
 license: MIT
 platforms: [linux, macos, windows]
@@ -24,12 +24,12 @@ metadata:
 
 - **用户**：提供目标、优先级；裁决真实设计决策、外部授权、不可逆风险。
 - **主代理**：读状态 → 拆任务 → 写任务单+逐条验收测试 → 提交冻结后派发 → 调度执行/审查子代理 → 核全部证据并重跑关键验收 → 把任务级过程记录写入 `.pipeline/<task-id>/` 的角色进度日志和阶段报告 → 全闸门通过后合并并在主工作树复验。实现提交与正式 evidence 提交分开；pre-merge 必须包含满足 gate 的完整三份报告和三份机器结果，post-merge 更新同名 `final-check.md`/`final-result.json` 并提交 `finalization.json`，三者作为独立 evidence 提交。不默认替执行子代理写业务代码；遇真实决策点保留现场停下，不猜测。
-- **执行子代理**：在指定 worktree 按红→绿→蓝实现冻结任务单；跑验收命令与必要回归；只在自己任务证据目录写执行报告。不改冻结目标/范围/验收测试，不自行扩大产品设计。
+- **执行子代理**：在指定 worktree 按红→绿→蓝实现冻结任务单；跑验收命令与必要回归；只在自己任务证据目录写执行报告。不改冻结目标/范围/验收测试，不自行扩大产品设计；发现契约缺陷时提交结构化反馈（原因、期望、证据定位）给主代理，由主代理裁决并修订任务单，不得自行改契约。
 - **审查子代理**：独立上下文读任务单、代码、执行报告；亲自重跑验收测试；查正确性、边界、范围、覆盖率与证据新鲜度；发现问题报 BLOCKED/FAIL。默认只读，不改产品代码。
 
 ## 实现 worktree 约定
 
-- 任务单契约提交后冻结且不可变；任何目标、范围或验收变化必须记录裁决并创建新的 `derived` 任务，不得回写原任务单。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
+- 任务单契约提交后冻结，之后只按记录的修订版本演进：主代理先手工改任务单，再用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 校验并登记一条修订记录（`.pipeline/<task-id>/amendments.json`）；身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订，放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；未记录的改动仍是静默篡改，会被 `freeze_check` 判为漂移。合并后不再修订，需求变化走重新规划或新建 `derived` 任务，不回写已合并的历史。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
 - 必须从主工作树根目录执行：
 
   ```bash
@@ -58,13 +58,13 @@ metadata:
 
 - 事实只能来自本轮直接读取的文件、命令输出或测试产物；推断必须标为推断，未执行或未读取必须标为未验证，不能补造结果。
 - PASS 必须能回溯到当前 task-id、HEAD、worktree、branch、完整命令、退出码、关键断言和产物；通知、代理自述和旧报告不能代替当前证据。
-- 任务单只承载冻结契约与人类可读的契约说明：任务身份、依赖与范围、事实与假设、设计与行为契约、环境前置、验收测试和决策点；提交后不可变，状态字段不作为手工状态存储。
+- 任务单只承载契约与人类可读的契约说明：任务身份、依赖与范围、事实与假设、设计与行为契约、环境前置、验收测试和决策点；契约提交后冻结，身份字段不可修订，其余字段只能按记录的修订版本改变，状态字段不作为手工状态存储。
 - 过程记录不在任务单内。细粒度事件由主代理通过 lifecycle API/CLI 写入 `.pipeline/<task-id>/`；阶段结论写入三份阶段报告（`executor-report.md`、`review-report.md`、`final-check.md`）、机器结果 JSON 和 `finalization.json`；任务锚点与合并提交保存在进度事件和 dispatch 记录中。规划中间审计、stage 文件和原始日志优先进入系统临时目录，项目只保留 `.pipeline/recovery-index.json` 作为恢复索引，正式 evidence 仍在 `.pipeline/<task-id>/`。
 - 主代理按需读取本文件和相关 reference，不默认加载全部资料；委派简报只传任务身份、冻结契约路径、允许范围、验收 ID/命令、决策点和报告格式，证据不足再扩展阅读。
 
 ## 机械工具与项目级反馈
 
-机械检查和统计由本技能内置的 `pipeline_tools` 命令程序执行；不要再依赖已废弃的独立工具 worktree。技能只规定调用时机和判断边界。新任务单必须包含 `pipeline-contract` 机器区块，由 `pipeline-tools task validate` 校验；任务执行前运行 `task preflight`，执行中用 `command run` 统一超时和日志，范围用 `scope check`，正式证据校验前运行 `evidence readiness`，合并前后用 `evidence verify` 与 `gate`。
+机械检查和统计由本技能内置的 `pipeline_tools` 命令程序执行；不要再依赖已废弃的独立工具 worktree。技能只规定调用时机和判断边界。新任务单必须包含 `pipeline-contract` 机器区块，由 `pipeline-tools task validate` 校验；任务执行前运行 `task preflight`，契约修订用 `task amend`（只做校验、分类与登记，不生成也不重写任务单内容），执行中用 `command run` 统一超时和日志，范围用 `scope check`，正式证据校验前运行 `evidence readiness`，合并前后用 `evidence verify` 与 `gate`。
 
 - 工具输出的退出码和原始日志是机械事实；终端摘要不替代日志。
 - 在派发 executor/reviewer 前先运行 runtime preflight，确认 Node/pnpm/Git、native ABI 和项目所需测试能力；环境不匹配不得伪装成产品失败或继续正式验收。
@@ -80,7 +80,8 @@ metadata:
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
 - 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
-- 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）；`freeze_check` 据此检测任务单在冻结后被改动。
+- 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）并同时留存该版本契约快照；`freeze_check` 用「最新修订版的哈希」（有 `amendments.json` 时取最后一条修订的 `sheet_sha256`，否则取该记录）检测任务单在冻结后被改动，未经 `task amend` 登记的直接改动仍判为漂移。
+- 每份阶段报告与机器结果写明它评判的任务单**修订版本**（`sheet_revision`、`sheet_sha256`）与观察提交（`observed_at_commit`）。证据失效的判据只有两条：修订版本与当前版本不一致，或从 `observed_at_commit` 到 `HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交；`HEAD` 单纯前移不让证据失效。
 - `planning_to_dispatch` 支持 `expected_requirements_sha256` 绑定规划期需求基线；传入后 preflight 用它在派发前核对 `goal.md` 哈希是否漂移。
 - `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。
 - 生成的 schema-4 契约携带 `goal` 字段（`path`/`sha256`/`planning_run_id`）与 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结；schema 1-3 只保留历史读取，继续使用旧 `implement_plan` 字段。
@@ -89,8 +90,8 @@ metadata:
 
 ## 不可违反的规则
 
-1. 任务单先于实现：契约必须提交后才能创建唯一 `.worktrees/<task-id>` 实现 worktree 或派发；提交后任务单冻结且不可变，执行/审查子代理不得另建 worktree。
-2. 契约冻结：不得为迁就实现改验收测试或手工改状态；设计变更记裁决并开 `derived` 任务——任务类型字段写 `derived`，机器 task-id/path 保留 `continuation`——保留原历史。
+1. 任务单先于实现：契约必须提交后才能创建唯一 `.worktrees/<task-id>` 实现 worktree 或派发；提交后任务单冻结，之后只能按记录的修订版本改变（`task amend`），执行/审查子代理不得改契约，也不得另建 worktree。
+2. 契约冻结与修订：不得为迁就实现改验收测试或手工改状态；修订必须留痕（理由、发起角色、裁决引用、结构性差异），身份字段不可修订，放松约束必须带裁决引用；设计真变时记裁决并开 `derived` 任务——任务类型字段写 `derived`，机器 task-id/path 保留 `continuation`——保留原历史，合并后不再修订。
 3. 验收测试即用例：每条必须指向当前测试文件、用例、断言、命令、结果边界。
 4. 独立审查：独立上下文直接复验；转述他人结果不算。
 5. 证据属当前任务：task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成。
@@ -104,7 +105,7 @@ metadata:
 
 1. 恢复核对：跨会话或重启后优先调用 `lifecycle resume/status/list/inspect`，再读任务单、Git 状态、`.pipeline/recovery-index.json` 和正式 evidence；通过任务单、worktree、分支和证据目录核对活动任务身份，过程记录以 lifecycle 事件和阶段报告为准；发现多个活动任务或状态不一致时先 reconcile，禁止从项目级状态文档、通知或自然语言报告推断状态或盲目重派。规划前置检查还要核验已有任务现场：`worktrees_without_sheet` 是阻塞项（没有已提交任务单就存在任务工作树），`uncommitted_sheets` 与它同级也是阻塞项（`docs/tasks/<task-id>.md` 已存在但未提交到 HEAD），`sheets_without_worktree` 和 `leftover_evidence` 是警告项。
 2. 规划拆分：以用户行为或可验证能力为单位；定依赖、范围、契约、风险、决策点、验收矩阵；未写成具体用例即设计未完成。有产物依赖顺序执行；仅文件范围与 fixture 完全不重叠且无隐含依赖才并行。
-3. 冻结任务单：默认 `docs/tasks/<task-id>.md`，证据 `.pipeline/<task-id>/`；提交任务单后把契约提交记录进 dispatch 记录与角色进度日志，主代理从主工作树用 `git worktree add` 创建 `<仓库根目录>/.worktrees/<task-id>`，确认主分支 HEAD、新 worktree、branch 与契约提交的关系；之后契约冻结。
+3. 冻结任务单：默认 `docs/tasks/<task-id>.md`，证据 `.pipeline/<task-id>/`；提交任务单后把契约提交记录进 dispatch 记录与角色进度日志，主代理从主工作树用 `git worktree add` 创建 `<仓库根目录>/.worktrees/<task-id>`，确认主分支 HEAD、新 worktree、branch 与契约提交的关系；之后契约冻结，后续变化只走记录的修订版本。
 4. 执行：子代理只在任务 worktree 实现；用户功能贯通 UI→前端/协议→核心→领域事实→持久化/投影→回显→重启恢复；纯基建任务标 prerequisite，不得冒充产品闭环。
 5. 独立审查：新上下文核身份和报告新鲜度，逐条复验；通过 ≠ 已合并。
 6. 最终检查：读任务单/执行/审查/最终检查报告，抽查高风险测试，重跑关键验收、全量测试、构建、lint、范围、冲突检查；全部有证据才 ready-to-merge。
@@ -113,7 +114,7 @@ metadata:
 
 ## 证据目录最小要求
 
-`.pipeline/<task-id>/` 至少含 `executor-report.md`、`review-report.md`、`final-check.md`；每份写明 task-id、worktree、branch、轮次、命令、退出码、关键断言。正式 evidence 始终位于该目录；验收失败时可在系统临时目录保存完整日志等诊断证据，成功时无需把原始输出写入项目。项目侧仅保留 `.pipeline/recovery-index.json` 作为恢复索引。旧 `.workflow/<task-id>/` 必须迁移到这里，不能继续作为运行目录。
+`.pipeline/<task-id>/` 至少含 `executor-report.md`、`review-report.md`、`final-check.md`；每份写明 task-id、worktree、branch、轮次、命令、退出码、关键断言，以及它评判的任务单修订版本（`sheet_revision`、`sheet_sha256`）和证据观察提交 `observed_at_commit`。正式 evidence 始终位于该目录；验收失败时可在系统临时目录保存完整日志等诊断证据，成功时无需把原始输出写入项目。项目侧仅保留 `.pipeline/recovery-index.json` 作为恢复索引。旧 `.workflow/<task-id>/` 必须迁移到这里，不能继续作为运行目录。
 
 ## 版本兼容与迁移
 

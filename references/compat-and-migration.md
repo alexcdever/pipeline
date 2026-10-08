@@ -10,6 +10,7 @@
 
 ### 目录结构变化
 
+- **v0.15.0 → v0.16.0**：任务单从"冻结后绝对不可变"改为**版本化修订**：主代理在任意阶段（含执行证据已产生之后）可用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 登记一次修订，工具只校验、分类与登记，记录追加到 `.pipeline/<task-id>/amendments.json`（前后哈希、理由、发起角色、裁决引用、两个判据与结构性差异，旧条目字节不变）。身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订；放松约束（删除或放宽验收测试、降低证据等级、改写 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；`dependencies` 增删要校验依赖任务单存在且依赖图无环。`freeze_check` 与 lifecycle 的 `task_sheet_sha256` 漂移检查改用**最新修订版**的哈希为基准（无修订记录时回退到 `goal.json`），未经 `task amend` 的直接改动仍是漂移。阶段报告与机器结果新增 `sheet_revision`/`sheet_sha256`/`observed_at_commit`：证据失效只看修订版本是否与当前一致、以及被验证的 operation 资源在观察提交之后是否变化，`HEAD` 单纯前移不再让证据失效。计划与契约一致性检查以最新修订版为基准，依赖在规划后被修订时报告"规划后被修订过"。**兼容性**：新的修订判据只作用于自己声明了 `sheet_revision` 的证据；不带 `sheet_revision`/`sheet_sha256`/`observed_at_commit` 的历史证据保持既有判定，缺字段本身不产生任何错误（只在 `evidence reconcile` 的 `unverified` 里注明未被修订判据覆盖），旧口径（如 `identity.head` 的陈旧检查）照原样生效。schema-2 报告的 `head` 判定不再要求与当前 `HEAD` 精确相等：`head` 是 `HEAD` 的祖先且区间内只改本任务证据（含 `.pipeline/metrics/`）时报告保持有效，使「提交证据本身会移动 HEAD」不再让报告自判失效；`head` 不是祖先、或区间内动了产品/测试路径时仍照旧报错。合并后不再修订，需求变化重新规划。
 - **v0.13.0 → v0.14.0**：需求权威文档迁移为 `docs/goal.md`；兼容根目录旧版 `goal.md` 和更早版本 `implement-plan.md`，按固定优先级迁移且不覆盖已存在的 canonical 文档。schema 4 绑定新路径，schema 1-3 继续读取历史 `implement_plan` 路径；历史冻结任务单不批量改写。
 - **v0.12.0 → v0.13.0**：任务单在契约提交后冻结且不可变；任务级状态统一由 lifecycle API/CLI 管理，跨会话优先使用 `resume/status/list/inspect`，状态写入仅允许 `role=main-agent`；原始日志与规划中间审计优先进入系统临时目录，项目只保留 `.pipeline/recovery-index.json`，正式 evidence 仍在 `.pipeline/<task-id>/`。旧 `lifecycle status --evidence` 保持兼容，用于 legacy evidence 查询。
 - **v0.11.0 → v0.12.0**：任务生成失败不保留规划审计；旧 `.workflow` 证据目录首次访问时自动迁移并在冲突时阻塞；证据核对标题改用中文并兼容旧标题；单条命令默认超时统一为 180 秒；自动任务单补充事实、假设、未知、链路、环境前置和决策点章节。
@@ -22,6 +23,7 @@
 - 旧版握手 JSON 文件（如果存在）不影响新版本工作流，主代理使用环境检查列表机制
 - 旧 `lifecycle status --evidence` 命令行调用继续可用；新流程应优先使用任务级 `lifecycle resume/status/list/inspect`，写状态仅使用主代理角色接口
 - 成功任务目录只保留 7 个最终化文件（`RETAINED_EVIDENCE_NAMES`），其余过程产物由 `finalize_evidence` 清理；历史里遗留的漂移证据不重写 Git 历史，改用 `scope history --since <commit>` 前向基线闸门约束新提交，规则见 `references/acceptance-evidence.md`
+- 版本化修订向后兼容：从未修订过的任务单其基准仍是 `.pipeline/<task-id>/goal.json`（schema 1-3 为 `implement-plan.json`）里的 `task_sheet_sha256`，`freeze_check`、lifecycle 漂移检查与 `freshness` 的判定与旧版本一致；只有确实登记过 `amendments.json` 的任务才改用最新修订版的哈希为基准。历史任务单与历史证据不被批量改写，`amendments.json` 是否纳入 Git 追踪由项目开发者决定，与 `goal.json` 保持一致
 
 ### 升级建议
 

@@ -8,6 +8,7 @@ import os
 import re
 import signal
 import subprocess
+import tempfile
 import time
 import uuid
 import hashlib
@@ -23,7 +24,7 @@ from .layout import (
     metrics_dirs,
     temporary_log_path,
 )
-from .contract import load_contract, validate_task
+from .contract import CHAIN_NAMES, load_contract, validate_task
 
 PASS, FAIL, CONFIG, BLOCKED, DRIFT = 0, 1, 2, 3, 4
 REPORT_NAMES = ("executor-report.md", "review-report.md", "final-check.md")
@@ -174,6 +175,23 @@ def _write_log(path: Path, content: str) -> str | None:
     except OSError as exc:
         return f"unable to write log: {type(exc).__name__}"
     return None
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Replace a text file in one step so a failure leaves the old bytes intact."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
@@ -533,9 +551,17 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
         if value.get("task_id") != task_id:
             errors.append(f"{name} task identity mismatch")
         if value.get("schema") == 2:
-            for key in ("head", "branch"):
-                if value.get(key) != (current_identity.get(key) if key == "head" else (branch or current_identity.get(key))):
-                    errors.append(f"{name} {key} does not match current Git identity")
+            # The report names the commit it judged. Committing the report itself
+            # (task evidence only) moves HEAD, so accept an evidence-only advance
+            # instead of letting the record invalidate itself; anything else keeps
+            # the strict identity rule.
+            reported_head = value.get("head")
+            if reported_head != current_identity.get("head") and not head_advanced_by_evidence_only(
+                root, reported_head, current_identity.get("head"), directory
+            ):
+                errors.append(f"{name} head does not match current Git identity")
+            if value.get("branch") != (branch or current_identity.get("branch")):
+                errors.append(f"{name} branch does not match current Git identity")
             try:
                 report_worktree = Path(value.get("worktree", "")).resolve()
             except (OSError, ValueError):
@@ -1236,11 +1262,14 @@ def _record_goal_hash(
     task_sheet_sha256: str | None = None,
     *,
     legacy: bool = False,
+    task_sheet_contract: dict[str, Any] | None = None,
 ) -> None:
     """Persist observed freeze hashes so later stages can enforce them.
 
     Schema 4 tasks record goal.json; legacy schema 1-3 tasks keep writing the
     implement-plan.json evidence file so historical contracts stay readable.
+    The contract of the observed task sheet is snapshotted next to its hash so a
+    later amendment can diff against the exact revision it replaces.
     """
     if not observed and not task_sheet_sha256:
         return
@@ -1258,6 +1287,8 @@ def _record_goal_hash(
         value["sha256"] = observed
     if task_sheet_sha256:
         value["task_sheet_sha256"] = task_sheet_sha256
+    if isinstance(task_sheet_contract, dict) and task_sheet_contract:
+        value["task_sheet_contract"] = task_sheet_contract
     _write_log(directory / name, json.dumps(value, ensure_ascii=True, sort_keys=True))
 
 
@@ -1704,6 +1735,7 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
         observed.append({"fact": "implement_plan_observed", "value": observed_hash})
         errors.extend(plan_errors)
     product_head = identity.get("product_head") if isinstance(identity, dict) else None
+    observed_at_commit = result.get("observed_at_commit") if isinstance(result, dict) else None
     if result is None:
         errors.append("structured result is missing")
     elif product_head:
@@ -1717,25 +1749,34 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
             else:
                 diff_rc, diff = git(root, "diff", "--name-only", product_head, current_head, redact_output=False)
                 changed_paths = [path.replace("\\", "/") for path in diff.splitlines() if path.strip()]
-                try:
-                    evidence_root = evidence_directory.resolve().relative_to(root.resolve()).as_posix()
-                except (OSError, ValueError):
-                    evidence_root = ""
                 # Metrics events are workflow metadata that may be committed to the
                 # host project (see references/metrics-contract.md). scope_check
                 # already exempts them; evidence_only must use the same basis or
                 # every task that ran pipeline-tools flips to a false product drift.
-                evidence_only = bool(evidence_root) and all(
-                    path == evidence_root
-                    or path.startswith(evidence_root + "/")
-                    or is_metrics_path(path)
-                    for path in changed_paths
-                )
+                evidence_only = evidence_only_paths(root, evidence_directory, changed_paths)
                 observed.append({"fact": "product_head", "value": product_head})
                 observed.append({"fact": "changed_paths", "value": changed_paths})
                 observed.append({"fact": "evidence_only", "value": evidence_only})
                 if diff_rc != 0 or not evidence_only:
                     errors.append("product/test HEAD drifted")
+    elif isinstance(observed_at_commit, str) and observed_at_commit.strip():
+        # Revision-bound evidence: the commit it was observed at is a fact, and
+        # HEAD moving on its own never invalidates it.  Only a change to a path
+        # the task's operations verify does.
+        observed_at = observed_at_commit.strip()
+        rc, _ = git(root, "rev-parse", "--verify", f"{observed_at}^{{commit}}")
+        if rc:
+            errors.append("observed_at_commit is not a valid commit")
+        elif current_head:
+            changed = changed_paths_between(root, observed_at, current_head) or []
+            resources = sheet_operation_resources(contract or {}, _evidence_acceptance_ids(result))
+            touched = sorted({path for path in changed if any(_matches(path, pattern, root) for pattern in resources)})
+            observed.append({"fact": "observed_at_commit", "value": observed_at})
+            observed.append({"fact": "changed_paths", "value": changed})
+            observed.append({"fact": "verified_resources", "value": resources})
+            observed.append({"fact": "verified_paths_changed", "value": touched})
+            if touched:
+                errors.append("paths under verification changed after this evidence was produced")
     elif identity.get("head") and identity["head"] != current_head:
         errors.append("result HEAD is stale")
     evidence_refs: list[str] = []
@@ -1995,6 +2036,732 @@ def gate_check(
     return errors
 
 
+# --- Task sheet revisions ---------------------------------------------------
+# A task sheet is a versioned contract: revision 1 is the frozen sheet recorded
+# by freeze_check, and every later revision is one append-only entry in
+# .pipeline/<task-id>/amendments.json.  This module classifies and records
+# amendments; it never generates or rewrites task sheet content.
+
+AMENDMENT_SCHEMA = 1
+AMENDMENT_WRITER_ROLE = "main-agent"
+AMENDMENT_REQUEST_ROLES = ("main-agent", "executor", "reviewer")
+# Identity fields describe which task this contract is; changing them would make
+# the record describe a different task, so they are never amendable.
+CONTRACT_IDENTITY_FIELDS = ("schema", "task_id", "task_type", "derived_from")
+VERIFICATION_SURFACE_FIELDS = (
+    "acceptance_tests",
+    "allowed_paths",
+    "forbidden_paths",
+    "chain",
+    "required_evidence_levels",
+    "operations",
+    "risk",
+)
+# A changed assertion target cannot be proven to be a tightening, so it is
+# treated as a loosening and needs an adjudication reference.
+LOOSENING_ACCEPTANCE_FIELDS = ("test_ref", "command_ref")
+_SHA256_RE = re.compile(r"[0-9a-fA-F]{64}\Z")
+
+
+def _canonical(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _canonical(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_canonical(item) for item in value]
+    return value
+
+
+def task_sheet_candidates(root: Path, task_id: str) -> list[Path]:
+    """Return the supported task-sheet locations in resolution order."""
+    root = Path(root)
+    pipeline = active_pipeline_dir(root)
+    return [
+        root / "docs" / "tasks" / f"{task_id}.md",
+        pipeline / task_id / f"{task_id}.md",
+        pipeline / "archive" / f"{task_id}.md",
+    ]
+
+
+def task_sheet_path(root: Path, task_id: str) -> Path | None:
+    """Resolve a task sheet by id: docs/tasks, then evidence dir, then archive."""
+    if not _safe_task_identifier(task_id):
+        return None
+    for candidate in task_sheet_candidates(root, task_id):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def amendments_path(root: Path, task_id: str) -> Path:
+    return active_pipeline_dir(Path(root)) / task_id / "amendments.json"
+
+
+def read_amendments(root: Path, task_id: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """Read the append-only amendment record without rewriting it."""
+    path = amendments_path(root, task_id)
+    if not path.is_file():
+        return None, []
+    value = _json_file(path)
+    if value is None:
+        return None, ["amendments.json is missing or invalid JSON"]
+    revisions = value.get("revisions")
+    if value.get("schema") != AMENDMENT_SCHEMA or value.get("task_id") != task_id or not isinstance(revisions, list):
+        return None, ["amendments.json identity or schema is invalid"]
+    for index, record in enumerate(revisions, start=1):
+        if not isinstance(record, dict):
+            return None, [f"amendments.json revision {index} is not an object"]
+        revision = record.get("revision")
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision != index + 1:
+            return None, [f"amendments.json revision {index} is not in ascending order"]
+        digest = record.get("sheet_sha256")
+        if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+            return None, [f"amendments.json revision {index} has no task sheet hash"]
+    return value, []
+
+
+def task_sheet_revision(root: Path, task_id: str) -> tuple[int, str | None]:
+    """Return the current sheet revision and the hash it must match."""
+    if not _safe_task_identifier(task_id):
+        return 1, None
+    record, errors = read_amendments(root, task_id)
+    if errors or record is None or not record["revisions"]:
+        return 1, _recorded_task_sheet_sha256(root, task_id)
+    last = record["revisions"][-1]
+    digest = last.get("sheet_sha256")
+    return (
+        last["revision"],
+        digest if isinstance(digest, str) and _SHA256_RE.fullmatch(digest) else _recorded_task_sheet_sha256(root, task_id),
+    )
+
+
+def task_sheet_baseline_sha256(root: Path, task_id: str) -> str | None:
+    """Return the hash the recorded revision of a task sheet must match."""
+    return task_sheet_revision(root, task_id)[1]
+
+
+def recorded_task_sheet_hashes(root: Path, task_id: str) -> set[str]:
+    """Every task sheet hash the recorded amendment chain accounts for."""
+    record, errors = read_amendments(root, task_id)
+    if errors or record is None:
+        return set()
+    hashes: set[str] = set()
+    for entry in record["revisions"]:
+        for key in ("previous_sheet_sha256", "sheet_sha256"):
+            value = entry.get(key)
+            if isinstance(value, str) and _SHA256_RE.fullmatch(value):
+                hashes.add(value)
+    return hashes
+
+
+def _goal_contract_snapshot(root: Path, task_id: str) -> dict[str, Any] | None:
+    directory = active_pipeline_dir(Path(root)) / task_id
+    for path in _goal_evidence_files(directory):
+        value = _json_file(path)
+        if not isinstance(value, dict) or value.get("task_id") not in (None, task_id):
+            continue
+        snapshot = value.get("task_sheet_contract")
+        if isinstance(snapshot, dict) and snapshot:
+            return snapshot
+    return None
+
+
+def _git_blob(root: Path, reference: str) -> bytes | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "show", reference],
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return completed.stdout if completed.returncode == 0 else None
+
+
+def _previous_sheet_contract(root: Path, task_id: str, sheet: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    """Return the contract of the recorded revision the new one replaces."""
+    record, _errors = read_amendments(root, task_id)
+    if record and record["revisions"]:
+        snapshot = record["revisions"][-1].get("sheet_contract")
+        if isinstance(snapshot, dict) and snapshot:
+            return snapshot, []
+    snapshot = _goal_contract_snapshot(root, task_id)
+    if snapshot is not None:
+        return snapshot, []
+    try:
+        relative = Path(sheet).resolve().relative_to(Path(root).resolve()).as_posix()
+    except (OSError, ValueError):
+        return None, ["the task sheet is outside the project root"]
+    blob = _git_blob(root, f"HEAD:{relative}")
+    if blob is None:
+        return None, ["the recorded revision of the task sheet is not available in Git"]
+    contract = _contract_from_text(blob.decode("utf-8", "replace"))
+    if not isinstance(contract, dict):
+        return None, ["the recorded revision of the task sheet has no readable contract"]
+    baseline = _recorded_task_sheet_sha256(root, task_id)
+    if baseline:
+        # Git stores line endings in its own form, so accept either the exact blob
+        # or its CRLF translation before rejecting the recorded revision.
+        digests = {
+            hashlib.sha256(blob).hexdigest(),
+            hashlib.sha256(blob.replace(b"\n", b"\r\n")).hexdigest(),
+        }
+        if baseline not in digests:
+            return None, [
+                "the task sheet at HEAD does not match the recorded revision; "
+                "record the earlier change before amending"
+            ]
+    return contract, []
+
+
+def _dependency_id(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("task_id", "id"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _dependency_edges(root: Path, task_id: str) -> list[str] | None:
+    sheet = task_sheet_path(root, task_id)
+    if sheet is None:
+        return None
+    contract, errors = load_contract(sheet)
+    if errors or not isinstance(contract, dict):
+        return None
+    return [item for item in (_dependency_id(entry) for entry in contract.get("dependencies", [])) if item]
+
+
+def dependency_cycle(root: Path, task_id: str, dependencies: list[str]) -> list[str] | None:
+    """Return the dependency path that closes a cycle, or None when it is acyclic.
+
+    The amended task's own edges are the candidate dependency list; every other
+    node is read from its on-disk sheet.
+    """
+    cache: dict[str, list[str] | None] = {}
+
+    def edges(identifier: str) -> list[str]:
+        if identifier == task_id:
+            return list(dependencies)
+        if identifier not in cache:
+            cache[identifier] = _dependency_edges(root, identifier)
+        return cache[identifier] or []
+
+    stack: list[str] = []
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(identifier: str) -> list[str] | None:
+        if identifier in visiting:
+            return [*stack[stack.index(identifier):], identifier]
+        if identifier in visited:
+            return None
+        visiting.add(identifier)
+        stack.append(identifier)
+        for dependency in edges(identifier):
+            found = visit(dependency)
+            if found:
+                return found
+        stack.pop()
+        visiting.discard(identifier)
+        visited.add(identifier)
+        return None
+
+    return visit(task_id)
+
+
+def _list_delta(before: Any, after: Any) -> dict[str, list[Any]]:
+    previous = before if isinstance(before, list) else []
+    current = after if isinstance(after, list) else []
+    canonical_previous = [_canonical(item) for item in previous]
+    canonical_current = [_canonical(item) for item in current]
+    return {
+        "added": [item for item, key in zip(current, canonical_current) if key not in canonical_previous],
+        "removed": [item for item, key in zip(previous, canonical_previous) if key not in canonical_current],
+    }
+
+
+def _contract_changes(previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """Return the structural difference between two contract revisions."""
+
+    def acceptance_map(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        tests = contract.get("acceptance_tests")
+        return {
+            item["id"]: item
+            for item in (tests if isinstance(tests, list) else [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+
+    before_tests, after_tests = acceptance_map(previous), acceptance_map(current)
+    modified: list[dict[str, Any]] = []
+    for identifier in before_tests:
+        if identifier not in after_tests:
+            continue
+        before, after = before_tests[identifier], after_tests[identifier]
+        if _canonical(before) == _canonical(after):
+            continue
+        fields = {
+            name: {"from": before.get(name), "to": after.get(name)}
+            for name in sorted(set(before) | set(after))
+            if _canonical(before.get(name)) != _canonical(after.get(name))
+        }
+        modified.append({"id": identifier, "fields": fields})
+
+    def operation_map(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        operations = contract.get("operations")
+        return {
+            item["id"]: item
+            for item in (operations if isinstance(operations, list) else [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+
+    before_operations, after_operations = operation_map(previous), operation_map(current)
+    chain_before = previous.get("chain") if isinstance(previous.get("chain"), dict) else {}
+    chain_after = current.get("chain") if isinstance(current.get("chain"), dict) else {}
+    return {
+        "acceptance_tests": {
+            "added": [item for item in after_tests if item not in before_tests],
+            "removed": [item for item in before_tests if item not in after_tests],
+            "modified": modified,
+        },
+        "dependencies": _list_delta(
+            [item for item in (_dependency_id(entry) for entry in previous.get("dependencies", [])) if item],
+            [item for item in (_dependency_id(entry) for entry in current.get("dependencies", [])) if item],
+        ),
+        "allowed_paths": _list_delta(previous.get("allowed_paths"), current.get("allowed_paths")),
+        "forbidden_paths": _list_delta(previous.get("forbidden_paths"), current.get("forbidden_paths")),
+        "non_goals": _list_delta(previous.get("non_goals"), current.get("non_goals")),
+        "risk": {"from": previous.get("risk"), "to": current.get("risk")},
+        "required_evidence_levels": _list_delta(
+            previous.get("required_evidence_levels"), current.get("required_evidence_levels")
+        ),
+        "chain": {
+            "changed": _canonical(chain_before) != _canonical(chain_after),
+            "segments": sorted(
+                name for name in CHAIN_NAMES if _canonical(chain_before.get(name)) != _canonical(chain_after.get(name))
+            ),
+        },
+        "operations": {
+            "added": [item for item in after_operations if item not in before_operations],
+            "removed": [item for item in before_operations if item not in after_operations],
+            "modified": sorted(
+                identifier
+                for identifier in before_operations
+                if identifier in after_operations
+                and _canonical(before_operations[identifier]) != _canonical(after_operations[identifier])
+            ),
+        },
+    }
+
+
+def _verification_surface_changed(previous: dict[str, Any], current: dict[str, Any]) -> bool:
+    return any(
+        _canonical(previous.get(field)) != _canonical(current.get(field))
+        for field in VERIFICATION_SURFACE_FIELDS
+    )
+
+
+def required_evidence_floor(contract: dict[str, Any]) -> int | None:
+    """The task-level evidence floor the lifecycle reads: max(required_evidence_levels)."""
+    levels = contract.get("required_evidence_levels") if isinstance(contract, dict) else None
+    values = [
+        item for item in (levels if isinstance(levels, list) else [])
+        if isinstance(item, int) and not isinstance(item, bool)
+    ]
+    return max(values) if values else None
+
+
+def _contract_loosened(previous: dict[str, Any], current: dict[str, Any], changes: dict[str, Any]) -> bool:
+    """Whether a revision relaxes what the contract requires."""
+    tests = changes["acceptance_tests"]
+    if tests["removed"]:
+        return True
+    for item in tests["modified"]:
+        for name, delta in item["fields"].items():
+            if delta["to"] is None:
+                return True
+            if name == "evidence_level":
+                before, after = delta["from"], delta["to"]
+                if isinstance(before, int) and not isinstance(before, bool):
+                    if not isinstance(after, int) or isinstance(after, bool) or after < before:
+                        return True
+            elif name in LOOSENING_ACCEPTANCE_FIELDS:
+                return True
+    # The task-level floor is the number the lifecycle turns into "ready"; lowering
+    # it (by dropping or shrinking the levels) lowers what the task must prove.
+    before_floor = required_evidence_floor(previous)
+    after_floor = required_evidence_floor(current)
+    if before_floor is not None and (after_floor is None or after_floor < before_floor):
+        return True
+    if changes["allowed_paths"]["added"]:
+        return True
+    if changes["forbidden_paths"]["removed"]:
+        return True
+    return bool(changes["non_goals"]["removed"])
+
+
+def _write_amendments(path: Path, document: dict[str, Any]) -> None:
+    """Append-only writer: one record per line, earlier lines never rewritten."""
+    records = [json.dumps(record, ensure_ascii=True, sort_keys=True) for record in document["revisions"]]
+    text = (
+        '{"schema": ' + json.dumps(document["schema"]) + ', "task_id": '
+        + json.dumps(document["task_id"], ensure_ascii=True)
+        + ', "revisions": [\n' + "\n,\n".join(records) + "\n]}\n"
+    )
+    _atomic_write_text(path, text)
+
+
+def amend_task_sheet(
+    root: Path,
+    task_id: str,
+    *,
+    reason: str,
+    adjudication: str | None = None,
+    requested_by: str = "main-agent",
+    feedback_ref: str | None = None,
+    role: str = AMENDMENT_WRITER_ROLE,
+    task_sheet: Path | None = None,
+) -> dict[str, Any]:
+    """Classify, validate, and record one task sheet revision.
+
+    The tool validates and records only: the main agent edits the task sheet
+    first and this call decides whether the change is acceptable.  A rejected
+    amendment leaves no record, no hash change and no moved file.
+    """
+
+    def outcome(status: str, errors: list[str] | None = None, **extra: Any) -> dict[str, Any]:
+        return {
+            "schema": 1,
+            "command": "task.amend",
+            "status": status,
+            "exit_code": {"pass": PASS, "fail": FAIL, "config": CONFIG, "blocked": BLOCKED}[status],
+            "task_id": task_id,
+            "phase": "contract",
+            "observed": extra.pop("observed", []),
+            "errors": list(errors or []),
+            "blockers": extra.pop("blockers", []),
+            "artifacts": extra.pop("artifacts", []),
+            "next_actions": extra.pop("next_actions", []),
+            "unverified": extra.pop("unverified", []),
+            **extra,
+        }
+
+    root = Path(root)
+    if role != AMENDMENT_WRITER_ROLE:
+        return outcome(
+            "blocked",
+            ["role=main-agent is required for task sheet amendments"],
+            next_actions=["retry with role=main-agent"],
+        )
+    if not _safe_task_identifier(task_id):
+        return outcome("config", ["invalid task id"])
+    if not isinstance(reason, str) or not reason.strip():
+        return outcome("config", ["--reason must be a non-empty string"])
+    if requested_by not in AMENDMENT_REQUEST_ROLES:
+        return outcome("config", [f"--requested-by must be one of {', '.join(AMENDMENT_REQUEST_ROLES)}"])
+    for label, reference in (("reason", reason), ("adjudication", adjudication), ("feedback_ref", feedback_ref)):
+        if reference is not None and not isinstance(reference, str):
+            return outcome("config", [f"--{label} must be a string"])
+    sheet = Path(task_sheet) if task_sheet is not None else task_sheet_path(root, task_id)
+    if sheet is None or not sheet.is_file():
+        return outcome("config", [f"task sheet not found for task id: {task_id}"])
+    contract, contract_errors = load_contract(sheet)
+    if contract_errors or not isinstance(contract, dict):
+        return outcome("config", ["task sheet is not a valid frozen contract", *contract_errors])
+    record, record_errors = read_amendments(root, task_id)
+    if record_errors:
+        return outcome("blocked", record_errors)
+    previous, previous_errors = _previous_sheet_contract(root, task_id, sheet)
+    if previous is None:
+        return outcome(
+            "config",
+            ["the previous task sheet revision is unavailable; freeze the task sheet before amending", *previous_errors],
+        )
+    identity_changes = sorted(
+        field for field in CONTRACT_IDENTITY_FIELDS if _canonical(previous.get(field)) != _canonical(contract.get(field))
+    )
+    if identity_changes:
+        return outcome(
+            "blocked",
+            [f"contract field {field} is not amendable (identity field)" for field in identity_changes],
+            next_actions=["create a new task instead of re-identifying this one"],
+        )
+    if contract.get("task_id") != task_id:
+        return outcome("blocked", [f"task sheet task_id does not match --task-id: {task_id}"])
+    changes = _contract_changes(previous, contract)
+    dependencies = [item for item in (_dependency_id(entry) for entry in contract.get("dependencies", [])) if item]
+    if changes["dependencies"]["added"] or changes["dependencies"]["removed"]:
+        missing = [item for item in dependencies if task_sheet_path(root, item) is None]
+        if missing:
+            return outcome("blocked", [f"dependency task sheet not found: {item}" for item in missing])
+        unresolvable = [item for item in dependencies if _dependency_edges(root, item) is None]
+        if unresolvable:
+            return outcome("blocked", [f"dependency task sheet is not a valid contract: {item}" for item in unresolvable])
+        cycle = dependency_cycle(root, task_id, dependencies)
+        if cycle:
+            return outcome("blocked", ["dependency cycle: " + " -> ".join(cycle)])
+    surface_changed = _verification_surface_changed(previous, contract)
+    loosened = _contract_loosened(previous, contract, changes)
+    if loosened and not (isinstance(adjudication, str) and adjudication.strip()):
+        return outcome(
+            "blocked",
+            ["loosening the contract requires --adjudication"],
+            next_actions=["record the adjudication reference and retry"],
+        )
+    revision, baseline = task_sheet_revision(root, task_id)
+    observed = _file_sha256(sheet)
+    if observed is None:
+        return outcome("config", ["task sheet unreadable"])
+    if observed == baseline:
+        return outcome("config", [f"task sheet is unchanged since revision {revision}; nothing to amend"])
+    existing = list(record["revisions"]) if record else []
+    entry: dict[str, Any] = {
+        "revision": revision + 1,
+        "at": datetime.now().astimezone().isoformat(),
+        "by": AMENDMENT_WRITER_ROLE,
+        "requested_by": requested_by,
+        "feedback_ref": feedback_ref or None,
+        "reason": reason.strip(),
+        "adjudication_ref": adjudication.strip() if isinstance(adjudication, str) and adjudication.strip() else None,
+        "previous_sheet_sha256": baseline,
+        "sheet_sha256": observed,
+        "verification_surface_changed": surface_changed,
+        "loosened": loosened,
+        "changes": changes,
+        "sheet_contract": contract,
+    }
+    path = amendments_path(root, task_id)
+    try:
+        _write_amendments(path, {"schema": AMENDMENT_SCHEMA, "task_id": task_id, "revisions": [*existing, entry]})
+    except OSError as error:
+        return outcome("blocked", [f"amendment record could not be written: {type(error).__name__}"])
+    next_actions = ["commit the amended task sheet"]
+    if surface_changed:
+        next_actions.append("redo the affected stage evidence against the new revision")
+    return outcome(
+        "pass",
+        revision=entry["revision"],
+        previous_revision=revision,
+        verification_surface_changed=surface_changed,
+        loosened=loosened,
+        requested_by=requested_by,
+        feedback_ref=entry["feedback_ref"],
+        adjudication_ref=entry["adjudication_ref"],
+        previous_sheet_sha256=baseline,
+        sheet_sha256=observed,
+        changes=changes,
+        observed=[
+            {"fact": "task_sheet_revision", "value": entry["revision"]},
+            {"fact": "verification_surface_changed", "value": surface_changed},
+            {"fact": "loosened", "value": loosened},
+        ],
+        artifacts=[str(path)],
+        next_actions=next_actions,
+    )
+
+
+def _evidence_acceptance_ids(value: Any) -> set[str]:
+    if not isinstance(value, dict):
+        return set()
+    acceptance = value.get("acceptance")
+    if not isinstance(acceptance, list):
+        return set()
+    return {
+        item["id"]
+        for item in acceptance
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+
+
+def _operation_resource_paths(contract: dict[str, Any]) -> list[tuple[set[str], list[str]]]:
+    operations = contract.get("operations") if isinstance(contract, dict) else None
+    entries: list[tuple[set[str], list[str]]] = []
+    for operation in operations if isinstance(operations, list) else []:
+        if not isinstance(operation, dict):
+            continue
+        tests = operation.get("acceptance_tests")
+        entries.append((
+            {item for item in tests if isinstance(item, str)} if isinstance(tests, list) else set(),
+            _string_list(operation.get("resources")),
+        ))
+    return entries
+
+
+def sheet_operation_resources(contract: dict[str, Any], acceptance_ids: set[str]) -> list[str]:
+    """Resources of the operations that own the given acceptance tests.
+
+    Evidence that declares no acceptance ids speaks for the whole task, so it is
+    measured against every operation resource.
+    """
+    entries = _operation_resource_paths(contract)
+    owned = sorted({resource for tests, resources in entries if tests & acceptance_ids for resource in resources})
+    if owned:
+        return owned
+    return sorted({resource for _tests, resources in entries for resource in resources})
+
+
+def changed_paths_between(root: Path, base: str, head: str | None = None) -> list[str] | None:
+    """Return paths changed from a recorded commit to HEAD, or None if unknown."""
+    if not isinstance(base, str) or not base.strip():
+        return None
+    rc, _ = git(root, "rev-parse", "--verify", f"{base.strip()}^{{commit}}")
+    if rc:
+        return None
+    rc, output = git(root, "diff", "--name-only", base.strip(), head or "HEAD", redact_output=False)
+    if rc:
+        return None
+    return [path.replace("\\", "/") for path in output.splitlines() if path.strip()]
+
+
+def evidence_only_paths(root: Path, evidence_directory: Path, changed_paths: list[str]) -> bool:
+    """Whether every changed path belongs to this task's own evidence.
+
+    Committing the task's evidence tree (and the metrics stream) is workflow
+    bookkeeping: it advances HEAD without changing the product or the tests, so
+    it must never invalidate evidence.  This is the single basis shared by
+    ``evidence_freshness`` and the schema-2 report head check.
+    """
+    try:
+        evidence_root = Path(evidence_directory).resolve().relative_to(Path(root).resolve()).as_posix()
+    except (OSError, ValueError):
+        return False
+    if not evidence_root:
+        return False
+    return all(
+        path == evidence_root
+        or path.startswith(evidence_root + "/")
+        or is_metrics_path(path)
+        for path in changed_paths
+    )
+
+
+def head_advanced_by_evidence_only(
+    root: Path,
+    reported_head: Any,
+    current_head: Any,
+    evidence_directory: Path,
+) -> bool:
+    """Whether HEAD moved past ``reported_head`` by committing only task evidence.
+
+    A record names the commit it judged.  Publishing that record moves HEAD, so
+    requiring exact equality would make every report invalidate itself.  Only a
+    plain commit range whose changed paths are all this task's evidence (or the
+    metrics stream) is accepted; an unknown, non-ancestor or product-touching
+    range keeps the strict rule.
+    """
+    if not isinstance(reported_head, str) or not isinstance(current_head, str):
+        return False
+    if reported_head == current_head:
+        return True
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", reported_head):
+        return False
+    rc, _ = git(root, "merge-base", "--is-ancestor", reported_head, current_head)
+    if rc:
+        return False
+    changed = changed_paths_between(root, reported_head, current_head)
+    if changed is None:
+        return False
+    return evidence_only_paths(root, evidence_directory, changed)
+
+
+def evidence_revision_status(
+    root: Path,
+    task_id: str,
+    contract: dict[str, Any],
+    records: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Judge evidence against the sheet revision it was produced for.
+
+    Evidence is stale when the revision it names is not the current revision, or
+    when a path its operations verify changed between the commit it was observed
+    at and HEAD.  HEAD moving on its own never invalidates evidence.
+
+    Only evidence that declares ``sheet_revision`` is judged this way.  Evidence
+    in the historical shape (no revision field) keeps exactly the verdict the
+    older rules gave it, so a missing new field never adds an error by itself;
+    it is reported as unverified instead.
+    """
+    root = Path(root)
+    revision, baseline = task_sheet_revision(root, task_id)
+    rc, head = git(root, "rev-parse", "HEAD")
+    current_head = head.strip() if rc == 0 else None
+    details: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    unverified: list[str] = []
+    for name in sorted(records):
+        value = records[name]
+        reasons: list[str] = []
+        declared = value.get("sheet_revision")
+        declared_hash = value.get("sheet_sha256")
+        observed_at = value.get("observed_at_commit")
+        bound = isinstance(declared, int) and not isinstance(declared, bool)
+        judged = False
+        if bound:
+            if declared != revision:
+                reasons.append(
+                    f"{name} was produced against task sheet revision {declared} "
+                    f"but the current revision is {revision}"
+                )
+            elif baseline is not None and declared_hash != baseline:
+                reasons.append(f"{name} task sheet hash does not match revision {revision}")
+            if not isinstance(observed_at, str) or not observed_at.strip():
+                unverified.append(
+                    f"{name} does not record the commit it was observed at; "
+                    "the changed-path criterion was not evaluated"
+                )
+            elif current_head is None:
+                unverified.append(
+                    f"{name} declares an observation commit but HEAD is unavailable; "
+                    "the changed-path criterion was not evaluated"
+                )
+            else:
+                changed = changed_paths_between(root, observed_at.strip(), current_head)
+                if changed is None:
+                    reasons.append(f"{name} observed_at_commit is not a reachable commit: {observed_at.strip()}")
+                else:
+                    judged = True
+                    resources = sheet_operation_resources(contract, _evidence_acceptance_ids(value))
+                    touched = sorted({path for path in changed if any(_matches(path, pattern, root) for pattern in resources)})
+                    if touched:
+                        reasons.append(
+                            f"{name} was produced before changes to paths it verifies: " + ", ".join(touched)
+                        )
+        else:
+            unverified.append(
+                f"{name} does not record the task sheet revision it was judged against; "
+                "the revision criteria were not applied"
+            )
+        details[name] = {
+            "sheet_revision": declared if bound else None,
+            "sheet_sha256": declared_hash if isinstance(declared_hash, str) else None,
+            "observed_at_commit": observed_at if isinstance(observed_at, str) else None,
+            "revision_bound": bound,
+            "changed_paths_judged": judged,
+            "stale": bool(reasons),
+            "reasons": reasons,
+        }
+        errors.extend(reasons)
+    return {
+        "schema": 1,
+        "sheet_revision": revision,
+        "sheet_sha256": baseline,
+        "head": current_head,
+        "records": details,
+        "stale": bool(errors),
+        "errors": errors,
+        "unverified": unverified,
+    }
+
+
 # Backwards-compatible name used by the first CLI draft.
 def freeze_check(
     root: Path,
@@ -2047,8 +2814,11 @@ def freeze_check(
             errors.append("task sheet is not a valid frozen contract")
         else:
             sheet_task_id = sheet_contract.get("task_id")
-            recorded_sheet = _recorded_task_sheet_sha256(root, sheet_task_id)
+            amendments_invalid = read_amendments(root, sheet_task_id)[1] if isinstance(sheet_task_id, str) else []
+            recorded_sheet = task_sheet_baseline_sha256(root, sheet_task_id)
             observed_sheet = _file_sha256(task_sheet)
+            if amendments_invalid:
+                errors.extend(f"task sheet amendment record is invalid: {item}" for item in amendments_invalid)
             if recorded_sheet and observed_sheet and recorded_sheet != observed_sheet:
                 errors.append("task sheet changed after freeze")
             if sheet_contract.get("task_type") == "derived":
@@ -2073,6 +2843,7 @@ def freeze_check(
             _record_goal_hash(
                 root, sheet_task_id, observed_hash, observed_sheet,
                 legacy=sheet_contract.get("schema") != 4,
+                task_sheet_contract=sheet_contract,
             )
             if unverified is not None:
                 unverified.extend(plan_unverified)
