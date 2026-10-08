@@ -50,6 +50,12 @@ def _json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _report_revision(value: dict[str, Any]) -> int | None:
+    """Return a report's declared task sheet revision, or None when it has none."""
+    declared = value.get("sheet_revision")
+    return declared if isinstance(declared, int) and not isinstance(declared, bool) else None
+
+
 def _safe_cwd_is_root(value: Any, root: Path) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
@@ -109,20 +115,27 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         )
     identity_values = {
         "task_id": {value.get("task_id") for value in reports.values()},
+        "sheet_revision": {_report_revision(value) for value in reports.values()},
         "branch": {value.get("branch") for value in reports.values()},
         "worktree": {value.get("worktree") for value in reports.values()},
         "head": {value.get("head") for value in reports.values() if value.get("head") is not None},
     }
     identity = {
         "task_id": task_id if identity_values["task_id"] == {task_id} else None,
+        "sheet_revision": next(iter(identity_values["sheet_revision"])) if len(identity_values["sheet_revision"]) == 1 else None,
         "branch": next(iter(identity_values["branch"])) if len(identity_values["branch"]) == 1 else None,
         "worktree": next(iter(identity_values["worktree"])) if len(identity_values["worktree"]) == 1 else None,
         "head": next(iter(identity_values["head"])) if len(identity_values["head"]) == 1 else None,
     }
     identity_errors = []
-    if any(len(values) > 1 for values in identity_values.values()):
+    # Identity is the task id plus the task sheet revision.  branch, worktree and
+    # head stay recorded facts: a task-branch report and the main-worktree final
+    # check legitimately disagree on them, so they never make an identity conflict.
+    # A report that declares no revision keeps the historical shape's verdict --
+    # evidence_revision_status reports it as unverified, never as a new error.
+    if len(identity_values["task_id"]) > 1 or len(identity_values["sheet_revision"]) > 1:
         identity_errors.append("report identity conflict")
-    if reports and any(not value.get(key) for value in reports.values() for key in ("task_id", "branch", "worktree")):
+    if reports and any(not value.get("task_id") for value in reports.values()):
         identity_errors.append("report identity is incomplete")
     heads = identity_values["head"]
     strict_reports = [value for value in reports.values() if value.get("schema") == 2]
@@ -149,7 +162,12 @@ def reconcile_task(root: Path, task_sheet: Path, *, update: bool = False) -> dic
         freshness = {"status": "blocked", "errors": [f"布局冲突：{error}"]}
     bound_records = {**reports, **results}
     try:
-        revision_status = evidence_revision_status(root, str(task_id), contract or {}, bound_records)
+        # Reconciliation is the post-merge judgment: merging always moves HEAD past
+        # the recorded observation commit, so the changed-path criterion is not
+        # judged here; identity is the task id plus the sheet revision.
+        revision_status = evidence_revision_status(
+            root, str(task_id), contract or {}, bound_records, judge_observed_paths=False
+        )
     except (LegacyPipelineLayoutError, OSError) as error:
         revision_status = {"schema": 1, "sheet_revision": None, "sheet_sha256": None, "head": None,
                            "records": {}, "stale": True, "errors": [f"布局冲突：{error}"], "unverified": []}

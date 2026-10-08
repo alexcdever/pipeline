@@ -43,6 +43,12 @@ BLOCKER_CLASSES = {"product", "environment", "permission", "evidence", "dependen
 REPORT_STATUSES = ("PASS", "FAIL", "BLOCKED", "FLAKY", "EXPLORATORY_ONLY", "READY-TO-MERGE", "MERGED")
 PRE_MERGE_REPORT_STATUSES = ("PASS", "READY-TO-MERGE")
 POST_MERGE_REPORT_STATUSES = ("PASS", "READY-TO-MERGE", "MERGED")
+# Evidence identity is phase aware.  Before the merge the evidence is bound to the
+# commits it observed, so head, branch and worktree must match the current Git
+# identity.  After the merge that binding cannot hold: merging always introduces
+# product-path commits into the current head, so identity there is the task id
+# plus the task sheet revision, and the commit references stay recorded facts.
+EVIDENCE_PHASES = ("active", "finalized")
 RESULT_STATUSES = ("pass", "fail", "blocked", "flaky")
 ACCEPTANCE_STATUSES = ("pass", "fail", "blocked", "flaky", "unverified")
 # The only status spelling that ever shipped but belongs to neither vocabulary.
@@ -490,13 +496,33 @@ def _read_machine_evidence(path: Path) -> tuple[dict[str, Any] | None, list[str]
     return value, []
 
 
-def evidence_verify(directory: Path, task_id: str, branch: str | None = None) -> list[str]:
-    """Verify machine-readable report identity and minimum evidence fields."""
+def evidence_verify(
+    directory: Path,
+    task_id: str,
+    branch: str | None = None,
+    phase: str = "active",
+) -> list[str]:
+    """Verify machine-readable report identity and minimum evidence fields.
+
+    ``phase`` selects the identity criterion set.  ``active`` (pre-merge) binds a
+    report to the commit it observed: its ``head`` must equal the current head or
+    only be advanced by its own evidence, and its ``branch``/``worktree`` must
+    equal the current Git identity.  ``finalized`` (post-merge) identifies the
+    evidence by the task id and the task sheet revision alone, because merging
+    always adds product-path commits to the current head; ``head``, ``branch``,
+    ``worktree`` and ``observed_at_commit`` stay required, format-checked records.
+    """
+    if phase not in EVIDENCE_PHASES:
+        raise ValueError(f"evidence phase must be one of {EVIDENCE_PHASES}")
     directory = _canonical_evidence_dir(directory)
+    commit_bound = phase == "active"
     errors: list[str] = []
     reports: dict[str, dict[str, Any]] = {}
     root = _evidence_root(directory)
     current_identity = git_identity(root)
+    current_revision = None if commit_bound else task_sheet_revision(root, task_id)[0]
+    if not commit_bound and directory.name != task_id:
+        errors.append("evidence directory does not match the verified task id")
     expected_roles = {
         "executor-report.md": "executor",
         "review-report.md": "reviewer",
@@ -550,32 +576,46 @@ def evidence_verify(directory: Path, task_id: str, branch: str | None = None) ->
                     errors.append(f"{name} generated_at is not ISO-8601")
         if value.get("task_id") != task_id:
             errors.append(f"{name} task identity mismatch")
-        merged_identity = False
         if value.get("schema") == 2:
-            # The report names the commit it judged. Committing the report itself
-            # (task evidence only) moves HEAD, so accept an evidence-only advance
-            # instead of letting the record invalidate itself; anything else keeps
-            # the strict identity rule.
-            reported_head = value.get("head")
-            head_accepted = reported_head == current_identity.get("head") or head_advanced_by_evidence_only(
-                root, reported_head, current_identity.get("head"), directory
-            )
-            if not head_accepted:
-                errors.append(f"{name} head does not match current Git identity")
-            # The same reasoning applies to the branch and worktree the report was
-            # written in: once that branch is merged, the record still describes
-            # work in the current head. Only the proven case is accepted.
-            merged_identity = merged_task_branch_identity(root, value, task_id, head_accepted)
-            if not merged_identity and value.get("branch") != (branch or current_identity.get("branch")):
-                errors.append(f"{name} branch does not match current Git identity")
-            try:
-                report_worktree = Path(value.get("worktree", "")).resolve()
-            except (OSError, ValueError):
-                report_worktree = None
-            current_worktree = current_identity.get("worktree")
-            if not merged_identity and (not current_worktree or report_worktree != Path(current_worktree)):
-                errors.append(f"{name} worktree does not match current Git identity")
-        if branch and value.get("branch") != branch and not merged_identity:
+            # Pre-merge the recorded commit, branch and worktree bind the report to
+            # the current Git identity; post-merge they are recorded facts and the
+            # identity is the task id plus the task sheet revision.
+            if commit_bound:
+                # The report names the commit it judged. Committing the report itself
+                # (task evidence only) moves HEAD, so accept an evidence-only advance
+                # instead of letting the record invalidate itself; anything else keeps
+                # the strict identity rule.
+                reported_head = value.get("head")
+                if reported_head != current_identity.get("head") and not head_advanced_by_evidence_only(
+                    root, reported_head, current_identity.get("head"), directory
+                ):
+                    errors.append(f"{name} head does not match current Git identity")
+                if value.get("branch") != (branch or current_identity.get("branch")):
+                    errors.append(f"{name} branch does not match current Git identity")
+                try:
+                    report_worktree = Path(value.get("worktree", "")).resolve()
+                except (OSError, ValueError):
+                    report_worktree = None
+                current_worktree = current_identity.get("worktree")
+                if not current_worktree or report_worktree != Path(current_worktree):
+                    errors.append(f"{name} worktree does not match current Git identity")
+            else:
+                declared_revision = value.get("sheet_revision")
+                if isinstance(declared_revision, bool) or not isinstance(declared_revision, int):
+                    errors.append(f"{name} sheet_revision must be a positive integer")
+                elif declared_revision != current_revision:
+                    errors.append(
+                        f"{name} was produced against task sheet revision {declared_revision} "
+                        f"but the current revision is {current_revision}"
+                    )
+                if not isinstance(value.get("branch"), str) or not value["branch"].strip():
+                    errors.append(f"{name} branch must be a non-empty string")
+                if (
+                    not isinstance(value.get("observed_at_commit"), str)
+                    or not value["observed_at_commit"].strip()
+                ):
+                    errors.append(f"{name} observed_at_commit must be a non-empty string")
+        if commit_bound and branch and value.get("branch") != branch:
             errors.append(f"{name} branch mismatch")
         if value.get("role") != expected_roles[name]:
             errors.append(f"{name} role mismatch")
@@ -1964,7 +2004,9 @@ def gate_check(
     genuine hash drift stays a hard error.
     """
     directory = _canonical_evidence_dir(directory)
-    errors = evidence_verify(directory, task_id, branch)
+    # Post-merge evidence is identified by the task id and the sheet revision: the
+    # merge itself always adds product-path commits to the current head.
+    errors = evidence_verify(directory, task_id, branch, "finalized" if phase == "post-merge" else "active")
     root = _evidence_root(directory)
     contract = _task_sheet_contract(root, task_id)
     if contract is None:
@@ -2679,57 +2721,24 @@ def head_advanced_by_evidence_only(
     return evidence_only_paths(root, evidence_directory, changed)
 
 
-def merged_task_branch_identity(
-    root: Path,
-    report: dict[str, Any],
-    task_id: str,
-    head_accepted: bool,
-) -> bool:
-    """Whether a schema-2 report's branch and worktree identity survived a merge.
-
-    A report written on a task branch inside that task's own worktree keeps
-    describing work that is present in the current head once the branch is
-    merged, so its recorded branch and worktree must not have to equal the
-    current Git identity.  Three facts have to hold at once: the reported branch
-    is a local branch whose tip is an ancestor of the current head, the reported
-    worktree is the canonical ``<root>/.worktrees/<task-id>`` of the task the
-    report names, and the reported head already passed the evidence-only advance
-    rule.  A missing, unmerged or foreign report keeps the strict identity rule.
-    """
-    if not head_accepted or report.get("task_id") != task_id or not _safe_task_identifier(task_id):
-        return False
-    reported_branch = report.get("branch")
-    if not isinstance(reported_branch, str) or not reported_branch.strip():
-        return False
-    branch_ref = f"refs/heads/{reported_branch.strip()}"
-    rc, _ = git(root, "rev-parse", "--verify", branch_ref)
-    if rc:
-        return False
-    rc, _ = git(root, "merge-base", "--is-ancestor", branch_ref, "HEAD")
-    if rc:
-        return False
-    reported_worktree = report.get("worktree")
-    if not isinstance(reported_worktree, str) or not reported_worktree.strip():
-        return False
-    try:
-        canonical = (Path(root).resolve() / ".worktrees" / task_id).resolve()
-        candidate = Path(reported_worktree.strip()).resolve()
-    except (OSError, ValueError):
-        return False
-    return candidate == canonical and candidate.is_dir()
-
-
 def evidence_revision_status(
     root: Path,
     task_id: str,
     contract: dict[str, Any],
     records: dict[str, dict[str, Any]],
+    *,
+    judge_observed_paths: bool = True,
 ) -> dict[str, Any]:
     """Judge evidence against the sheet revision it was produced for.
 
     Evidence is stale when the revision it names is not the current revision, or
     when a path its operations verify changed between the commit it was observed
     at and HEAD.  HEAD moving on its own never invalidates evidence.
+
+    ``judge_observed_paths`` selects whether that second, commit-relative
+    criterion applies.  The post-merge phase passes it as False: merging always
+    moves HEAD past the recorded observation commit, so the identity there is the
+    task id plus the revision and the observation commit stays a recorded fact.
 
     Only evidence that declares ``sheet_revision`` is judged this way.  Evidence
     in the historical shape (no revision field) keeps exactly the verdict the
@@ -2759,28 +2768,29 @@ def evidence_revision_status(
                 )
             elif baseline is not None and declared_hash != baseline:
                 reasons.append(f"{name} task sheet hash does not match revision {revision}")
-            if not isinstance(observed_at, str) or not observed_at.strip():
-                unverified.append(
-                    f"{name} does not record the commit it was observed at; "
-                    "the changed-path criterion was not evaluated"
-                )
-            elif current_head is None:
-                unverified.append(
-                    f"{name} declares an observation commit but HEAD is unavailable; "
-                    "the changed-path criterion was not evaluated"
-                )
-            else:
-                changed = changed_paths_between(root, observed_at.strip(), current_head)
-                if changed is None:
-                    reasons.append(f"{name} observed_at_commit is not a reachable commit: {observed_at.strip()}")
+            if judge_observed_paths:
+                if not isinstance(observed_at, str) or not observed_at.strip():
+                    unverified.append(
+                        f"{name} does not record the commit it was observed at; "
+                        "the changed-path criterion was not evaluated"
+                    )
+                elif current_head is None:
+                    unverified.append(
+                        f"{name} declares an observation commit but HEAD is unavailable; "
+                        "the changed-path criterion was not evaluated"
+                    )
                 else:
-                    judged = True
-                    resources = sheet_operation_resources(contract, _evidence_acceptance_ids(value))
-                    touched = sorted({path for path in changed if any(_matches(path, pattern, root) for pattern in resources)})
-                    if touched:
-                        reasons.append(
-                            f"{name} was produced before changes to paths it verifies: " + ", ".join(touched)
-                        )
+                    changed = changed_paths_between(root, observed_at.strip(), current_head)
+                    if changed is None:
+                        reasons.append(f"{name} observed_at_commit is not a reachable commit: {observed_at.strip()}")
+                    else:
+                        judged = True
+                        resources = sheet_operation_resources(contract, _evidence_acceptance_ids(value))
+                        touched = sorted({path for path in changed if any(_matches(path, pattern, root) for pattern in resources)})
+                        if touched:
+                            reasons.append(
+                                f"{name} was produced before changes to paths it verifies: " + ", ".join(touched)
+                            )
         else:
             unverified.append(
                 f"{name} does not record the task sheet revision it was judged against; "
