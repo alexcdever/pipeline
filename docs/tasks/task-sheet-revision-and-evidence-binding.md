@@ -239,7 +239,7 @@
 → [可见结果] 同一 worktree 按最新修订版继续实现；再次 `freeze_check` 不再报漂移；未走 amend 的直接文件改动仍报漂移
 
 - 修订对象是任务单文件本身：工具只做结构校验、分类与记录，不生成、不重写任务单内容。
-- 身份字段 `task_id`、`task_type`、`schema`、`derived_from` 与已存在的 `dependencies` 条目不可修订；其余契约字段可修订。
+- 身份字段 `task_id`、`task_type`、`schema`、`derived_from` 不可修订；其余契约字段（含 `dependencies` 的新增与删除）可修订。
 - 判据一：是否改变验证面（`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk`）。改变即让已有阶段证据标为 stale。
 - 判据二：是否放松约束（删除或放宽验收测试、降低证据等级、扩大允许范围、收窄禁止范围、删除非目标）。放松必须带 `--adjudication`。
 - `dependencies` 的增删只需 `--reason`，但修订后必须校验依赖 id 有对应任务单存在且不构成环。
@@ -266,7 +266,7 @@
 
 ### 验收测试2：身份字段不可修订，依赖可修订
 
-- 触发：分别尝试修订 `task_id`、`task_type`、`schema`、`derived_from`、已有 `dependencies` 条目与 `dependencies` 新增项。
+- 触发：分别尝试修订 `task_id`、`task_type`、`schema`、`derived_from`，以及新增一条 `dependencies` 条目、删除一条已有 `dependencies` 条目。
 - 断言：身份字段的修订被拒绝且文件未被改动；`dependencies` 的增删被接受并写入修订记录。
 - 测试：`tests/test_task_sheet_amendment.py: TaskSheetAmendmentTests.test_identity_fields_are_not_amendable_and_dependencies_are`
 - 命令：`python -m pytest -q tests/test_task_sheet_amendment.py -k identity_fields_are_not_amendable`
