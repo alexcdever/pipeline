@@ -76,20 +76,28 @@ def _delivery_is_merged(root: Path, task_id: str, evidence: Path, branches: set[
 
     - the task carries a ``finalized`` marker, which the post-merge sequence only
       writes at its end; and
-    - a branch named by the reports resolves to a ref whose tip is already an
-      ancestor of the current ``HEAD``.
+    - a branch named by the reports -- other than the branch ``HEAD`` is currently
+      on -- resolves to a ref whose tip is already an ancestor of ``HEAD``.
+
+    The current branch is never a merge signal: the main-worktree final check
+    records the branch it ran on, and that branch's tip is trivially an ancestor
+    of ``HEAD`` whether or not the task branch was ever merged.  Left in, it would
+    report a plain unmerged task as merged and drop the active commit binding.
+    Excluding it leaves only the task's own branch, so an unmerged task keeps a
+    branch tip strictly ahead of ``HEAD`` and is still judged active.
 
     The two signals cannot contradict each other: each is a positive proof of a
-    merge, while a branch ref that is missing (deleted after the merge) or not an
-    ancestor is only absence of that second proof, never a claim that the
-    delivery is unmerged.  Taking their union therefore cannot weaken the active
-    binding: an unmerged task keeps its branch tip strictly ahead of ``HEAD`` and
-    carries no marker, so it is still judged active.
+    merge, while a branch ref that is missing (deleted after the merge), not an
+    ancestor, or equal to the current branch is only absence of the second proof,
+    never a claim that the delivery is unmerged.
     """
     marker = _json(evidence / "finalization.json")
     if isinstance(marker, dict) and marker.get("task_id") == task_id and marker.get("status") == "finalized":
         return True
+    current_branch = git(root, "branch", "--show-current", redact_output=False)[1].strip()
     for branch in sorted(item for item in branches if isinstance(item, str) and item.strip()):
+        if branch == current_branch:
+            continue
         if git(root, "rev-parse", "--verify", f"refs/heads/{branch}")[0]:
             continue
         if git(root, "merge-base", "--is-ancestor", branch, "HEAD")[0] == 0:

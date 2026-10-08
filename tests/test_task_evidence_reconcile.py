@@ -234,6 +234,7 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
                 0, self._git(root, "merge-base", "--is-ancestor", "demo-task", "HEAD", check=False).returncode)
             current = self._git(root, "rev-parse", "HEAD").stdout.strip()
             self.assertNotEqual(task_head, current)
+            current_branch = self._git(root, "branch", "--show-current").stdout.strip()
 
             evidence = root / ".pipeline" / "demo"
             evidence.mkdir(parents=True)
@@ -247,6 +248,7 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
 
             value = reconcile_task(root, sheet)
             self.assertEqual(value["status"], "BLOCKED")
+            self.assertEqual("BLOCKED", value["verify"])
             # Unmerged evidence keeps the full commit binding: the recorded head and
             # worktree are reported against the current Git identity.
             for field in ("head", "worktree"):
@@ -254,6 +256,27 @@ class TaskEvidenceReconcileTests(unittest.TestCase):
                     any(f"{field} does not match current Git identity" in error for error in value["errors"]),
                     (field, value["errors"]),
                 )
+            all_task_branch_errors = [error for error in value["errors"] if "current Git identity" in error]
+
+            # The same unmerged task, this time with a main-worktree final check that
+            # records the branch HEAD is on.  That branch's tip is trivially an
+            # ancestor of HEAD, so it must never be read as proof of a merge.
+            (evidence / "final-check.md").write_text(
+                self._schema_two_report("main-final", branch=current_branch, worktree=str(root),
+                                        head=current, command_cwd=str(root)),
+                encoding="utf-8")
+            value = reconcile_task(root, sheet)
+            self.assertEqual(value["status"], "BLOCKED")
+            self.assertEqual("BLOCKED", value["verify"])
+            for field in ("head", "worktree"):
+                self.assertTrue(
+                    any(f"{field} does not match current Git identity" in error for error in value["errors"]),
+                    (field, value["errors"]),
+                )
+            main_worktree_errors = [error for error in value["errors"] if "current Git identity" in error]
+            self.assertTrue(all_task_branch_errors)
+            self.assertTrue(main_worktree_errors)
+            self.assertNotEqual("PASS", value["status"])
 
     def test_default_reconcile_is_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
