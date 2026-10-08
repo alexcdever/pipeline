@@ -1,223 +1,181 @@
-# Review report
+# Review report (round 2)
 
 ```pipeline-evidence
-{"schema":2,"task_id":"task-sheet-revision-and-evidence-binding","worktree":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","branch":"task-sheet-revision-and-evidence-binding","role":"reviewer","round":1,"status":"FAIL","head":"753f0a6aca79bf1de80a241dc2c5277636a795a3","sheet_revision":1,"sheet_sha256":"a12f29a7f7322feeb22d2a5284b4e2069d02d645fdc4bbf199ab9586f6082783","observed_at_commit":"e525d802c83ab277135381b179045bf03886794d","generated_at":"2026-10-08T09:51:44Z","commands":[{"command":"git rev-parse --show-toplevel; git branch --show-current; git rev-parse HEAD","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#环境检查"},{"command":"git merge-base --is-ancestor 02a71a3b735e8a95358a7552a5f077fd3fb5ab22 HEAD","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#环境检查"},{"command":"python -m pipeline_tools task validate docs/tasks/task-sheet-revision-and-evidence-binding.md","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#环境检查"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amendment_is_allowed_after_executor_evidence","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试1"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k identity_fields_are_not_amendable","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试2"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k verification_surface_and_loosening","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试3"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amend_rejects_missing_or_cyclic_dependencies","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试4"},{"command":"python -m pytest -q tests/test_git_checks.py -k task_sheet_change_after_freeze","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试5"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k evidence_validity_tracks_sheet_revision","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试6"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amendment_record_is_append_only","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试7"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k plan_contract_consistency_uses_latest_revision","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试8"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amend_requires_main_agent_role","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试9"},{"command":"python -m pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#验收测试10"},{"command":"python -m pytest -q","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#全量测试"},{"command":"python -m pytest -q tests/test_git_checks.py tests/test_evidence.py tests/test_task_evidence_reconcile.py tests/test_metrics.py tests/test_security_repairs.py tests/test_task_lifecycle.py tests/test_worktree_dispatch_identity.py","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#高风险点7"},{"command":"git diff --name-only 02a71a3 753f0a6","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#范围与历史卫生"},{"command":"git diff --check 02a71a3..753f0a6","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#范围与历史卫生"},{"command":"git diff --name-only 02a71a3 e525d80 -- docs/goal.md docs/tasks/security-scan-repair-20261001.md docs/tasks/security-scan-repair-20261001-continuation-1.md .pipeline/security-scan-repair-20261001 .pipeline/security-scan-repair-20261001-continuation-1 .env credentials","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#范围与历史卫生"},{"command":"git reflog show --date=iso HEAD; git log --oneline -8; git -C D:/Projects/Skills/pipeline log --oneline -3","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md#范围与历史卫生"},{"command":"IMPL_WORKTREE=<worktree> PYTHONPATH=<worktree> python probe1_amend.py (own harness: loosening gate, silent tamper, identity, lifecycle, dependencies, append-only)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md#高风险点1"},{"command":"IMPL_WORKTREE=<worktree> PYTHONPATH=<worktree> python probe2_evidence.py (own harness: evidence validity on both criteria)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md#高风险点6"},{"command":"PYTHONPATH=<baseline-02a71a3> python legacy_reconcile.py <fixture>; PYTHONPATH=<worktree> python legacy_reconcile.py <fixture>","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md#高风险点7"},{"command":"IMPL_WORKTREE=<worktree> PYTHONPATH=<worktree> python minimal_repro.py (FAIL reproduction)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md#findings"},{"command":"PYTHONPATH=<worktree> python -m pytest -q doccheck/tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract (doc-assertion sensitivity A/B)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md#高风险点8"}],"assertions":["all ten acceptance commands exit 0 on the frozen sheet revision 1 and commit 753f0a6","the full suite is green: 377 passed, 28 subtests passed, exit 0 (matches the executor claim)","the loosening gate rejects a deleted acceptance test without --adjudication (exit 3, no record, no hash change) and accepts it with one","a prose-only amendment needs neither adjudication nor raises either criterion","a direct task sheet edit that never went through task amend still reports task sheet changed after freeze (exit 4) and still blocks the lifecycle reader","identity fields (task_type, task_id) are rejected even when the tamper is committed so that HEAD agrees with it","dependencies: missing id, cycle, and a sheet without a contract are all rejected; a legal dependency is accepted","evidence validity was observed on both criteria separately: HEAD moving over an unrelated path keeps evidence fresh, a change to a verified operation resource invalidates it","reconcile yields exactly the same errors as the 02a71a3 baseline when evidence is revision-bound, and adds staleness errors when it is not (stricter, never looser)","the amendment record is append-only: the first record line stays byte-identical after the second amendment and the hash chain links revision to revision","unverified: lowering the task-level required_evidence_levels passes the loosening gate with loosened=false and no adjudication, although the contract lists lowering the evidence level as loosening"],"evidence_refs":["review-report.md","executor-report.md","executor-result.json"],"unverified":["the 367-passed baseline figure claimed by the executor was not re-run at 02a71a3 (only the delta of 10 new test methods was reasoned about)","whether any downstream consumer other than pipeline_tools reads the rewritten documentation paragraphs (contract unknown-2)","post-merge main-worktree re-verification of this task"],"blockers":[],"recommendation":"FAIL on one uncovering of the loosening gate: lowering the task-level required_evidence_levels is accepted with --reason only, recorded as loosened=false, and drops the lifecycle evidence floor from 3 to 2. Fix _contract_loosened to treat a lowered required_evidence_levels as loosening plus a test, or record an adjudicated narrowing of the criterion. Everything else reviewed clean: ten acceptance tests pass, full suite 377 passed, scope and history intact, no existing defence weakened."}
+{"schema":2,"task_id":"task-sheet-revision-and-evidence-binding","worktree":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","branch":"task-sheet-revision-and-evidence-binding","role":"reviewer","round":2,"status":"PASS","head":"45be2dbac64d1af49bcbdb8e385e72ac87c17a11","sheet_revision":1,"sheet_sha256":"a12f29a7f7322feeb22d2a5284b4e2069d02d645fdc4bbf199ab9586f6082783","observed_at_commit":"5de6c48b87574a31fa7203f7f923b86b3a3671df","generated_at":"2026-10-08T10:28:55Z","commands":[{"command":"git rev-parse --show-toplevel; git branch --show-current; git rev-parse HEAD","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"git merge-base --is-ancestor 02a71a3b735e8a95358a7552a5f077fd3fb5ab22 HEAD","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pipeline_tools task validate docs/tasks/task-sheet-revision-and-evidence-binding.md","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amendment_is_allowed_after_executor_evidence","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k identity_fields_are_not_amendable","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k verification_surface_and_loosening","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amend_rejects_missing_or_cyclic_dependencies","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_git_checks.py -k task_sheet_change_after_freeze","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k evidence_validity_tracks_sheet_revision","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amendment_record_is_append_only","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k plan_contract_consistency_uses_latest_revision","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_task_sheet_amendment.py -k amend_requires_main_agent_role","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"F2 negative experiment: SKILL.md version temporarily set to 0.15.0, then python -m pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":1,"evidence_ref":"review-report.md"},{"command":"F2 restore: SKILL.md restored byte-identically (sha256 f2f8132...), then the same pytest selection","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python probe_f1.py (own harness: task-level evidence floor boundaries, lifecycle required_level)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python probe_f1_edges.py (own harness: non-integer/dict level shapes, raising the floor)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python probe1_amend.py (round-1 harness re-run against round-2 code)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python probe2_evidence.py (both evidence criteria, HEAD move vs verified path change)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python probe3_freshness.py (evidence_freshness both criteria + legacy identity.head rule)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python probe7_post_amend.py (freeze-check after a recorded amendment)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"PYTHONPATH=<baseline 02a71a3 pipeline_tools> python legacy_reconcile.py <legacy fixture>; PYTHONPATH=<worktree> python legacy_reconcile.py <legacy fixture> (F4 A/B)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"PYTHONPATH=<baseline> / <worktree> python legacy_reconcile.py <mismatched-revision fixture> (new criterion still active)","cwd":"C:/Users/alexc/AppData/Local/Temp/reviewer-probe","exit_code":0,"evidence_ref":"review-report.md"},{"command":"evidence_revision_status on the real task evidence (executor round 2 fresh, reviewer round 1 stale)","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"git diff --name-only 02a71a3 45be2db","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"git diff --check 02a71a3..45be2db","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"git diff --name-only 02a71a3 5de6c48 -- docs/goal.md docs/tasks/security-scan-repair-20261001.md docs/tasks/security-scan-repair-20261001-continuation-1.md .pipeline/security-scan-repair-20261001 .pipeline/security-scan-repair-20261001-continuation-1 .env credentials","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"},{"command":"git reflog show --date=iso HEAD; git show --stat --oneline 45be2db 5de6c48; git status --porcelain","cwd":"D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding","exit_code":0,"evidence_ref":"review-report.md"}],"assertions":["round 1 finding F1 is fixed: lowering the task-level required_evidence_levels floor is now rejected without --adjudication (exit 3, no record) and accepted with it, recorded loosened=true with the adjudication reference","F1 boundaries behave: floor unchanged ([3]->[3,2], [2,3]->[3]) and floor raised ([2]->[3], [2]->[2,3]) are not loosening; dropping the highest element ([3,2]->[2]) and emptying the list are loosening; a lowered single acceptance-test evidence_level is still caught","the real consequence is closed: an un-adjudicated lowering leaves the lifecycle required_level at 3, and only the adjudicated revision moves it to 2","round 1 finding F2 is fixed: with SKILL.md reverted to 0.15.0 the documentation consistency case fails (exit 1, assertion names 0.16.0), and it passes again after the byte-identical restore","round 1 finding F4 is fixed: on legacy-shaped evidence (no sheet_revision/observed_at_commit) the round-2 code produces exactly the same status and error list as the 02a71a3 baseline, and the records are reported as unverified instead of stale","the new revision criterion is still active: evidence declaring a wrong sheet_revision still yields stale records and blocking revision errors, and bound evidence whose verified resource changed is still stale","all ten acceptance commands exit 0, and the full suite is 379 passed / 28 subtests passed (exit 0), matching the executor claim","every changed path between 02a71a3 and 45be2db is inside allowed_paths, forbidden_paths are untouched across 02a71a3..5de6c48, git diff --check is clean, and no historical task sheet or evidence was modified","the executor round-2 evidence command with exit_code 1 is the deliberate F2 negative experiment (SKILL.md temporarily reverted to 0.15.0), not a real failure; I reproduced it independently","the round-2 evidence is honestly bound: the sheet hash still matches a12f29a7..., executor round-2 evidence is fresh, and the round-1 reviewer evidence is correctly stale because the fix changed the paths it verifies"],"evidence_refs":["review-report.md","executor-report.md","executor-result.json"],"unverified":["the 367-passed baseline figure of round 1 was not re-run at 02a71a3 (only the +2 test-method delta is accounted for)","whether any consumer other than pipeline_tools reads the rewritten documentation paragraphs (contract unknown-2)","post-merge main-worktree re-verification of this task","residual risk noted in O1: a revision-bound record that omits observed_at_commit skips the changed-path criterion and is surfaced only in reconcile's unverified list, which no gate currently reads"],"blockers":[],"recommendation":"PASS. F1, F2 and F4 are all fixed and independently reproduced, the ten acceptance tests and the full suite (379 passed / 28 subtests) are green, scope and history are intact, and the fix introduced no new weakening. Two non-blocking observations for the main agent: (O1) reconcile can report PASS with the changed-path criterion unevaluated (unverified) when a revision-bound record omits observed_at_commit, and (O2) the F1 fix is a behaviour change to the loosening criterion, so the amended criterion wording in README/SKILL/references/templates should be reviewed once by the main agent."}
 ```
 
-## 审查结论摘要
+## 结论摘要
 
-**FAIL** —— 十条验收测试全部亲自通过，全量测试 377 passed，范围与历史完好，既有防线未被削弱；但**放松约束的闸门存在一条未被任何验收测试覆盖的绕过路径**（`required_evidence_levels` 下调），与契约"判据二"明文冲突。详见 [findings](#findings)。
+**PASS**。上一轮的三条 findings（F1 阻塞项、F2、F4）全部修复并经我自建夹具独立复现；十条验收测试全绿；全量测试 **379 passed, 28 subtests passed**（退出码 0），与执行子代理声明一致；范围与历史零越界；修复没有引入新的削弱，只留下两条不阻塞的观察（O1/O2，见文末）。
 
 ---
 
 ## 环境检查（逐项）
 
-| # | 检查 | 命令 | 结果 |
-|---|---|---|---|
-| 1 | worktree 根 | `git rev-parse --show-toplevel` | `D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding` ✔ |
-| 2 | 分支 | `git branch --show-current` | `task-sheet-revision-and-evidence-binding` ✔ |
-| 3 | HEAD | `git rev-parse HEAD` | `e525d802c83ab277135381b179045bf03886794d` ✔ |
-| 4 | 契约基线是祖先 | `git merge-base --is-ancestor 02a71a3 HEAD` | 退出码 0 ✔ |
-| 5 | 契约可读且合法 | `python -m pipeline_tools task validate docs/tasks/...md` | `PASS`，退出码 0 ✔ |
-| 6 | 未改产品/测试/文档 | 全程只读产品代码；只在证据目录写入本报告与 `reviewer-result.json` | ✔（见下方"临时文件清理"） |
+| # | 检查 | 结果 |
+|---|---|---|
+| 1 | `git rev-parse --show-toplevel` | `D:/Projects/Skills/pipeline/.worktrees/task-sheet-revision-and-evidence-binding` ✔ |
+| 2 | `git branch --show-current` | `task-sheet-revision-and-evidence-binding` ✔ |
+| 3 | `git rev-parse HEAD` | `5de6c48b87574a31fa7203f7f923b86b3a3671df` ✔ |
+| 4 | `git merge-base --is-ancestor 02a71a3 HEAD` | 退出码 0 ✔ |
+| 5 | `python -m pipeline_tools task validate docs/tasks/task-sheet-revision-and-evidence-binding.md` | `PASS`，退出码 0 ✔ |
+| 6 | 只读产品代码；临时改动全部还原 | ✔（F2 的临时改版本号已按字节还原，`git status --porcelain` 空） |
 
-契约基线到分支尖端的提交流：
-`abc6768 冻结任务单` → `13a799a`/`02a71a3`（契约修订）→ `7b647f1`（实现）→ `753f0a6`（文档一行修正）→ `e525d80`（执行证据）。
+审查对象链：`02a71a3` → `7b647f1` → `753f0a6` → `e525d80`（round 1 执行证据）→ `ec560ba`（round 1 审查证据）→ **`45be2db`（本轮实现 head）** → `5de6c48`（round 2 执行证据）。
+修复范围 `git diff --stat 753f0a6..45be2db`：`core.py` +88/-…、`reconcile.py`、5 份文档 + 模板、`test_acceptance_id_and_template_compliance.py`、`test_task_sheet_amendment.py`（新增 2 个测试方法）。
+
+---
+
+## F1（上一轮阻塞项）：任务级证据下限已纳入放松判据 ✅ 修复
+
+`_contract_loosened(previous, current, changes)` 现在比较 `required_evidence_floor = max(required_evidence_levels)`，下降即 `loosened`。我用自己的夹具（自建仓库，未复用执行子代理的测试辅助函数）逐项复验：
+
+| 场景（单条 `acceptance_tests[].evidence_level` 均保持 3 不变） | 结果 |
+|---|---|
+| `[3]→[2]`，**不带** `--adjudication` | **blocked**，退出码 3，`loosening the contract requires --adjudication`，`amendments.json` **未创建** |
+| `[3]→[2]`，带 `--adjudication docs/decisions/evidence-floor.md` | **pass**，`loosened=true`、`verification_surface_changed=true`、`changes.required_evidence_levels={added:[2],removed:[3]}`、`adjudication_ref` 记录在案 |
+| `[3]→[3,2]`（下限不变、元素增加） | pass，`loosened=false` |
+| `[2,3]→[3]`（下限不变、元素减少） | pass，`loosened=false` |
+| `[2]→[3]`（下限上升） | pass，`loosened=false`，`surface=true` |
+| `[2]→[2,3]`（新增更严测试抬高下限） | pass，`loosened=false` |
+| `[3,2]→[2]`（删除最高元素导致下限下降） | **blocked**（放松） |
+| `[3]→[]`（下限整体移除） | **blocked**（放松） |
+| 单条 `evidence_level` 3→2（上一轮场景） | **blocked**（仍被抓住） |
+| `required_evidence_levels: ["3"]` / `{"levels":[2]}`（非整数/错形状） | `config`，契约校验拒绝（`required_evidence_levels must contain integers 1-5`），无法把下限"投毒"成 None |
+
+**真实后果已消除**（我用 `task_lifecycle` 直接观测，不只是看分类字段）：
+- 冻结时 `required_evidence_levels=[3]`，`init_task` 后 `lifecycle_status(...)["evidence"]["required_level"] == 3`，状态 `pass`。
+- 未带裁决的下调被拒后（把任务单还原为冻结版本），`required_level` 仍为 **3**。
+- 补裁决后同一修订被接受，`lifecycle_status` 的 `required_level` 才降到 **2** —— 分类与真实后果一致。
+
+补充说明：被拒绝时工具**不会回写调用方改过的任务单**（这是契约规定的"不移动任何文件"），所以我先还原文件再读 lifecycle；这不是缺陷。
+
+## F2：版本号断言已恢复约束力 ✅ 修复
+
+断言从 `assertRegex(r"version: 0\.\d+\.\d+")` 改为解析 `^version: (\d+)\.(\d+)\.(\d+)$` 并要求 `>= (0,16,0)`。我按指示在 worktree 内做了一次临时回退实验（先备份字节，事后还原）：
+
+| 步骤 | 命令 | 退出码 |
+|---|---|---|
+| `SKILL.md` 临时改为 `version: 0.15.0` | `pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract` | **1**，`AssertionError: (0, 15, 0) not greater than or equal to (0, 16, 0) : SKILL.md version must be at least 0.16.0 (found version: 0.15.0)` |
+| 还原为 `0.16.0` | 同一命令 | **0** |
+
+还原是字节级的：改动前后 `sha256(SKILL.md)` 都是 `f2f81325079dc496e0fb8ef2ed9db4232b112e377b5fb9f99127f00a063ae15d`，`git status --porcelain` 为空。
+
+## F4：历史形态证据不再新增错误 ✅ 修复
+
+`evidence_revision_status` 改为只对**声明了 `sheet_revision`** 的记录应用修订判据；未声明的记录进 `unverified` 而不是 `errors`。用上一轮的 A/B 手法（`git archive 02a71a3 pipeline_tools` 抽基线代码 vs 本轮代码，对同一夹具跑 `reconcile_task`）：
+
+| 夹具 | 02a71a3 基线 | round 2 代码 |
+|---|---|---|
+| 历史形态（无 `sheet_revision`/`observed_at_commit`） | `BLOCKED`，errors `['missing or invalid finalization.json','main worktree post-merge re-verification is missing']` | **完全相同的 status 与 errors**；6 条记录 `stale=false`，另在 `unverified` 注明"未被修订判据覆盖" |
+| 携带正确修订绑定 | 同上 | **identical**（无误伤） |
+| 携带**错误**修订号（`revision+1`） | 同上（基线根本不读该字段） | 追加 6 条 `produced against task sheet revision 2 but the current revision is 1`，记录 `stale=true` |
+
+→ 新判据没有被整体关掉，只是不再因"缺字段"本身报错。
+
+**同时复核了上一轮的新判据仍然生效**（我自己的夹具重跑）：
+- 只提交无关路径、HEAD 前移 → 证据 `stale=false`；提交被验证资源 `pipeline_tools/alpha.py` → `stale=true` 且原因指名该路径。
+- 新增任务单修订后，旧证据 `produced against task sheet revision 1 but the current revision is 2`。
+- `evidence_freshness` 两条判据分别可观测，旧 `identity.head` 口径仍报 `result HEAD is stale`。
+
+**真实产物上的端到端验证**（值得单独记录）：对本任务真实证据直接跑 `evidence_revision_status`（只读）——
+- 任务单哈希仍为 `a12f29a7f7322feeb22d2a5284b4e2069d02d645fdc4bbf199ab9586f6082783`，与两份执行/审查证据声明的 `sheet_sha256` 一致，`sheet_revision=1`。
+- round 2 执行证据（`observed_at_commit=45be2db`）→ **fresh**（其后的 `5de6c48` 只改了 `.pipeline/<task-id>/**`，不与任何 operation 的 `resources` 相交）。
+- round 1 审查证据（我的 `review-report.md`/`reviewer-result.json`，`observed_at_commit=e525d80`）→ **stale**，原因是 round 2 的实现提交修改了它验证的路径（`pipeline_tools/core.py`、`pipeline_tools/reconcile.py`、`tests/…` 等）。这正是"修复让上一轮审查失效、必须重审"的机械体现，说明判据在真实证据上工作正常。
+
+## 复跑上一轮的全部行为（回归）
+
+round 2 代码上重跑我上一轮的 4 个自建探针，**除 F4 意图内的差异外全部一致**：
+- `probe1_amend.py`（退出码 0）：放松闸门 1a/1b/1c/1d、静默篡改报漂移（退出码 4）、身份字段四种构造全拒、lifecycle 漂移、依赖四条、追加式字节与哈希链 —— 与 round 1 相同。
+- `probe2_evidence.py`（退出码 0）：A/B/C 两条判据、F 修订使证据失效 —— 相同；仅 G（无 `sheet_revision`）从 `stale=true` 变为 `stale=false`，即 F4 的预期修复。
+- `probe3_freshness.py`（退出码 0）：freshness 两条判据 + 旧 `identity.head` 规则 —— 相同。
+- `probe7_post_amend.py`（退出码 0）：登记修订后 `freeze-check` 退出码 0（幂等）—— 相同。
 
 ---
 
 ## 十条验收测试（逐条亲自运行）
 
-全部命令 cwd = worktree 根，环境变量 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1`。
+cwd = worktree 根；`PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1`。
 
-| # | 命令 | 退出码 | 关键断言（我读到的断言） | 证据引用 |
-|---|---|---|---|---|
-| 1 | `pytest -q tests/test_task_sheet_amendment.py -k amendment_is_allowed_after_executor_evidence` | 0 (1 passed) | 执行证据存在后修订散文被接受（revision 1→2）；worktree 列表与证据目录字节不变；`amendments.json` 是唯一新增文件；随后 `freeze_check` 不再报漂移 | 本报告 #验收测试1；`review-report.md` 风险点 1 |
-| 2 | `... -k identity_fields_are_not_amendable` | 0 (1 passed, **4 subtests**) | `task_id`/`task_type`/`schema`/`derived_from` 四个身份字段分别被拒且不留记录、不改哈希；`dependencies` 增删被接受 | #验收测试2；风险点 3、5 |
-| 3 | `... -k verification_surface_and_loosening` | 0 (1 passed) | 仅改散文不触发判据；收紧验收测试 → 只改验证面；扩大 `allowed_paths`、删除验收测试 → 缺 `--adjudication` 被拒、补上后接受并记录 `loosened=true` | #验收测试3；风险点 1 |
-| 4 | `... -k amend_rejects_missing_or_cyclic_dependencies` | 0 (1 passed, **2 subtests**) | 不存在的依赖、成环依赖被拒且无记录；`docs/tasks/` 与 `.pipeline/archive/` 两种合法依赖被接受 | #验收测试4；风险点 5 |
-| 5 | `pytest -q tests/test_git_checks.py -k task_sheet_change_after_freeze` | 0 (1 passed) | 冻结后直接改文件仍报 `task sheet changed after freeze`（既有用例未放宽） | #验收测试5；风险点 2 |
-| 6 | `... -k evidence_validity_tracks_sheet_revision` | 0 (1 passed) | HEAD 移动（无关路径）→ 不失效；被验证路径变化 → stale；修订版本变化 → stale | #验收测试6；风险点 6 |
-| 7 | `... -k amendment_record_is_append_only` | 0 (1 passed) | 两条修订按序追加、旧记录字节不变、含哈希链与两个判据、验收测试增删在差异中可见 | #验收测试7；风险点 10 |
-| 8 | `... -k plan_contract_consistency_uses_latest_revision` | 0 (1 passed) | 规划后修订 `dependencies` → 报 `revised_after_planning` 且 `next_actions` 变为重新规划；未修订任务仍按原基准 | #验收测试8 |
-| 9 | `... -k amend_requires_main_agent_role` | 0 (1 passed, **2 subtests**) | `executor`/`reviewer` 角色被拒（API 与 CLI 退出码 3 均验），无副作用；放松约束缺裁决被拒、补上后接受 | #验收测试9；风险点 1 |
-| 10 | `pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract` | 0 (1 passed) | 七份文档同时含"冻结/修订/身份字段/lifecycle/.pipeline/<task-id>"；六份不得再声称整份任务单绝对不可变 | #验收测试10；风险点 8 |
+| # | 命令（`python -m pytest -q …`） | 退出码 | 结果 |
+|---|---|---|---|
+| 1 | `tests/test_task_sheet_amendment.py -k amendment_is_allowed_after_executor_evidence` | 0 | 1 passed（11 deselected） |
+| 2 | `… -k identity_fields_are_not_amendable` | 0 | 1 passed, 4 subtests passed |
+| 3 | `… -k verification_surface_and_loosening` | 0 | 1 passed |
+| 4 | `… -k amend_rejects_missing_or_cyclic_dependencies` | 0 | 1 passed, 2 subtests passed |
+| 5 | `tests/test_git_checks.py -k task_sheet_change_after_freeze` | 0 | 1 passed |
+| 6 | `… -k evidence_validity_tracks_sheet_revision` | 0 | 1 passed |
+| 7 | `… -k amendment_record_is_append_only` | 0 | 1 passed |
+| 8 | `… -k plan_contract_consistency_uses_latest_revision` | 0 | 1 passed |
+| 9 | `… -k amend_requires_main_agent_role` | 0 | 1 passed, 2 subtests passed |
+| 10 | `tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract` | 0 | 1 passed |
 
-十条**全部由我亲自运行**，无一条依赖执行子代理的记录。
-
----
+（`tests/test_task_sheet_amendment.py` 现有 12 个用例，故 `-k` 显示 11 deselected，比 round 1 多 2 个。）
 
 ## 全量测试
 
 - 命令：`python -m pytest -q`（cwd = worktree 根）
-- 结果：**`377 passed, 28 subtests passed in 437.43s (0:07:17)`，退出码 0**
-- 与执行子代理声明的 `377 passed, 28 subtests passed` **一致**；断言计数与退出码均一致。
-- 基线 367 我**未重跑**（需检出 02a71a3，会污染只读 worktree）；但差异可解释：新增测试文件 `tests/test_task_sheet_amendment.py` 恰好 10 个测试方法，367+10=377，无其它测试被删除或跳过（`git diff --stat` 显示旧测试文件只有 `test_acceptance_id_and_template_compliance.py` 的 10 行断言改写）。
-- 另跑既有防线模块：`pytest -q tests/test_git_checks.py tests/test_evidence.py tests/test_task_evidence_reconcile.py tests/test_metrics.py tests/test_security_repairs.py tests/test_task_lifecycle.py tests/test_worktree_dispatch_identity.py` → **117 passed，退出码 0**。
-
----
+- 结果：**`379 passed, 28 subtests passed in 462.19s (0:07:42)`，退出码 0**
+- 与执行子代理声明的 **379 passed, 28 subtests passed 一致**。相对 round 1 的 377 增加 2，正好对应新增的 `test_loosening_covers_the_task_level_evidence_floor` 与 `test_legacy_evidence_without_revision_fields_keeps_its_verdict`，没有测试被删除或跳过。
 
 ## 范围与历史卫生
 
 | 检查 | 结果 |
 |---|---|
-| `git diff --name-only 02a71a3 753f0a6` 的 16 个路径 | **全部落在契约 `allowed_paths` 内**（`pipeline_tools/{core,__main__,task_lifecycle,reconcile,planning}.py`、`templates/*`、`tests/test_{task_sheet_amendment,acceptance_id_and_template_compliance,git_checks}.py`、`SKILL.md`、`README.md`、`references/*`）。注意：`tests/test_task_lifecycle.py` 在允许清单内但**未被改动**（新增 lifecycle 覆盖写在 `tests/test_task_sheet_amendment.py` 内） |
-| 分支尖端 `02a71a3..e525d80` 全部路径 | 16 个实现文件 + 2 个新证据文件（`.pipeline/<task-id>/executor-report.md`、`executor-result.json`），无其它路径 |
-| `forbidden_paths` 零改动 | `git diff --name-only 02a71a3 e525d80 -- docs/goal.md docs/tasks/security-scan-repair-20261001.md docs/tasks/security-scan-repair-20261001-continuation-1.md .pipeline/security-scan-repair-20261001 .pipeline/security-scan-repair-20261001-continuation-1 .env credentials` → **空输出**（零改动） |
-| 历史任务单/证据是否被改写 | 除本任务的两个新证据文件外，`docs/tasks/**` 与 `.pipeline/**` 无任何历史文件出现在 diff 中；`references/compat-and-migration.md` 只新增 v0.15.0→v0.16.0 条目（`git diff` 只有 `+2` 行，无删除行） |
-| `git diff --check 02a71a3..753f0a6` | 退出码 0（无空白错误） |
-| 空白/行尾 | `core.py` 全文件 diff 只有 **2 行删除**（一条 import 行、`freeze_check` 里一行赋值），其余为纯新增 |
-| 工作区状态 | `git status --porcelain` 干净（我清理了自己产生的临时文件，见文末） |
+| `git diff --name-only 02a71a3 45be2db`（20 个路径） | **全部在 `allowed_paths` 内**：`.pipeline/task-sheet-revision-and-evidence-binding/**`（含我 round 1 的两份审查证据）、`README.md`、`SKILL.md`、`pipeline_tools/{__main__,core,planning,reconcile,task_lifecycle}.py`、`references/{acceptance-evidence,compat-and-migration,execution-and-review,merge-and-recovery,task-design}.md`、`templates/{pipeline-evidence.json,task-sheet.md}`、`tests/test_{acceptance_id_and_template_compliance,task_sheet_amendment}.py` |
+| `git diff --check 02a71a3..45be2db` | 退出码 0（无空白错误） |
+| `forbidden_paths` 在 `02a71a3..5de6c48` | **零改动**（`docs/goal.md`、两张 security-scan 任务单、两个 security-scan 证据目录、`.env`、`credentials` 全部无输出） |
+| 历史任务单/证据 | 分支尖端 diff 只含上述实现文件 + 本任务证据目录；`docs/tasks/**` 无历史任务单被改（本任务单本身在两轮中都未被修订，revision 仍为 1） |
+| 历史改写 | `git reflog` 显示 `45be2db`、`5de6c48` 都是 `ec560ba` 的线性后继；round 1 的 `ec560ba` 仍在链上且哈希未变；`45be2db` 只改实现/文档/测试，`5de6c48` 只改两份证据文件（+66/−16 行） |
+| 临时文件 | 无残留；`git status --porcelain` 空（本轮测试日志写在 `C:/Users/alexc/AppData/Local/Temp/reviewer-probe/fullsuite2.log`） |
+
+## 4.4 那条 `exit_code: 1` 的命令：查明结论
+
+它是**执行子代理 round 2 证据里刻意构造的反向实验**，不是真实失败。证据块中原样写着：
+
+```
+"command": "SKILL.md version temporarily set to 0.15.0, then: python -m pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_cur…", "exit_code": 1
+"command": "SKILL.md restored to 0.16.0, then: python -m pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract", "exit_code": 0
+```
+
+即"先把版本号退回旧值证明断言会失败，再还原证明会通过"，紧跟着的还原命令退出码 0。我**独立复现**了同一实验（见 F2 小节）：回退版本号 → 退出码 1 且断言信息点名 `>= (0, 16, 0)`；字节级还原后 → 退出码 0。结论：该 `exit_code: 1` 是证明断言有力的反向证据，不是回归失败，也不影响任何验收结论。
 
 ---
 
-## 高风险点 1–10（全部由我独立构造验证）
+## 上一轮 findings 状态与新观察
 
-我的独立验证工具（自建夹具，未复用执行子代理的测试辅助函数）位于 `C:/Users/alexc/AppData/Local/Temp/reviewer-probe/`：`probe1_amend.py`（风险点 1/2/3/4/5/10，最终整轮退出码 0）、`probe2_evidence.py`、`probe3_freshness.py`、`probe5_loosening_holes.py`、`probe7_post_amend.py`、`minimal_repro.py`，均以 `PYTHONPATH=<worktree>` 调用产品代码，root 为临时 Git 仓库。
+| 编号 | 内容 | 本轮状态 |
+|---|---|---|
+| F1 | 任务级 `required_evidence_levels` 下调绕过放松闸门 | **已修复**，含边界与真实后果复验（见上） |
+| F2 | 文档断言的版本号检查无保证 | **已修复**，回退版本号会失败，还原后通过 |
+| F3 | 删除整个 operation / 收窄 `resources` 只算验证面变更（不违反契约明文） | 未改动；执行子代理在证据里明确说明"契约判据二是穷举清单，扩大需主代理裁决"——我认可以为依据契约的正确处置，不算缺陷 |
+| F4 | 历史形态证据在新代码下新增错误 | **已修复**，与 02a71a3 基线判定完全一致，同时新判据仍生效 |
 
-### 1. 放松约束闸门真的生效 ✅（但有一条旁路，见 findings）
-自建任务单，删除 `acceptance-test-2`（同时删除其 owner operation）：
-- 不带裁决：CLI `task amend` 退出码 **3**，`BLOCKED ... FAIL: loosening the contract requires --adjudication`，`amendments.json` **未创建**，任务单字节哈希不变（`True`），修订版本仍为 1。
-- 补 `--adjudication docs/decisions/drop-at2.md`：退出码 **0**，`loosened=true`、`verification_surface_changed=true`，记录中 `adjudication_ref` 与 `changes.acceptance_tests.removed=["acceptance-test-2"]` 均可见。
-- 仅改散文：退出码 0，`loosened=false`、`verification_surface_changed=false`、`adjudication_ref=null`（不触发任何判据，无需裁决）。
-- 仅增删 `dependencies`：退出码 0，`loosened=false`、`surface=false`（只需理由）。
-- 另验：`test_ref`/`command_ref` 改写、收窄 `forbidden_paths` 都被判为放松并拒绝（退出码 3）。
+### O1（观察，非缺陷）修订绑定证据缺 `observed_at_commit` 时路径判据不执行
+复验（我的夹具，全套证据声明 `sheet_revision`/`sheet_sha256` 但都不声明 `observed_at_commit`）：
+`errors` 只剩与本次改动无关的两条（`missing or invalid finalization.json`、`main worktree post-merge re-verification is missing`），6 条记录 `revision_bound=true`、`changed_paths_judged=false`、`stale=false`、`reasons=[]`，而 `unverified` 列出 6 条 `"… does not record the commit it was observed at; the changed-path criterion was not evaluated"`。
+即：这类证据的"被验证路径是否变化"判据**不执行也不阻塞**，只在 `unverified` 里注明。契约明文是"证据与报告的有效性判据是 `sheet_revision` 加 `sheet_sha256`；`observed_at_commit` 只作事实记录"，而 `direct_pass` 只要求 `not revision_errors`，所以这与契约一致、且是 round 2 有意的兼容设计（`references/compat-and-migration.md` 已写明）。残留风险仅在于：若某个消费者只读 `status`/`errors` 而不读 `unverified`，可能在路径判据未执行的情况下看到 PASS。建议主代理知悉；是否收紧（例如让 revision 绑定证据缺 commit 时进入 blocking）属契约层决策。
 
-### 2. 静默篡改仍被抓 ✅
-先用带裁决的修订把基准推到 revision 2，然后**绕过 `task amend`** 直接改任务单文件（把验收测试删掉）：
-`python -m pipeline_tools task freeze-check <root> --contract <冻结提交> --task-sheet docs/tasks/probe.md` → 退出码 **4**，输出 `FAIL: task sheet changed after freeze`。
-反向对照（同一夹具）：走 amend 登记后 `freeze-check` 退出码 0 `PASS`，且重复运行仍为 0（幂等）。
+### O2（观察，非缺陷）F1 是判据行为变更，文档口径需主代理确认
+本轮把"降低任务级证据下限"新增为放松情形，并同步改了 `README.md`、`SKILL.md`、`references/{task-design,execution-and-review,compat-and-migration}.md`、`templates/task-sheet.md`（措辞一致，均写"含任务级 `required_evidence_levels` 的下限""下限上升不算放松"）。这些改动都在 `allowed_paths` 内、且文档一致性用例通过；我逐句核对未发现与实现不符之处。因为属于判据语义的正式变更，建议主代理按 final-check 再确认一次口径即可。
 
-### 3. 身份字段保护无法绕过 ✅（四种构造全部被拒）
-- 3a 首次修订（基准来自冻结时写入 `goal.json` 的 `task_sheet_contract` 快照）：改 `task_type` → 退出码 3，`FAIL: contract field task_type is not amendable (identity field)`，无 `amendments.json`，修订仍为 1。
-- 3b **把篡改提交**（使 HEAD blob 与篡改后的单子一致）后再 amend → 仍退出码 3，同样报身份字段，无记录。说明比对基准是"上一次记录的契约快照"，不是调用瞬间的 HEAD。
-- 3c 已有一条修订记录（revision 2）后再偷换 `task_id` → 退出码 3，`FAIL: contract field task_id is not amendable`，修订仍为 2。**确认比对基准是上次记录的 `sheet_contract`，而非当前文件前后状态**。
-- 3d 人为移除 `goal.json` 的 `task_sheet_contract` 快照（迫使回退到 `HEAD:` blob 路径）后改 `task_type` → 仍退出码 3。回退路径同样成立。
-
-### 4. `task_lifecycle.init_task` 改动的安全性 ✅
-- 初始 `init_task` → `pending`；未登记改动后 `inspect_task` → `blocked ['task sheet hash drift']`，`init_task` → `blocked ['task sheet hash drift']`（fail-closed）。
-- 登记过一条修订后 `inspect_task` → `pass`，`init_task` 返回既有状态（不再报身份漂移），即"修订链中的哈希被接受"这条必要改动只对**链上记录过的哈希**生效。
-- 再对同一任务做第二次未登记改动 → 仍 `blocked ['task sheet hash drift']`（revision 2 的基准没有被放宽）。
-- 伪造 `lifecycle.json` 的 identity（改 `user`）→ `blocked`（未开通道）。
-- 代码层面核对：`_identity_matches` 只在 `recorded_hash in recorded_task_sheet_hashes(root, task_id)` 且其余身份字段全等时返回 True；`recorded_task_sheet_hashes` 只收集链上真实观测过的 `previous_sheet_sha256`/`sheet_sha256`。**没有"随便改单子都能通过"的通道。**
-
-### 5. 依赖校验 ✅
-同一夹具四个用例：不存在 id → `dependency task sheet not found: no-such-task`（退出码 3，无记录）；成环 → `dependency cycle: probe -> probe-cycle -> probe`；依赖单子存在但无契约块 → `dependency task sheet is not a valid contract: probe-broken`；合法依赖（含 `.pipeline/archive/<id>.md` 形态）→ 退出码 0 接受，`changes.dependencies.added` 正确。全部拒绝场景都不留记录。
-
-### 6. 证据有效性判据：两种情形分别真实观测 ✅
-- A 基准（HEAD == `observed_at_commit`）：`stale=false`。
-- B 只提交无关路径 `docs/notes.md`，HEAD 从 `bbcb2401` 移到 `78d34275`：`head_changed=true` 但 `stale=false`，`reasons=[]`。
-- C 再提交被验证资源 `pipeline_tools/alpha.py`（`78d34275`→`4f19bb33`）：`stale=true`，`reasons=['executor-report.md was produced before changes to paths it verifies: pipeline_tools/alpha.py']`。
-- D 既有 `evidence_freshness` 同样两种情形分别可观测：仅无关路径变化时 `pass`（`verified_paths_changed=[]`，`observed_at_commit` 记录在案）；被验证路径变化时 `blocked ['paths under verification changed after this evidence was produced']`。同时旧口径未被删：带 `identity.head` 而无 `observed_at_commit` 的旧格式结果在 HEAD 前移后仍 `blocked ['result HEAD is stale']`。
-- E 消费者层（`reconcile`）：revision 绑定正确时 `sheet_revision=1`、6 条记录 `stale=false`、**不产生任何 revision 相关错误**（错误列表与 02a71a3 基线完全相同）；记录不声明修订时 6 条全 stale 并追加 "does not record the task sheet revision / the commit it was observed at"。
-- F 新修订使旧证据失效：`produced against task sheet revision 1 but the current revision is 2`。
-- G 不声明 `sheet_revision` 的记录 → stale（fail-closed，不静默通过）。
-
-### 7. 没有削弱既有防线 ✅
-- `git diff 02a71a3 753f0a6 -- pipeline_tools/reconcile.py`：唯一实质改动是 PASS 判定**增加一个合取项** `not revision_errors`，BLOCKED 判定增加 `revision_errors`，并多输出三个字段。**判定只会更严，不会更松。**
-- 手工构造同一份证据目录，分别用 `git archive 02a71a3 pipeline_tools` 抽出的基线代码与新代码跑 `reconcile_task`：
-  - 证据带 `sheet_revision`/`observed_at_commit`：基线错误 `['missing or invalid finalization.json','main worktree post-merge re-verification is missing']`，新代码错误**完全相同**（新机制不会误伤合法证据）。
-  - 证据不带这些字段（历史形态）：基线错误同上，新代码在此基础上**追加** 6 条记录级 staleness 错误。→ 严格性单调不减。
-- `core.py` 的 `evidence_verify`/`gate_check`/`scope_check`/`evidence_readiness`/`verify_structured_result` 函数体**未被改动**（全文件 diff 只有 2 行删除，且都不在这些函数内）。
-- 既有防线模块 117 passed（见上文）。
-- 附带发现（更严带来的兼容影响）：真实历史证据目录确实没有新字段——我检查了主工作树 `.pipeline/security-scan-repair-20261001-continuation-1/` 的三份报告与三份结果（报告只记 `head`，结果无任何新字段），因此用新代码对该任务跑 `evidence reconcile` 会因"未记录修订版本"而判 BLOCKED。这属于**收紧**而非削弱，但 `references/compat-and-migration.md` 只说明了"历史证据不被改写"，未提示"历史任务在新代码下 reconcile 会被判 stale/blocked"。
-
-### 8. 文档断言的改写没有丢掉约束意图 ✅（但版本号断言被明显弱化，见 findings）
-把 worktree 的相关文件复制到独立目录 `doccheck/`（`tests/` 也在其中，`ROOT` 因此指向副本），只跑这一条文档断言做 A/B：
-| 变体 | 结果 |
-|---|---|
-| 原样 | **1 passed** |
-| 从 `references/acceptance-evidence.md` 删除全部"修订"字样 | **FAILED**（仍能挡住"文档不再描述当前修订模型"） |
-| 在 `README.md` 里加入"任务单不可变" | **FAILED**（"不得再声称整份任务单绝对不可变"的否定断言有效） |
-| 把 `SKILL.md` 的 `version: 0.16.0` 改回 `0.15.0` | **1 passed** ← 新断言 `assertRegex(r"version: 0\.\d+\.\d+")` 无法发现"版本号没升"（旧的 `assertIn("version: 0.15.0")` 或者任何形式的明确钉死才行） |
-
-版本号本身我直接读文件核对：`SKILL.md` 由 `0.15.0`（主工作树）升到 `0.16.0`（worktree），契约"技能版本号已升"**事实成立**；但**机械断言已不能守住它**。schema 1-3 历史读取兼容的断言在测试文件其余部分未改动，仍然保留。
-
-### 9. `git reset --soft` 只影响其自身未合并的证据提交 ✅
-`git reflog show --date=iso HEAD`：
-```
-e525d80 commit: executor evidence ...                (17:25)
-753f0a6 commit: docs: record the freeze snapshot ... (17:17)
-7b647f1 reset: moving to HEAD~1                      (17:17:08)
-76dc911 commit: executor evidence ...                (17:08)  <- 被丢弃的第一次证据提交
-7b647f1 commit: record task sheet revisions ...      (16:56)
-02a71a3 merge main: Fast-forward
-```
-- 被丢弃的 `76dc911`（父提交 `7b647f1`）只含本任务的 `executor-report.md` 与 `executor-result.json`（42 行新增），**不含任何产品文件**。
-- `02a71a3` 及其之前的历史未被改写：主工作树 HEAD 仍是 `02a71a3b735e8a95358a7552a5f077fd3fb5ab22`，`git log --oneline` 链为 `02a71a3 ← 13a799a ← abc6768`，与分支上一致；主工作树工作区干净、未被修改。
-- 侧证 `02a71a3` 未受影响：契约校验 `task validate` PASS（其内容哈希与该提交一致），且分支分叉点正是 `02a71a3`。
-- 补充说明：`753f0a6` 的实际内容是 `references/execution-and-review.md` 的一行文档修正（提交信息提到 goal.json），`git diff --name-only 02a71a3 e525d80` 里也**没有** `.pipeline/<task-id>/goal.json`——该状态文件未被纳入 Git（与契约 unknown-1 一致）。
-
-### 10. 修订记录的追加性 ✅
-连续两次修订（第一次把某条 `evidence_level` 2→3，第二次新增 `acceptance-test-3`）：
-- 第一次后的首条记录行（原始字节）在第二次写入后**逐字节相同**（`True`），且 `json.loads` 出的对象相等（`True`）。
-- 前缀保护成立（新文件以旧文件的 `\n]}\n` 之前内容开头）；`revisions=[2,3]`，`rev3.previous_sheet_sha256 == rev2.sheet_sha256`（`5e41936f`）。
-- 反向对照：把已记录的 `evidence_level` 从 3 改回 2（相对记录版本是降低）**被判为放松**并拒绝（退出码 3）——追加记录不会掩盖"相对上一版"的降低。
-- 被拒绝的修订不产生任何记录（多次验证）。
-
-### 额外核对：真实任务的证据绑定自洽 ✅
-- 任务单实际 sha256 = `a12f29a7f7322feeb22d2a5284b4e2069d02d645fdc4bbf199ab9586f6082783`，与 `executor-report.md` / `executor-result.json` 声明的 `sheet_sha256` **完全一致**（证据确实绑定在它声称的修订版本上）。
-- 对该任务直接运行 `task freeze-check` → `PASS`（退出码 0），因为它从未被 amend，基准来自冻结记录。
-- 契约决策点 2（裁决引用载体）不构成阻塞：实现把 `adjudication_ref` 存为调用方给出的自由字符串，未自创格式，符合"不得自行决定载体格式"。
-
----
-
-## findings
-
-### F1（导致 FAIL）放松约束的闸门可被 `required_evidence_levels` 绕过
-契约"判据二"：*"是否放松约束（删除或放宽验收测试、**降低证据等级**、扩大允许范围、收窄禁止范围、删除非目标）。放松必须带 `--adjudication`。"*
-实现 `_contract_loosened`（`pipeline_tools/core.py:2374-2394`）只检查**单条** `acceptance_tests[].evidence_level` 的下降，**不检查任务级 `required_evidence_levels` 的下调**；执行子代理在自己的报告里也把该条口径收窄成了"降低某条 `evidence_level`"，未按契约决策点停下报告。
-
-最小复现（脚本全文见下，退出码 0）：
-```python
-# 任务单冻结时 acceptance-test-1 为 evidence_level 3、required_evidence_levels=[3]
-# 只把 required_evidence_levels 改为 [2]，acceptance test 保持 level 3
-value = amend_task_sheet(root, "demo", reason="lower the evidence level")   # 无 --adjudication
-print(value["status"], value["loosened"], value["changes"]["required_evidence_levels"])
-```
-观察到的输出：
-```
-{"status": "pass", "loosened": false, "verification_surface_changed": true, "errors": []}
-recorded required_evidence_levels delta: {'added': [2], 'removed': [3]}
-revision after the amendment: 2
-floor after the un-adjudicated amendment: 2 ready: True
-```
-影响是真实的、不只是分类好看：`task_lifecycle._evidence`（`pipeline_tools/task_lifecycle.py:241-247`）用 `max(required_evidence_levels)` 作为证据下限计算 `ready`，该下限被从 3 降到 2 后，只提供 2 级证据也可 `ready=True`。整条路径只用了 `--reason`，没有任何裁决引用，记录里 `loosened=false`。
-复现脚本：`C:/Users/alexc/AppData/Local/Temp/reviewer-probe/minimal_repro.py`（可整体 `python minimal_repro.py` 运行；本报告 `commands` 中已列出该命令，退出码 0）。
-
-建议（任一即可，均属主代理决策）：
-1. 把"下调 `required_evidence_levels`"纳入 `_contract_loosened`，并补一条验收测试（例如扩展验收测试 3 的触发集）；或
-2. 明确裁决并记录"判据二中的'降低证据等级'仅指单条 `acceptance_tests[].evidence_level`"这一收窄口径，同时说明任务级下限变更为何不算放松。
-
-### F2（finding，不单独构成 FAIL）文档断言的技能版本号检查被弱化
-`tests/test_acceptance_id_and_template_compliance.py` 把 `assertIn("version: 0.15.0", skill)` 改成 `assertRegex(skill, r"version: 0\.\d+\.\d+")`。A/B 实测（见高风险点 8）：把版本改回 `0.15.0` 该用例仍然通过，即"技能版本号已升"不再有任何机械保证。事实层面 `SKILL.md` 已升到 `0.16.0`（我直接读文件核对），契约该条**事实成立**；建议改成"版本号不等于基线版本"或与 `references/compat-and-migration.md` 的版本条目交叉校验，以恢复约束力。
-
-### F3（observation）另外两类变更未被归为"放松"
-我把它们与契约比对后认为**不违反契约明文**（契约判据二未列），但值得主代理知晓，避免后续误用：
-- 删除整个 operation 而保留全部验收测试 → `loosened=false`，只在 `verification_surface_changed=true` 上留痕（会被要求重做证据）。
-- 收窄 operation 的 `resources`（减少被验证路径）→ 同上。
-两者都会使既有证据 stale（必须对最新修订重做），影响面因此有界。
-
-### F4（compat 提示，非实现缺陷）
-新 `evidence reconcile` 对历史证据是**更严**的：真实历史证据（我核对了主工作树 `security-scan-repair-20261001-continuation-1` 的 6 份文件）都不含 `sheet_revision`/`sheet_sha256`/`observed_at_commit`，因此在新代码下会被判 stale/BLOCKED。`references/compat-and-migration.md` 目前只说明"历史任务单与历史证据不被批量改写"，未提示这一后果。建议在兼容文档里补一句（不属本任务的验收标准，故不据此判 FAIL）。
+### O3（提示）本任务自身没有修订记录
+`task_sheet_revision(root, task-id)` = `(1, None)`：本任务从未 `task amend`，且当前 worktree 下没有 `.pipeline/<task-id>/goal.json`（round 1 我运行 `freeze-check` 时它被生成、我在收尾时删除，round 2 未再生成）。因此工具此刻无法比对证据声明的 `sheet_sha256`（基线为 None），只能比对修订号；`freeze_check` 一旦运行会重新落盘基线（round 1 实测退出码 0、`PASS`，其临时状态文件已清理，`git status --porcelain` 为空）。不影响结论，仅提示证据哈希比对的基线依赖该状态文件存在。
 
 ---
 
 ## unverified / blockers
 
 **unverified**
-- 基线 367 passed 未重跑（只做了 367+10=377 的差异推理，未见删除或跳过的测试）。
-- 契约 unknown-2：是否有 pipeline_tools 之外的下游消费者依赖被改写段落的旧措辞，未确认。
-- 合并后主工作树复验（post-merge re-verification）未进行——按流程属主代理动作。
+- round 1 声明的基线 367 passed 未重跑（仅核对了 +2 用例的差异来源）。
+- 契约 unknown-2：是否有 pipeline_tools 之外的消费者依赖被改写段落的旧措辞。
+- 合并后主工作树复验（post-merge re-verification）——按流程属主代理动作。
+- O1 的残留风险（路径判据未执行时只有 `unverified` 提示）。
 
-**blockers**：无（环境、权限、证据均齐备，契约本身未发现自相矛盾；契约虽然在"降低证据等级"的口径上可作两解，但那由主代理裁决即可，不阻塞本次判定）。
+**blockers**：无。
 
-**我未复验的内容**：无（十条验收、全量测试、范围与历史卫生、高风险点 1–10 均已亲自运行；仅上述 unverified 三项超出本次审查范围）。
+**findings**：无阻塞级缺陷。F1/F2/F4 已修复；F3 为契约穷举清单范围内的既定处置；O1/O2/O3 仅为观察与提示。
 
----
+## 只读与清理声明
 
-## 临时文件清理（保持 worktree 与主工作树原状）
-
-- 我在审查中运行了 `python -m pipeline_tools task freeze-check .`（真实任务单）以验证"修订后不再报漂移"，该命令按产品设计写入了 `.pipeline/task-sheet-revision-and-evidence-binding/goal.json`。该文件在我运行前**不存在**（证据目录当时只有提交里的两份文件），我已**删除**它，使证据目录恢复为提交状态。
-- 我为全量测试日志临时写的 `.pipeline/reviewer-fulltest.log` 也已删除。`git status --porcelain` 现在是干净的。
-- 除本目录的 `review-report.md` 与 `reviewer-result.json` 外，我没有写任何文件；未修改任何产品/测试/文档/任务单；未新建 worktree；未在主工作树中改任何文件（对主工作树只有 `git log/show/status` 与 `Read` 等只读访问）。
+全程未修改产品/测试/文档/任务单文件（唯一例外是 F2 要求的 `SKILL.md` 临时改版本号，已按字节还原并验证 `sha256` 一致、`git status` 干净）；未新建 worktree；主工作树只有 `git log/show/status` 与读取，零改动；除本目录的两份交付文件外没有写入任何文件。
