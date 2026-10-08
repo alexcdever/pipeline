@@ -726,6 +726,275 @@ class EvidenceTests(unittest.TestCase):
             self.assertTrue(any('evidence_refs must be a non-empty array' in error for error in errors))
 
 
+    # --- Reports written on a task branch that is later merged ---------------
+
+    REPORT_FILES = ('executor-report.md', 'review-report.md', 'final-check.md')
+
+    def _git(self, cwd, *args, check=True):
+        import subprocess
+
+        return subprocess.run(
+            ['git', '-C', str(cwd), *args], check=check, capture_output=True, text=True,
+        )
+
+    def _task_contract_sheet(self, root, task_id='demo'):
+        contract = {
+            'schema': 1,
+            'task_id': task_id,
+            'allowed_paths': ['src/**', '.pipeline/**'],
+            'forbidden_paths': [],
+            'acceptance_tests': [{
+                'id': 'acceptance-test-1',
+                'evidence_level': 3,
+                'test_ref': 'tests/test_evidence.py',
+                'command_ref': 'python -m pytest -q tests/test_evidence.py',
+            }],
+        }
+        sheet = root / 'docs' / 'tasks' / f'{task_id}.md'
+        sheet.parent.mkdir(parents=True, exist_ok=True)
+        sheet.write_text(
+            f'<!-- Task ID: {task_id} -->\n```pipeline-contract\n' + json.dumps(contract) + '\n```\n',
+            encoding='utf-8',
+        )
+        return sheet
+
+    def _write_identity_reports(self, directory, worktree, branch, head, main_cwd):
+        """Write the three schema-2 stage reports under one recorded identity."""
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, role in (
+            ('executor-report.md', 'executor'),
+            ('review-report.md', 'reviewer'),
+            ('final-check.md', 'main-final'),
+        ):
+            value = {
+                'schema': 2,
+                'task_id': 'demo',
+                'worktree': str(worktree),
+                'branch': branch,
+                'role': role,
+                'round': 1,
+                'status': 'PASS',
+                'head': head,
+                'generated_at': '2026-01-01T00:00:00+00:00',
+                'commands': [{
+                    'command': 'python -m pytest -q tests/test_evidence.py',
+                    'exit_code': 0,
+                    'cwd': str(main_cwd) if name == 'final-check.md' else str(worktree),
+                    'evidence_ref': 'test.log',
+                }],
+                'assertions': ['the recorded branch and worktree describe work in the current head'],
+                'evidence_refs': ['test.log'],
+                'unverified': [],
+            }
+            (directory / name).write_text(
+                '```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8'
+            )
+
+    def _report_value(self, path):
+        from pipeline_tools.core import _read_machine_evidence
+
+        value, errors = _read_machine_evidence(Path(path))
+        self.assertEqual(errors, [], path)
+        return value
+
+    def _rewrite_report_identity(self, directory, **fields):
+        for name in self.REPORT_FILES:
+            path = directory / name
+            value = self._report_value(path)
+            value.update(fields)
+            path.write_text(
+                '```pipeline-evidence\n' + json.dumps(value) + '\n```\n', encoding='utf-8'
+            )
+
+    def _report_bytes(self, directory):
+        return {name: (directory / name).read_bytes() for name in self.REPORT_FILES}
+
+    def _task_branch_repo(self, root, task_id='demo', branch='demo-task'):
+        """Main repo plus the canonical task worktree that wrote the reports.
+
+        The three reports are committed on ``branch`` only, so the branch can be
+        merged into the main branch afterwards.
+        """
+        (root / 'src').mkdir(parents=True)
+        (root / 'src' / 'app.py').write_text('stable\n', encoding='utf-8')
+        (root / '.gitignore').write_text('/.worktrees/\n', encoding='utf-8')
+        self._task_contract_sheet(root, task_id)
+        directory = root / '.pipeline' / task_id
+        directory.mkdir(parents=True)
+        (directory / 'test.log').write_text('observed test output\n', encoding='utf-8')
+        for name, role in (('executor-result.json', 'executor'), ('reviewer-result.json', 'reviewer')):
+            (directory / name).write_text(json.dumps({
+                'schema': 1, 'task_id': task_id, 'role': role, 'status': 'pass',
+                'acceptance': [], 'unverified': [],
+            }), encoding='utf-8')
+        (directory / 'final-result.json').write_text(json.dumps({
+            'schema': 1, 'task_id': task_id, 'role': 'final', 'status': 'pass', 'exit_code': 0,
+            'acceptance': [{
+                'id': 'acceptance-test-1', 'status': 'pass', 'exit_code': 0,
+                'evidence_refs': ['test.log'],
+            }],
+            'unverified': [],
+        }), encoding='utf-8')
+        self._git(root, 'init', '-q', '-b', 'main')
+        self._git(root, 'config', 'user.email', 'test@example.invalid')
+        self._git(root, 'config', 'user.name', 'Test')
+        self._git(root, 'add', '.')
+        self._git(root, 'commit', '-qm', 'product baseline')
+        reported_head = self._git(root, 'rev-parse', 'HEAD').stdout.strip()
+        self._git(root, 'worktree', 'add', '-b', branch, f'.worktrees/{task_id}', reported_head)
+        worktree = (root / '.worktrees' / task_id).resolve()
+        self._write_identity_reports(
+            worktree / '.pipeline' / task_id, worktree, branch, reported_head, root.resolve()
+        )
+        self._git(worktree, 'add', '.pipeline')
+        self._git(worktree, 'commit', '-qm', 'task stage reports')
+        return directory, worktree, reported_head
+
+    def test_merged_task_branch_reports_pass_the_post_merge_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, worktree, reported_head = self._task_branch_repo(root)
+            self.assertNotEqual(
+                0, self._git(root, 'merge-base', '--is-ancestor', 'demo-task', 'HEAD', check=False).returncode
+            )
+            self._git(root, 'merge', '--ff-only', 'demo-task')
+            self.assertEqual(
+                0, self._git(root, 'merge-base', '--is-ancestor', 'demo-task', 'HEAD', check=False).returncode
+            )
+            self.assertEqual('main', self._git(root, 'branch', '--show-current').stdout.strip())
+            # The recorded identity genuinely differs from the current one, so a
+            # pass can only come from the merged-branch rule, not from the strict
+            # equality rule.
+            recorded = self._report_value(directory / 'executor-report.md')
+            self.assertEqual('demo-task', recorded['branch'])
+            self.assertEqual(reported_head, recorded['head'])
+            self.assertEqual(str(worktree), recorded['worktree'])
+            self.assertTrue(worktree.is_dir())
+            self.assertNotEqual(
+                str(worktree), str(Path(self._git(root, 'rev-parse', '--show-toplevel').stdout.strip()).resolve())
+            )
+            before = self._report_bytes(directory)
+            errors = gate_check(directory, 'demo', 'main', 'post-merge')
+            self.assertEqual(errors, [])
+            for name, content in before.items():
+                self.assertEqual((directory / name).read_bytes(), content, name)
+
+    def test_unmerged_branch_report_identity_is_still_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, worktree, reported_head = self._task_branch_repo(root)
+            # The judged directory holds the same reports, and every condition but
+            # the merge one holds: the head is the current head, the recorded
+            # branch exists locally, and the recorded worktree is the canonical
+            # and existing task worktree.
+            self._write_identity_reports(directory, worktree, 'demo-task', reported_head, root.resolve())
+            self.assertEqual(
+                reported_head, self._git(root, 'rev-parse', 'HEAD').stdout.strip()
+            )
+            self.assertEqual(
+                0, self._git(root, 'rev-parse', '--verify', 'refs/heads/demo-task', check=False).returncode
+            )
+            self.assertEqual(str(worktree), self._report_value(directory / 'executor-report.md')['worktree'])
+            self.assertNotEqual(
+                0, self._git(root, 'merge-base', '--is-ancestor', 'demo-task', 'HEAD', check=False).returncode
+            )
+            before = self._report_bytes(directory)
+            errors = evidence_verify(directory, 'demo', 'main')
+            for name in self.REPORT_FILES:
+                self.assertIn(f'{name} branch does not match current Git identity', errors)
+                self.assertIn(f'{name} worktree does not match current Git identity', errors)
+                self.assertIn(f'{name} branch mismatch', errors)
+            for name, content in before.items():
+                self.assertEqual((directory / name).read_bytes(), content, name)
+
+    def test_foreign_worktree_report_identity_is_still_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, worktree, _reported_head = self._task_branch_repo(root)
+            self._git(root, 'merge', '--ff-only', 'demo-task')
+            # Another task's worktree, a repository sibling outside the worktrees
+            # root, and a path that does not exist at all.
+            self._git(root, 'worktree', 'add', '--detach', '.worktrees/other-task', 'HEAD')
+            sibling = Path(str(root) + '.outside')
+            sibling.mkdir()
+            for foreign in (
+                root / '.worktrees' / 'other-task',
+                sibling,
+                root / '.worktrees' / 'demo-missing',
+            ):
+                self._rewrite_report_identity(directory, worktree=str(foreign))
+                errors = evidence_verify(directory, 'demo', 'main')
+                for name in self.REPORT_FILES:
+                    self.assertIn(f'{name} worktree does not match current Git identity', errors, foreign)
+                self.assertTrue(errors)
+            self.assertTrue((root / '.worktrees' / 'other-task').is_dir())
+
+    def test_schema_two_report_identity_stays_strict_for_bogus_values(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            base = self._make_git_repo(root)
+            current_branch = self._git(root, 'branch', '--show-current').stdout.strip()
+            directory = root / '.pipeline' / 'demo'
+            directory.mkdir(parents=True)
+            (directory / 'test.log').write_text('evidence\n', encoding='utf-8')
+            self._write_identity_reports(directory, root / 'wrong', 'bogus/branch', '1' * 40, root)
+            self.assertNotEqual('1' * 40, base)
+            self.assertNotEqual(
+                0, self._git(root, 'rev-parse', '--verify', 'refs/heads/bogus/branch', check=False).returncode
+            )
+            before = self._report_bytes(directory)
+            errors = evidence_verify(directory, 'demo', current_branch)
+            for name in self.REPORT_FILES:
+                self.assertIn(f'{name} head does not match current Git identity', errors)
+                self.assertIn(f'{name} branch does not match current Git identity', errors)
+                self.assertIn(f'{name} worktree does not match current Git identity', errors)
+                self.assertIn(f'{name} branch mismatch', errors)
+            for name, content in before.items():
+                self.assertEqual((directory / name).read_bytes(), content, name)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            # A merged branch whose name no longer resolves keeps the strict rule,
+            # even though the recorded worktree is the existing canonical one.
+            directory, worktree, _head = self._task_branch_repo(root)
+            self._git(root, 'merge', '--ff-only', 'demo-task')
+            self._rewrite_report_identity(directory, branch='demo-task-gone')
+            self.assertEqual(
+                0, self._git(root, 'rev-parse', '--verify', 'refs/heads/demo-task', check=False).returncode
+            )
+            self.assertNotEqual(
+                0, self._git(root, 'rev-parse', '--verify', 'refs/heads/demo-task-gone', check=False).returncode
+            )
+            self.assertTrue(worktree.is_dir())
+            self.assertEqual(str(worktree), self._report_value(directory / 'executor-report.md')['worktree'])
+            errors = evidence_verify(directory, 'demo', 'main')
+            for name in self.REPORT_FILES:
+                self.assertIn(f'{name} branch does not match current Git identity', errors)
+                self.assertIn(f'{name} branch mismatch', errors)
+
+    def test_product_change_after_reported_head_is_still_stale(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, _worktree, reported_head = self._task_branch_repo(root)
+            self._git(root, 'merge', '--ff-only', 'demo-task')
+            # The merged-branch identity rule accepts the reports as written.
+            self.assertEqual([], evidence_verify(directory, 'demo', 'main'))
+            (root / 'src' / 'app.py').write_text('changed\n', encoding='utf-8')
+            self._git(root, 'add', 'src/app.py')
+            self._git(root, 'commit', '-qm', 'product change after the reported head')
+            self.assertIn(
+                'src/app.py',
+                self._git(root, 'diff', '--name-only', reported_head, 'HEAD').stdout.split(),
+            )
+            before = self._report_bytes(directory)
+            errors = evidence_verify(directory, 'demo', 'main')
+            for name in self.REPORT_FILES:
+                self.assertIn(f'{name} head does not match current Git identity', errors)
+            gate_errors = gate_check(directory, 'demo', 'main', 'post-merge')
+            self.assertIn('executor-report.md head does not match current Git identity', gate_errors)
+            for name, content in before.items():
+                self.assertEqual((directory / name).read_bytes(), content, name)
+
+
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):
         from pipeline_tools.core import _machine_result_errors

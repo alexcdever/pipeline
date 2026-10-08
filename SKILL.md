@@ -79,6 +79,7 @@ metadata:
 - 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`；迁移只移动并校验文件，不改写 evidence 内部历史路径文本，后续工具统一使用 `.pipeline/`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
+- 报告身份跨合并判定：schema 2 报告的 `branch`/`worktree` 默认必须等于当前身份，唯一放宽路径针对「报告所在分支已并入当前 HEAD」这一可机械证明的情形——报告的 `branch` 是本仓库的本地分支且其尖端是当前 `HEAD` 的祖先、报告的 `worktree` 是该任务规范实现目录 `<仓库根目录>/.worktrees/<task-id>` 且真实存在、报告的 `head` 已通过既有的「仅证据提交前移」判定，三条同时满足才按当前身份接受，因此合并后不需要把执行/审查报告的身份字段改写成主工作树身份。迁移、未合并或已删除的分支、非规范 worktree、任务 id 不一致，以及显式 `--branch` 与报告不符且不满足上述三条时，一律保留原有错误文本并 fail-closed；`head` 的判定不放宽（报告 `head` 之后出现改动产品路径的提交仍判失效）。
 - 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
 - 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）并同时留存该版本契约快照；`freeze_check` 用「最新修订版的哈希」（有 `amendments.json` 时取最后一条修订的 `sheet_sha256`，否则取该记录）检测任务单在冻结后被改动，未经 `task amend` 登记的直接改动仍判为漂移。
 - 每份阶段报告与机器结果写明它评判的任务单**修订版本**（`sheet_revision`、`sheet_sha256`）与观察提交（`observed_at_commit`）。证据失效的判据只有两条：修订版本与当前版本不一致，或从 `observed_at_commit` 到 `HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交；`HEAD` 单纯前移不让证据失效。
@@ -94,7 +95,7 @@ metadata:
 2. 契约冻结与修订：不得为迁就实现改验收测试或手工改状态；修订必须留痕（理由、发起角色、裁决引用、结构性差异），身份字段不可修订，放松约束必须带裁决引用；设计真变时记裁决并开 `derived` 任务——任务类型字段写 `derived`，机器 task-id/path 保留 `continuation`——保留原历史，合并后不再修订。
 3. 验收测试即用例：每条必须指向当前测试文件、用例、断言、命令、结果边界。
 4. 独立审查：独立上下文直接复验；转述他人结果不算。
-5. 证据属当前任务：task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成。
+5. 证据属当前任务：task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成（报告所在分支已并入当前 `HEAD`、其 worktree 为该任务规范实现目录且报告 `head` 通过既有判定时，身份按跨合并规则判定为一致，不改写报告）。
 6. 真实链路不可替代：单元/组件/协议/持久化/真实浏览器/设备各自证明各自边界。
 7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）；post-merge `final-check.md`、`final-result.json` 与 `finalization.json` 作为独立 evidence 提交。
 8. 超时有界：单条测试默认 3 分钟硬上限，超时必须停止诊断；整套用更大的明确累计上限。

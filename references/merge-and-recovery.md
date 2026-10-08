@@ -44,7 +44,9 @@
 
 **合并后复验是硬要求，不是建议**：post-merge gate 需要 `final-check.md` 里至少一条 `exit_code == 0` 的命令证据，且该命令的 `cwd` 解析到主工作树根（`gate_check` 的 `_post_merge_reverified_in_main_worktree`）。只在任务 worktree 里跑过、或只在报告里写“主工作树已验证”而没有可解析的命令条目，都不算复验通过。
 
-worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。`finalization.json` 必须可解析且绑定当前 task；缺失、旧 marker 或身份不一致时 reconcile 不能 PASS。schema 1 报告仅用于 legacy/unverified 查询，ready/merged/reconcile 最终 PASS 需要 schema 2 的 branch、worktree、HEAD 身份一致。events.jsonl 还必须从 `created` 开始、transition 可重放且终态与 lifecycle.json 一致。
+worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发生就改完成。post-merge 的 `final-check.md`、`final-result.json` 与 `finalization.json` 应作为独立的 post-merge evidence 提交，不能用 pre-merge 报告替代。`finalization.json` 必须可解析且绑定当前 task；缺失、旧 marker 或身份不一致时 reconcile 不能 PASS。schema 1 报告仅用于 legacy/unverified 查询，ready/merged/reconcile 最终 PASS 需要 schema 2 报告的 `branch`、`worktree`、`HEAD` 身份成立：`HEAD` 与当前提交一致或仅被证据提交推进，`branch`/`worktree` 与当前身份一致或满足下面的跨合并规则。events.jsonl 还必须从 `created` 开始、transition 可重放且终态与 lifecycle.json 一致。
+
+**报告身份跨合并判定（`merged_task_branch_identity`）**：schema 2 报告的 `branch`/`worktree` 只有一条放宽路径，三条必须同时满足——报告所在 `branch` 是本仓库的本地分支且其尖端是当前 `HEAD` 的祖先（已合并）；报告 `worktree` 是该任务规范实现目录 `<仓库根目录>/.worktrees/<task-id>` 且真实存在；报告 `head` 已通过既有的「仅证据提交前移」判定。满足时 `gate post-merge` 与 `evidence verify` 按当前身份接受这些字段，**合并后无需把执行/审查报告改写成主工作树身份**。任一条不成立（未合并分支、分支已删除或无法解析、仓库同级目录或其他任务的 worktree、任务 id 与报告不一致）都维持原有错误文本并 fail-closed；显式 `--branch` 只用于声明当前身份，不构成额外放宽；`head` 的判定不变——报告 `head` 之后出现改动产品路径的提交仍判失效，只有本任务证据提交（或 metrics）前移 `HEAD` 才被接受。报告只记录判据，不因为合并而改写历史证据。
 
 合并后不再修订任务单：`amendments.json` 是追加式哈希链（旧条目字节不变），合并不会改写它；此后的需求变化重新规划或开新任务。post-merge 复验证据同样写明它评判的 `sheet_revision`、`sheet_sha256` 与 `observed_at_commit`，并按修订版本加被验证路径两条判据判定有效性。
 
