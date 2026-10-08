@@ -17,6 +17,7 @@
     "pipeline_tools/reconcile.py",
     "pipeline_tools/planning.py",
     "templates/pipeline-evidence.json",
+    "templates/task-sheet.md",
     "tests/test_task_sheet_amendment.py",
     "tests/test_acceptance_id_and_template_compliance.py",
     "tests/test_git_checks.py",
@@ -83,7 +84,7 @@
       "id": "documentation-alignment",
       "kind": "repair",
       "scope": "align skill rules, templates and documentation pins with the revision model",
-      "resources": ["SKILL.md", "README.md", "references/task-design.md", "references/acceptance-evidence.md", "references/execution-and-review.md", "references/merge-and-recovery.md", "references/compat-and-migration.md", "tests/test_acceptance_id_and_template_compliance.py"],
+      "resources": ["SKILL.md", "README.md", "templates/task-sheet.md", "references/task-design.md", "references/acceptance-evidence.md", "references/execution-and-review.md", "references/merge-and-recovery.md", "references/compat-and-migration.md", "tests/test_acceptance_id_and_template_compliance.py"],
       "resource_mode": "batch",
       "acceptance_tests": ["acceptance-test-10"]
     }
