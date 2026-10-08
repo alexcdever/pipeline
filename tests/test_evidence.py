@@ -997,6 +997,32 @@ class EvidenceTests(unittest.TestCase):
             # the task id plus the task sheet revision.
             self.assertEqual([], evidence_verify(directory, 'demo', 'main', phase='finalized'))
 
+    def test_cli_evidence_verify_forwards_the_phase(self):
+        import os
+        import subprocess
+        import sys
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, _worktree, reported_head = self._task_branch_repo(root)
+            self._git(root, 'merge', '--no-ff', '-m', 'merge demo-task', 'demo-task')
+            self.assertIn(
+                'src/app.py',
+                self._git(root, 'diff', '--name-only', reported_head, 'HEAD').stdout.split(),
+            )
+            repo = Path(__file__).resolve().parent.parent
+            env = {**os.environ, 'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '1', 'PYTHONPATH': str(repo)}
+            command = [sys.executable, '-m', 'pipeline_tools', 'evidence', 'verify', str(directory),
+                       '--task-id', 'demo', '--branch', 'main', '--phase']
+            active = subprocess.run([*command, 'active'], cwd=root, env=env, capture_output=True, text=True, timeout=60)
+            finalized = subprocess.run([*command, 'finalized'], cwd=root, env=env, capture_output=True, text=True, timeout=60)
+            # The same evidence, the two phases: only the active one applies the
+            # commit binding; the finalized one keeps the marker check.
+            self.assertIn('head does not match current Git identity', active.stdout + active.stderr)
+            self.assertIn('worktree does not match current Git identity', active.stdout + active.stderr)
+            self.assertEqual('FAIL: finalization.json is missing', finalized.stdout.strip())
+            self.assertEqual('', finalized.stderr.strip())
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):
