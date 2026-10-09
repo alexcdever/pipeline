@@ -377,27 +377,38 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertIn(needle, reference, needle)
 
     def test_references_task_design_documents_derived_generation_support(self):
+        # 用例名保留：一张历史冻结任务单（docs/tasks/derived-generation-support.md）把本方法
+        # 作为自己的 test_ref。文档模型已演进，断言改为钉住**当前状态模型**。
         task_design = (ROOT / "references/task-design.md").read_text(encoding="utf-8")
-        self.assertIn("两条写入路径", task_design)
+        # 当前状态模型：任务类型只有三类，新任务不再派生，接替关系用 dependencies 表达。
+        self.assertIn("只有三个", task_design)
+        self.assertIn("`vertical-feature`、`prerequisite`、`repair`", task_design)
+        self.assertIn("新任务不再派生", task_design)
+        self.assertIn("接替关系一律用 `dependencies` 表达", task_design)
+        self.assertIn("dispatch derived-create", task_design)
+        # 历史 `derived` 仅作读取兼容，读取规则仍必须写明。
+        self.assertIn("历史 `derived` 只作读取兼容", task_design)
         for needle in (
             "derived_from",
-            "_task_sheet_text",
-            "create_derived_dispatch",
             "parent_task_type",
-            "docs/tasks/<parent-id>.md",
+            "_requires_full_chain",
+            "读取 `derived_from.parent_task_type`",
             "validate_task_plan",
-            "机械读取",
             "fail-closed",
-            "root",
-            "commit",
-            "branch",
+            "TASK_TYPES",
+            "task validate",
         ):
             self.assertIn(needle, task_design, needle)
-        # 生成器路径照抄规划者声明的提交/分支，不自动推导。
-        self.assertIn("工具照抄", task_design)
-        # 跨 run 与同 run 两条来源都必须写明。
-        self.assertIn("同一次 planning run", task_design)
-        self.assertIn("HEAD", task_design)
+        # 已移除的派生生成措辞不得回流：它们描述的是不再存在的创建路径。
+        for stale in (
+            "两条写入路径",
+            "_task_sheet_text",
+            "create_derived_dispatch",
+            "工具照抄",
+            "同一次 planning run",
+            "派生任务的提交顺序",
+        ):
+            self.assertNotIn(stale, task_design, stale)
 
     def test_references_metrics_contract_documents_test_isolation(self):
         contract = (ROOT / "references/metrics-contract.md").read_text(encoding="utf-8")

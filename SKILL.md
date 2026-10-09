@@ -1,7 +1,7 @@
 ---
 name: pipeline
 description: "Use when an agent plans, builds, reviews, or merges code."
-version: 0.16.0
+version: 0.17.0
 author: Alex Chen (alexcdever)
 license: MIT
 platforms: [linux, macos, windows]
@@ -29,7 +29,7 @@ metadata:
 
 ## 实现 worktree 约定
 
-- 任务单契约提交后冻结，之后只按记录的修订版本演进：主代理先手工改任务单，再用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 校验并登记一条修订记录（`.pipeline/<task-id>/amendments.json`）；身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订，放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；未记录的改动仍是静默篡改，会被 `freeze_check` 判为漂移。合并后不再修订，需求变化走重新规划或新建 `derived` 任务，不回写已合并的历史。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
+- 任务单契约提交后冻结，之后只按记录的修订版本演进：主代理先手工改任务单，再用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 校验并登记一条修订记录（`.pipeline/<task-id>/amendments.json`）；身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订，放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；未记录的改动仍是静默篡改，会被 `freeze_check` 判为漂移。合并后不再修订，需求变化走重新规划或新建任务（接替关系写进 `dependencies`），不回写已合并的历史。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
 - 必须从主工作树根目录执行：
 
   ```bash
@@ -49,7 +49,7 @@ metadata:
 - 每个子代理返回后，主代理必须重新读取当前任务单、Git/worktree 身份和本轮 `.pipeline/<task-id>/` 证据，核对 task-id、branch、HEAD、角色和报告新鲜度。
 - 任务单规定还有后续阶段时，主代理必须继续推进下一个阶段，而不是先向用户发送总结；阶段性报告不是终止条件。
 - 标准闭环是：执行子代理 → 独立审查子代理 → 主代理最终检查 → 合并后主工作树复验。审查通过不等于主代理最终检查通过。
-- 子代理返回 FAIL、BLOCKED、超时或证据缺失时，主代理必须分类并按恢复规则保留现场、建立 `derived` 任务（机器 ID/path 保留 `continuation`）或上报阻塞；不得把阶段结果改写为 PASS，也不得跳过后续核验。
+- 子代理返回 FAIL、BLOCKED、超时或证据缺失时，主代理必须分类并按恢复规则保留现场、新建接替任务（新 ID、从当前 `HEAD` 建 worktree，接替关系写进 `dependencies`）或上报阻塞；不得把阶段结果改写为 PASS，也不得跳过后续核验。
 - 只有当前任务的最终证据全部齐全，或遇到必须由用户裁决、外部授权或无法自愈的阻塞，主代理才能结束本轮。
 - 默认推进策略是自动推进后续任务：完成并合并当前任务后，主代理继续队列中的下一个任务，不需要用户逐条确认。这是默认行为，不是例外。
 - 该策略按两级切换：运行级存于该次运行的 `lifecycle.json` 的 `approval_mode`，项目级存于 `.pipeline/config.json`；解析顺序是显式参数 → 运行记录 → 项目配置 → 默认 `automatic`。切换为 `manual` 时，主代理在每个任务派发前停下等待人工确认。项目级配置的形态、键名、枚举和回退规则见 `references/task-design.md` 的「审批策略配置」。
@@ -69,7 +69,7 @@ metadata:
 - 工具输出的退出码和原始日志是机械事实；终端摘要不替代日志。
 - 在派发 executor/reviewer 前先运行 runtime preflight，确认 Node/pnpm/Git、native ABI 和项目所需测试能力；环境不匹配不得伪装成产品失败或继续正式验收。
 - 子代理启动前，主代理生成环境检查列表，包含：可读任务与worktree、可执行验收命令、可写 `.pipeline/**`、reviewer不可写产品代码等。子代理按检查列表逐项验证，通过后开始工作，任何检查失败立即向主代理报告BLOCKED。
-- 主代理未经用户明确授权不得修改产品代码；executor/reviewer 失败后应重派、建立 `derived` 任务（机器 ID/path 保留 `continuation`）或保留决策点，不得接管实现。
+- 主代理未经用户明确授权不得修改产品代码；executor/reviewer 失败后应重派、新建接替任务（新 ID，接替关系写进 `dependencies`）或保留决策点，不得接管实现。
 - OpenCode Desktop 会话可用 `metrics import-opencode-session` 导入结构化流程信号；导入器不得从自然语言推断产品 PASS。
 - 程序化命令应优先使用 `--format json --output <path>`；JSON 结果是后续阶段的权威输入，终端短摘要不作为流程状态来源。
 - 使用任务级 lifecycle API/CLI 管理状态：`lifecycle resume/status/list/inspect` 是跨会话恢复和读取的优先入口；`transition`/`event` 等状态写入只允许 `role=main-agent`，执行/审查角色只能读取并提交 recommendation/findings，不能直接把自然语言结论当作状态或 gate。旧 `lifecycle status --evidence` 仍保留，用于兼容 legacy evidence 查询，不是新的状态写入入口。`lifecycle status` 在 merge 阶段返回的动作标识 `merge_branch_in_main_worktree` 表示由主代理手工合并，`pipeline-tools` 没有对应的合并命令，不要去找它。
@@ -94,7 +94,7 @@ metadata:
 ## 不可违反的规则
 
 1. 任务单先于实现：契约必须提交后才能创建唯一 `.worktrees/<task-id>` 实现 worktree 或派发；提交后任务单冻结，之后只能按记录的修订版本改变（`task amend`），执行/审查子代理不得改契约，也不得另建 worktree。
-2. 契约冻结与修订：不得为迁就实现改验收测试或手工改状态；修订必须留痕（理由、发起角色、裁决引用、结构性差异），身份字段不可修订，放松约束必须带裁决引用；设计真变时记裁决并开 `derived` 任务——任务类型字段写 `derived`，机器 task-id/path 保留 `continuation`——保留原历史，合并后不再修订。
+2. 契约冻结与修订：不得为迁就实现改验收测试或手工改状态；修订必须留痕（理由、发起角色、裁决引用、结构性差异），身份字段不可修订，放松约束必须带裁决引用；设计真变时记裁决并用 `task amend` 修订任务单，只有范围或目标已变成另一个任务时才新建任务（新 ID，接替关系写进 `dependencies`），保留原历史，合并后不再修订。
 3. 验收测试即用例：每条必须指向当前测试文件、用例、断言、命令、结果边界。
 4. 独立审查：独立上下文直接复验；转述他人结果不算。
 5. 证据属当前任务：`active` 阶段 task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成；`finalized`（post-merge）阶段身份是 task-id 加 `sheet_revision`，提交引用只作记录，不改写报告。
@@ -113,7 +113,7 @@ metadata:
 5. 独立审查：新上下文核身份和报告新鲜度，逐条复验；通过 ≠ 已合并。
 6. 最终检查：读任务单/执行/审查/最终检查报告，抽查高风险测试，重跑关键验收、全量测试、构建、lint、范围、冲突检查；全部有证据才 ready-to-merge。
 7. 合并复验：提交实现+证据，用 branch ref 合并；主工作树重装依赖，重跑聚焦验收、全量测试、构建、lint、差异检查；通过才标已合并。
-8. 持久化：把验收台账、执行记录、`derived`/`continuation` 任务索引和最终结果写入 `.pipeline/<task-id>/` 的角色进度日志、阶段报告和机器结果；成功最终化后只保留阶段报告、机器结果和 `finalization.json` 以及两个本地状态文件（冻结记录 `goal.json`、追加式修订链 `amendments.json`），其余过程产物照旧剪掉，失败时保留完整现场。不另行维护项目级状态文档。完成通知含项目、task-id、阶段、分支、合并提交、验收状态、遗留项。
+8. 持久化：把验收台账、执行记录、任务索引和最终结果写入 `.pipeline/<task-id>/` 的角色进度日志、阶段报告和机器结果；成功最终化后只保留阶段报告、机器结果和 `finalization.json` 以及两个本地状态文件（冻结记录 `goal.json`、追加式修订链 `amendments.json`），其余过程产物照旧剪掉，失败时保留完整现场。不另行维护项目级状态文档。完成通知含项目、task-id、阶段、分支、合并提交、验收状态、遗留项。
 
 ## 证据目录最小要求
 
@@ -123,12 +123,12 @@ metadata:
 
 版本历史、`.workflow/` 目录迁移规则，以及主代理在「恢复核对」阶段执行的一次性优化动作，见 `references/compat-and-migration.md`。这些内容不影响正在进行中的任务，也不改变上面的运行时规则。
 
-## 任务规模与 `derived` 任务
+## 任务规模与接替任务
 
 - 含多个独立领域聚合、十个以上互不共享 fixture 的验收族或多平台任务，先拆成可独立审查的切片。
-- 实现失败/证据缺失/环境阻塞/设计改变分开记录；设计或契约改变时创建 `derived` 任务——任务类型字段写 `derived`，机器 ID/path 保留 `continuation`——使用新 ID、新任务单、新证据目录，从父任务的明确提交创建，父任务失败、裁决、已验收部分不得覆盖。
+- 实现失败/证据缺失/环境阻塞/设计改变分开记录；设计或契约改变时先记裁决并用 `task amend` 修订任务单，只有在范围或目标已变成另一个任务时才新建任务——用新 ID、新任务单、新证据目录，从当前 `HEAD` 建 worktree，接替关系写进 `dependencies`，父任务失败、裁决、已验收部分不得覆盖。
 - 保留实现和证据现场，不无理由删 worktree、分支或报告。
-- `derived` 任务的 `derived_from.parent_task_type` **必填**，取父契约的 `task_type`（`pipeline_tools/contract.py` 的 `_validate_derived_from`）。缺失或不是四个类型 token 之一时任务单校验失败。父类型为 `vertical-feature`/`repair` 时，子任务同样被强制完整链路（`_requires_full_chain`）；父类型为 `vertical-feature` 时证据下限被抬到至少 2（`evidence_floor` 的 `parent_task_type` 分支），`repair` 父类型不额外抬高证据下限。
+- 新任务不再派生：规划期声明 `type: derived` 会被 `validate_task_plan` fail-closed 拒绝，生成器不产出 `task_type: derived` 的任务单，`dispatch derived-create` 入口已移除。**历史 `derived` 只作读取兼容**：`pipeline_tools/contract.py` 的 `TASK_TYPES` 仍含 `derived`，`_validate_derived_from`、`_requires_full_chain` 与 `evidence_floor` 的 `parent_task_type` 分支一字未改，含 `derived_from` 的历史契约照旧通过 `task validate`（父类型为 `vertical-feature`/`repair` 时的链路收紧与证据下限行为不变）。
 
 ## 参考文件（按需读取）
 

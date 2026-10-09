@@ -29,62 +29,43 @@ def chain():
 
 
 class PlanningTests(unittest.TestCase):
-    def _init_repo(self, root):
+    def _generation_fixture(self, tasks):
+        project = {
+            'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}],
+            'resources': [{'id': 'resource', 'path': 'src/app.py'}, {'id': 'resource-tests', 'path': 'tests/test_planning.py'}],
+            'operations': [{'id': 'op', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
+            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
+            'chain': chain(),
+        }
+        requirements = {
+            'schema': 1, 'sources': [{'id': 'source', 'path': 'implement-plan.md'}],
+            'requirements': [{'id': 'r1', 'source_refs': ['source']}],
+            'operations': project['operations'], 'acceptance_tests': project['acceptance_tests'],
+        }
+        plan = {
+            'schema': 1, 'non_goals': ['本任务不扩展范围'],
+            'requirements': ['r1'], 'resources': ['src/app.py', 'tests/test_planning.py'],
+            'operations': project['operations'], 'acceptance_tests': project['acceptance_tests'],
+            'tasks': tasks,
+        }
+        return project, requirements, plan
+
+    def _feature_task(self):
+        return {
+            'id': 'feature-task', 'type': 'vertical-feature', 'requirements': ['r1'],
+            'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['op'],
+            'chain': chain(), 'depends_on': [],
+        }
+
+    def _generation_repo(self, root):
+        (root / 'implement-plan.md').write_text('current target', encoding='utf-8')
+        (root / 'src').mkdir(exist_ok=True)
+        (root / 'src' / 'app.py').write_text('app', encoding='utf-8')
         subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
         subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
         subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
-        (root / 'src').mkdir(exist_ok=True)
-        (root / 'src' / 'app.py').write_text('app\n', encoding='utf-8')
         subprocess.run(['git', 'add', '.'], cwd=root, check=True)
         subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
-
-    def _write_parent_sheet(self, root, task_id, task_type='prerequisite', commit=True):
-        sheet = root / 'docs' / 'tasks' / f'{task_id}.md'
-        sheet.parent.mkdir(parents=True, exist_ok=True)
-        contract = {
-            'schema': 4, 'task_id': task_id, 'task_type': task_type,
-            'goal': {'path': 'goal.md', 'sha256': '0' * 64, 'planning_run_id': 'parent-run'},
-            'risk': 'medium', 'project_type': 'service',
-            'non_goals': ['parent sheet fixture'],
-            'allowed_paths': ['src/app.py'], 'forbidden_paths': ['goal.md'],
-            'requirements': ['r1'], 'resources': ['src/app.py'],
-            'operations': [{'id': 'create', 'kind': 'execute', 'scope': 'task', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
-            'chain': {name: {'not_applicable': True, 'reason': 'fixture'} for name in ('entry', 'interaction', 'application', 'domain', 'persistence', 'readback', 'recovery')},
-            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
-            'dependencies': [], 'required_evidence_levels': [2],
-        }
-        if task_type == 'prerequisite':
-            contract['non_user_completion_reason'] = 'parent fixture groundwork'
-        sheet.write_text(
-            f'# {task_id}\n\n<!-- Task ID: {task_id} -->\n\n```pipeline-contract\n'
-            + json.dumps(contract, indent=2) + '\n```\n',
-            encoding='utf-8',
-        )
-        if commit:
-            subprocess.run(['git', 'add', '.'], cwd=root, check=True)
-            subprocess.run(['git', 'commit', '-qm', f'parent {task_id}'], cwd=root, check=True)
-        return sheet
-
-    def _derived_task(self, parent_task_id='parent-run', declared_parent_type=None, depends_on=()):
-        derived_from = {'task_id': parent_task_id, 'commit': 'a' * 40, 'branch': 'parent-branch'}
-        if declared_parent_type is not None:
-            derived_from['parent_task_type'] = declared_parent_type
-        return {
-            'id': 'derived-task', 'type': 'derived', 'requirements': ['r1'],
-            'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
-            'depends_on': list(depends_on), 'parent_task_id': parent_task_id,
-            'derived_from': derived_from,
-        }
-
-    def _derived_plan(self, parent_task_id='parent-run', declared_parent_type=None, tasks=None):
-        return {
-            'schema': 1, 'non_goals': ['本任务不扩展范围'],
-            'requirements': ['r1'],
-            'resources': ['src/app.py', 'tests/test_planning.py'],
-            'operations': [{'id': 'create', 'resources': ['src/app.py'], 'resource_mode': 'single', 'acceptance_tests': ['acceptance-test-1']}],
-            'acceptance_tests': [{'id': 'acceptance-test-1', 'evidence_level': 2, 'test_ref': 'tests/test_planning.py', 'command_ref': 'python -m unittest'}],
-            'tasks': tasks if tasks is not None else [self._derived_task(parent_task_id, declared_parent_type)],
-        }
 
     def _write_valid_finalization_fixture(self, directory):
         directory.mkdir(parents=True)
@@ -847,58 +828,76 @@ class PlanningTests(unittest.TestCase):
         errors = validate_task_plan(plan)
         self.assertTrue(any('outside' in error for error in errors), errors)
 
-    def test_task_plan_accepts_derived_parent_outside_the_run(self):
+    def test_new_task_plan_rejects_the_derived_type(self):
+        from pipeline_tools.planning import generate_task_sheets
+        feature = self._feature_task()
+        _project, _requirements, plan = self._generation_fixture([feature])
+        self.assertEqual(validate_task_plan(plan), [])
+
+        declared = dict(plan)
+        declared['tasks'] = [dict(
+            feature, type='derived', parent_task_id='parent-task',
+            derived_from={'task_id': 'parent-task', 'commit': 'a' * 40, 'branch': 'parent-branch', 'parent_task_type': 'repair'},
+        )]
+        errors = validate_task_plan(declared)
+        self.assertTrue(errors, errors)
+        self.assertTrue(any('derived' in error for error in errors), errors)
+
+        # The type alone is enough to fail closed with a readable reason.
+        bare = dict(plan)
+        bare['tasks'] = [dict(feature, type='derived')]
+        bare_errors = validate_task_plan(bare)
+        self.assertTrue(bare_errors, bare_errors)
+        self.assertTrue(any('derived' in error for error in bare_errors), bare_errors)
+
+        derived_form = dict(plan)
+        derived_form['tasks'] = [dict(feature, parent_task_id='parent-task')]
+        errors = validate_task_plan(derived_form)
+        self.assertTrue(any('derived' in error for error in errors), errors)
+
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            self._init_repo(root)
-            self._write_parent_sheet(root, 'parent-run', task_type='prerequisite')
-            plan = self._derived_plan()
-            self.assertTrue(validate_task_plan(plan), 'a cross-run parent needs root to be verified')
-            self.assertEqual(validate_task_plan(plan, root=root), [])
+            project, requirements, derived_plan = self._generation_fixture([
+                dict(feature, type='derived', parent_task_id='parent-task'),
+            ])
+            self._generation_repo(root)
+            result = generate_task_sheets(root, 'derived-run', project, requirements, derived_plan)
+            self.assertEqual(result['status'], 'blocked', result)
+            self.assertFalse((root / 'docs' / 'tasks').exists())
 
-    def test_task_plan_rejects_derived_parent_that_cannot_be_found(self):
+    def test_generated_sheets_never_declare_derived(self):
+        from pipeline_tools.contract import validate_task
+        from pipeline_tools.planning import generate_task_sheets
+        tasks = [
+            self._feature_task(),
+            {
+                'id': 'repair-task', 'type': 'repair', 'requirements': ['r1'],
+                'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['op'],
+                'chain': chain(), 'depends_on': ['feature-task'],
+            },
+            {
+                'id': 'prereq-task', 'type': 'prerequisite', 'requirements': ['r1'],
+                'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['op'],
+                'depends_on': ['repair-task'],
+                'non_user_completion_reason': 'enabling groundwork; no user-facing outcome',
+            },
+        ]
+        project, requirements, plan = self._generation_fixture(tasks)
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            self._init_repo(root)
-            missing = validate_task_plan(self._derived_plan(parent_task_id='ghost-task'), root=root)
-            self.assertTrue(any('ghost-task' in error for error in missing), missing)
-            self.assertTrue(any('parent' in error for error in missing), missing)
-
-            self._write_parent_sheet(root, 'unfrozen-task', commit=False)
-            unfrozen = validate_task_plan(self._derived_plan(parent_task_id='unfrozen-task'), root=root)
-            self.assertTrue(any('unfrozen-task' in error for error in unfrozen), unfrozen)
-
-    def test_task_plan_rejects_planner_declared_parent_type_mismatch(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            self._init_repo(root)
-            self._write_parent_sheet(root, 'parent-run', task_type='prerequisite')
-            matching = validate_task_plan(self._derived_plan(declared_parent_type='prerequisite'), root=root)
-            self.assertEqual(matching, [])
-            mismatched = validate_task_plan(self._derived_plan(declared_parent_type='repair'), root=root)
-            self.assertTrue(any('parent_task_type' in error for error in mismatched), mismatched)
-            self.assertFalse(any('invalid parent_task_id' in error for error in mismatched), mismatched)
-
-    def test_task_plan_accepts_same_run_derived_parent(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            self._init_repo(root)
-            parent = {
-                'id': 'parent-task', 'type': 'prerequisite', 'requirements': ['r1'],
-                'resources': ['src/app.py', 'tests/test_planning.py'], 'operations': ['create'],
-                'depends_on': [], 'non_user_completion_reason': 'enabling groundwork; no user-facing outcome',
-            }
-            plan = self._derived_plan(
-                parent_task_id='parent-task',
-                tasks=[parent, self._derived_task('parent-task', depends_on=('parent-task',))],
-            )
-            self.assertEqual(validate_task_plan(plan, root=root), [])
-            mismatched = self._derived_plan(
-                parent_task_id='parent-task',
-                declared_parent_type='repair',
-                tasks=[dict(parent), self._derived_task('parent-task', 'repair', depends_on=('parent-task',))],
-            )
-            self.assertTrue(any('parent_task_type' in error for error in validate_task_plan(mismatched, root=root)))
+            self._generation_repo(root)
+            result = generate_task_sheets(root, 'three-type-run', project, requirements, plan)
+            self.assertEqual(result['status'], 'pass', result)
+            self.assertEqual(result['task_ids'], ['feature-task', 'repair-task', 'prereq-task'])
+            for task_id in result['task_ids']:
+                sheet = root / 'docs' / 'tasks' / f'{task_id}.md'
+                self.assertEqual(validate_task(sheet), [])
+                contract = json.loads(
+                    sheet.read_text(encoding='utf-8').split('```pipeline-contract\n', 1)[1].split('\n```', 1)[0]
+                )
+                self.assertIn(contract['task_type'], {'vertical-feature', 'prerequisite', 'repair'})
+                self.assertNotEqual(contract['task_type'], 'derived')
+                self.assertNotIn('derived_from', contract)
 
     # --- Finalization accepts the report schema the templates produce --------
 
