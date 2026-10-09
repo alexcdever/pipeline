@@ -63,7 +63,6 @@ from .core import (
     verify_finalization_snapshot,
     write_dispatch,
     create_worktree_dispatch,
-    create_derived_dispatch,
     purge_metrics,
     role_scope_check,
     run_command,
@@ -402,15 +401,6 @@ def _build_parser() -> argparse.ArgumentParser:
     dispatch_create.add_argument("--branch", required=True)
     dispatch_create.add_argument("--baseline", required=True)
     dispatch_create.add_argument("--role", choices=("executor", "reviewer"), default="executor")
-    derived = dispatch_sub.add_parser("derived-create")
-    derived.add_argument("root", type=Path)
-    derived.add_argument("parent_task_sheet", type=Path)
-    derived.add_argument("--parent-task-id", required=True)
-    derived.add_argument("--parent-branch", required=True)
-    derived.add_argument("--parent-commit", required=True)
-    derived.add_argument("--child-task-id", required=True)
-    derived.add_argument("--child-branch", required=True)
-    derived.add_argument("--continuation", action="store_true")
     result = groups.add_parser("result", help="structured agent result checks")
     result_sub = result.add_subparsers(dest="action", required=True)
     result_verify = result_sub.add_parser("verify")
@@ -1343,17 +1333,6 @@ def _main(argv: list[str] | None = None) -> int:
                 _emit(value, args)
             else:
                 print(f"{value['status'].upper()} dispatch.worktree-create task={args.task_id}")
-            return PASS if value["status"] == "pass" else BLOCKED
-        if args.group == "dispatch" and args.action == "derived-create":
-            value = create_derived_dispatch(
-                args.root, args.parent_task_sheet, args.parent_task_id, args.parent_branch,
-                args.parent_commit, args.child_task_id, args.child_branch,
-                continuation=args.continuation,
-            )
-            if args.format == "json":
-                _emit(value, args)
-            else:
-                print(f"{value['status'].upper()} dispatch.derived-create task={args.child_task_id}")
             return PASS if value["status"] == "pass" else BLOCKED
         if args.group == "result" and args.action == "verify":
             try:

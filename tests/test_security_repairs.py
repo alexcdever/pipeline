@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline_tools.core import capability_handshake, create_derived_dispatch, evidence_verify, evidence_readiness, gate_check
+from pipeline_tools.core import capability_handshake, evidence_verify, evidence_readiness, gate_check
 
 
 class SecurityRepairTests(unittest.TestCase):
@@ -23,13 +23,6 @@ class SecurityRepairTests(unittest.TestCase):
             result = capability_handshake(root, "executor", pipeline / "demo")
             self.assertEqual(result["status"], "blocked")
             self.assertEqual(list(Path(target).iterdir()), [])
-
-    def test_unsafe_derived_identifier_is_rejected(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            result = create_derived_dispatch(root, root / "parent.md", "parent", "main", "head", "../escape", "child")
-            self.assertEqual(result["status"], "blocked")
-            self.assertFalse((root / ".worktrees").exists())
 
     def test_evidence_identity_and_scope_are_enforced(self):
         with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as outside:
@@ -64,7 +57,6 @@ class SecurityRepairTests(unittest.TestCase):
     def test_full_security_regression_suite(self):
         self.test_path_inputs_are_rejected_before_filesystem_side_effects()
         self.test_symlink_workflow_has_no_side_effect()
-        self.test_unsafe_derived_identifier_is_rejected()
 
     def test_valid_secure_paths_still_work(self):
         with tempfile.TemporaryDirectory() as temp:

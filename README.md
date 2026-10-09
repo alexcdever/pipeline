@@ -17,7 +17,7 @@
 - 临时目录与原始日志：系统临时目录下的 `pipeline-tools/`；`command run` 未指定 `--log` 时不会写入仓库
 - 项目级统计：`.pipeline/metrics/`（由工具自动生成；是否纳入 Git 由项目开发者决定）
 - 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
-- 任务契约提交后冻结，之后按记录的修订版本演进；每次修订用 `pipeline-tools task amend` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录（`.pipeline/<task-id>/amendments.json`）。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；合并后不再修订，需求变化重新规划或新建 `derived` 任务，不回写历史
+- 任务契约提交后冻结，之后按记录的修订版本演进；每次修订用 `pipeline-tools task amend` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录（`.pipeline/<task-id>/amendments.json`）。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；合并后不再修订，需求变化重新规划或新建任务（接替关系写进 `dependencies`），不回写历史
 - 任务级状态只由 lifecycle API/CLI 管理；状态写入（`transition`、`event`）只允许主代理角色接口（`role=main-agent`），其他角色只能读取或报告 findings
 - 任务单只承载冻结契约与人类可读的契约说明；过程记录和阶段报告写入 `.pipeline/<task-id>/`，不另行维护项目级状态文档
 - 跨会话优先使用 `lifecycle resume/status/list/inspect` 恢复和读取任务状态，不从通知、自然语言报告或项目级状态文件推断
@@ -26,14 +26,13 @@
 
 ## 任务类型与命名
 
-契约里的任务类型 token 只有四个（`pipeline_tools/contract.py` 的 `TASK_TYPES`）：`vertical-feature`、`prerequisite`、`repair`、`derived`。选择依据是任务与用户功能的关系，不是工作量：
+契约里的任务类型 token 只有三个（`pipeline_tools/contract.py` 的 `TASK_TYPES`）：`vertical-feature`、`prerequisite`、`repair`。选择依据是任务与用户功能的关系，不是工作量：
 
 - `vertical-feature`：交付一条完整用户链路（入口 → 交互 → 应用处理 → 领域事实 → 持久化 → 回读 → 恢复），有真实外部入口和可观察的用户结果。链路段不允许豁免，证据下限至少 2。
 - `repair`：修复已有用户功能链路上的缺陷；按 `vertical-feature` 的标准覆盖完整链路，链路段同样不允许豁免。
 - `prerequisite`：只产出被后续任务消费的底座（schema、协议、算法、持久化、构建或环境能力）。契约必须写明 `non_user_completion_reason`；链路段允许结构化豁免。
-- `derived`：从一个父任务的明确提交派生出的新任务，重新生成独立任务单，不复用父任务的证据。包含设计变更后按裁决重开的那一类。
 
-**命名统一**：任务类型字段写 `derived`，机器 id 和路径前缀保留 `continuation`——两者指同一件事，必须成对出现。`create_derived_dispatch(..., continuation=True)` 要求子任务 id 含 `continuation`。`derived` 子契约逐字段复制父契约、只覆盖 `task_id`/`task_type`/`dependencies`/`derived_from`，因此它不继承父类型的链路段强制、`vertical-feature` 证据下限加成和 `prerequisite` 的 `non_user_completion_reason` 要求；详见 `references/task-design.md` 的「`derived` 子任务继承什么、不继承什么」。
+**新任务不再派生**：接替关系一律用 `dependencies` 表达；规划期声明 `type: derived`（或带 `parent_task_id`/`derived_from`）的计划会被 `validate_task_plan` fail-closed 拒绝，生成器不再产出 `task_type: derived` 的任务单，派发期的 `dispatch derived-create` 入口已移除。修正已冻结任务单改用 `task amend`。**历史 `derived` 只作读取兼容**：`TASK_TYPES` 仍含 `derived`，`contract.py` 的 `_validate_derived_from`、`_requires_full_chain` 与 `evidence_floor` 的 `parent_task_type` 分支保持原样，含 `derived_from` 的历史契约照旧通过 `task validate`；`continuation` 作为历史机器 id/path token 同样保留。详见 `references/task-design.md` 的「历史 `derived` 契约的读取规则」。
 
 创建实现 worktree 时，从仓库根目录执行：
 
