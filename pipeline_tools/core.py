@@ -1174,13 +1174,23 @@ def verify_finalization_snapshot(directory: Path, marker: dict[str, Any], root: 
     if not isinstance(identity, dict):
         errors.append("finalization identity snapshot is missing")
     else:
-        current = git_identity(root or _evidence_root(directory))
+        identity_root = root or _evidence_root(directory)
+        current = git_identity(identity_root)
         for key in ("head", "branch", "worktree"):
             recorded = identity.get(key)
             if key == "worktree" and isinstance(recorded, str):
                 recorded = str(Path(recorded).resolve())
-            if recorded != current.get(key):
-                errors.append(f"finalization {key} is stale")
+            if recorded == current.get(key):
+                continue
+            # Publishing the marker is itself a commit, so requiring the recorded
+            # head to equal HEAD would make the marker invalidate itself.  Accept
+            # the same evidence-only advance the stage reports accept; anything
+            # else (unknown, non-ancestor or product-touching range) stays stale.
+            if key == "head" and head_advanced_by_evidence_only(
+                identity_root, recorded, current.get("head"), directory
+            ):
+                continue
+            errors.append(f"finalization {key} is stale")
     return errors
 
 
