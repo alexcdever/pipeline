@@ -13,6 +13,20 @@ from pipeline_tools.layout import metrics_dirs, temporary_root
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 
+
+def real_sheet(task_id):
+    """Resolve a repository task sheet across its three supported locations.
+
+    A terminal sheet lives in its evidence directory or in the flat archive, so
+    a test that validates a real sheet must resolve it by id instead of assuming
+    it stayed in ``docs/tasks/``.
+    """
+    from pipeline_tools.planning import task_sheet_resolution
+
+    resolved, errors = task_sheet_resolution(ROOT, task_id)
+    assert resolved is not None, errors
+    return resolved
+
 _ISOLATED_METRICS_ROOT: Path | None = None
 
 
@@ -277,7 +291,7 @@ class CLITests(unittest.TestCase):
     def test_json_output_has_common_envelope_and_can_be_saved(self):
         with tempfile.TemporaryDirectory() as d:
             output = Path(d) / 'result.json'
-            p = run_cli(['--format', 'json', '--output', str(output), 'task', 'validate', str(ROOT / 'docs' / 'tasks' / 'pipeline-tools-v1.md')])
+            p = run_cli(['--format', 'json', '--output', str(output), 'task', 'validate', str(real_sheet('pipeline-tools-v1'))])
             self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
             value = json.loads(p.stdout)
             self.assertEqual(value['schema'], 1)
@@ -894,7 +908,7 @@ class CLITests(unittest.TestCase):
             self.assertIn('task', r.stdout)
 
     def test_task_validate_real_sheet(self):
-        p = run_cli(['task', 'validate', str(ROOT / 'docs' / 'tasks' / 'pipeline-tools-v1.md')])
+        p = run_cli(['task', 'validate', str(real_sheet('pipeline-tools-v1'))])
         self.assertEqual(p.returncode, 0, (p.stdout, p.stderr))
         p = run_cli(['task', 'validate', str(ROOT / 'nope.md')])
         self.assertEqual(p.returncode, 2, (p.stdout, p.stderr))

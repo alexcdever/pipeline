@@ -64,6 +64,7 @@ worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发�
 
 任务单的**位置编码状态**，三个位置按固定顺序解析：`docs/tasks/<task-id>.md`（进行中或待派发）→ `.pipeline/<task-id>/<task-id>.md`（已终态且有证据目录）→ `.pipeline/archive/<task-id>.md`（已终态且没有证据目录）。解析由 `pipeline_tools/core.py` 的 `task_sheet_resolution` 统一执行并 fail-closed：同一 id 出现在多个位置、或三处都没有时都报错，不猜、不静默取第一个。
 
+- **`docs/tasks/` 只放在途单**：它只放进行中或待派发的任务单（`docs/tasks/*.md` 一律按任务单处理，不放 README 之类的说明文件）；已终态的单子在其证据目录 `.pipeline/<task-id>/<task-id>.md`，没有证据目录时在 `.pipeline/archive/<task-id>.md`；终态单子一律按其**声明 id**（`<!-- Task ID: -->`）归档，文件名与声明 id 不符时以声明 id 为准改名到位。
 - **工作清单按状态判定**（`planning preflight` 的 `task_scenes`）：`sheets_without_worktree` 与 `uncommitted_sheets` 只读 `docs/tasks/*.md`（active），所以已关闭的任务不会被报成"被中断的进行中工作"；`worktrees_without_sheet` 读 active **与** archived，因为归档单仍然满足「没有已提交任务单就不得存在任务 worktree」；`leftover_evidence` = 证据目录减去两者。
 - **`.pipeline/archive/` 不是任务证据**：它与 `planning`、`metrics` 同级，被排除在证据目录扫描之外，不会被当成一个叫 `archive` 的任务，也不产生 `leftover_evidence`。里面放的是没有证据目录的终态任务单。
 - **保留集与闸门豁免**：某任务的保留名 = `RETAINED_EVIDENCE_NAMES` ∪ `{<该任务 id>.md}`，所以最终化剪枝不会剪掉移进来的任务单；前向基线闸门（`scope history`）对 `.pipeline/archive/**` 豁免保留名规则。反向仍 fail-closed：同一任务证据目录下**别的**非保留名文件照旧判为漂移。
