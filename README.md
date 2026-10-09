@@ -11,12 +11,14 @@
 
 默认项目约定：
 
-- 任务单：`docs/tasks/<task-id>.md`
-- 正式任务证据：`.pipeline/<task-id>/`（仅阶段报告、机器结果和 `finalization.json`；成功收敛前的临时文件不属于交付）
+- 任务单：进行中或待派发的是 `docs/tasks/<task-id>.md`；任务关闭后移入 `.pipeline/<task-id>/<task-id>.md`（有证据目录时）或 `.pipeline/archive/<task-id>.md`（没有证据目录时）。三个位置按此顺序解析，同一 id 出现在多处或三处都没有即报错（`pipeline_tools/core.py` 的 `task_sheet_resolution`）
+- 正式任务证据：`.pipeline/<task-id>/`（仅阶段报告、机器结果、任务单副本和 `finalization.json`；成功收敛前的临时文件不属于交付）
+- `.pipeline/archive/` 是终态任务单的隔离区，**不是**任务证据目录：它和 `planning`、`metrics` 一样被排除在证据目录扫描之外
 - 恢复索引：`.pipeline/recovery-index.json`；规划中间审计和 stage 文件写入系统临时目录 `pipeline-tools/planning/`，项目只保留恢复索引
 - 临时目录与原始日志：系统临时目录下的 `pipeline-tools/`；`command run` 未指定 `--log` 时不会写入仓库
 - 项目级统计：`.pipeline/metrics/`（由工具自动生成；是否纳入 Git 由项目开发者决定）
 - 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
+- `.gitattributes` 声明 `.pipeline/** -text`，使 `.pipeline/**` 下的证据经 checkout 后字节不变；该属性不改写任何已提交的 blob
 - 任务契约提交后冻结，之后按记录的修订版本演进；每次修订用 `pipeline-tools task amend` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录（`.pipeline/<task-id>/amendments.json`）。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；合并后不再修订，需求变化重新规划或新建任务（接替关系写进 `dependencies`），不回写历史
 - 任务级状态只由 lifecycle API/CLI 管理；状态写入（`transition`、`event`）只允许主代理角色接口（`role=main-agent`），其他角色只能读取或报告 findings
 - 任务单只承载冻结契约与人类可读的契约说明；过程记录和阶段报告写入 `.pipeline/<task-id>/`，不另行维护项目级状态文档

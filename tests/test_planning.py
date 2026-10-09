@@ -7,6 +7,7 @@ from unittest import mock
 from pathlib import Path
 from pipeline_tools.planning import (
     append_progress,
+    archive_task_sheet,
     finalize_evidence,
     planning_preflight,
     validate_project_facts,
@@ -66,6 +67,19 @@ class PlanningTests(unittest.TestCase):
         subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
         subprocess.run(['git', 'add', '.'], cwd=root, check=True)
         subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+
+    def _scene_repo(self, root):
+        """A committed Git repository with `/ .worktrees/` ignored."""
+        subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@example.invalid'], cwd=root, check=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, check=True)
+        (root / '.gitignore').write_text('/.worktrees/\n', encoding='utf-8')
+        subprocess.run(['git', 'add', '.gitignore'], cwd=root, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'base'], cwd=root, check=True)
+
+    def _commit_all(self, root, message):
+        subprocess.run(['git', 'add', '-A'], cwd=root, check=True)
+        subprocess.run(['git', 'commit', '-qm', message], cwd=root, check=True)
 
     def _write_valid_finalization_fixture(self, directory):
         directory.mkdir(parents=True)
@@ -1389,6 +1403,204 @@ class PlanningTests(unittest.TestCase):
             verify = self._run_cli(root, 'evidence', 'verify', str(evidence),
                                    '--task-id', 'demo', '--phase', 'finalized')
             self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
+
+    # --- Task sheet archival ------------------------------------------------
+
+    def test_sheet_resolver_finds_all_three_locations(self):
+        """The resolver locates all three sheet homes and never guesses.
+
+        A sheet's state is encoded by its location: `docs/tasks/` for in-flight
+        work, the task's evidence directory for a terminal task, and the flat
+        archive for a terminal task without an evidence directory.  Ambiguity and
+        absence are errors, so a caller cannot silently pick a candidate.
+        """
+        from pipeline_tools.core import task_sheet_resolution
+
+        task_id = 'sheet-task'
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            active = root / 'docs' / 'tasks' / f'{task_id}.md'
+            evidence_sheet = root / '.pipeline' / task_id / f'{task_id}.md'
+            archived = root / '.pipeline' / 'archive' / f'{task_id}.md'
+            active.parent.mkdir(parents=True)
+            active.write_text('# active sheet\n', encoding='utf-8')
+
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertEqual([], errors)
+            self.assertEqual(active, resolved)
+
+            active.unlink()
+            evidence_sheet.parent.mkdir(parents=True)
+            evidence_sheet.write_text('# terminal sheet\n', encoding='utf-8')
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertEqual([], errors)
+            self.assertEqual(evidence_sheet, resolved)
+
+            evidence_sheet.unlink()
+            archived.parent.mkdir(parents=True)
+            archived.write_text('# archived sheet\n', encoding='utf-8')
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertEqual([], errors)
+            self.assertEqual(archived, resolved)
+
+            # The same id in two places is ambiguous, not a preference.
+            active.write_text('# active sheet\n', encoding='utf-8')
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertIsNone(resolved)
+            self.assertEqual(1, len(errors), errors)
+            self.assertIn('multiple locations', errors[0])
+
+            # No location at all is a missing contract.
+            active.unlink()
+            archived.unlink()
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertIsNone(resolved)
+            self.assertEqual(['task sheet not found for sheet-task'], errors)
+
+    def test_worklist_checks_ignore_terminal_sheets(self):
+        """The worklist reads only active sheets for "sheet without worktree".
+
+        A terminal sheet — one living in its evidence directory or in the flat
+        archive — is closed work, not an interrupted in-flight task, so it must
+        not raise the warning.  A sheet still in `docs/tasks/` without a worktree
+        must keep raising it.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._scene_repo(root)
+            (root / '.pipeline' / 'closed-task').mkdir(parents=True)
+            (root / '.pipeline' / 'closed-task' / 'closed-task.md').write_text(
+                '# closed\n', encoding='utf-8')
+            (root / '.pipeline' / 'archive').mkdir(parents=True)
+            (root / '.pipeline' / 'archive' / 'archived-task.md').write_text(
+                '# archived\n', encoding='utf-8')
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            (root / 'docs' / 'tasks' / 'pending-task.md').write_text(
+                '# pending\n', encoding='utf-8')
+            self._commit_all(root, 'task sheets in three states')
+
+            result = planning_preflight(root)
+            scenes = result['task_scenes']
+            self.assertEqual(['pending-task'], scenes['sheets_without_worktree'])
+            self.assertNotIn('closed-task', scenes['sheets_without_worktree'])
+            self.assertNotIn('archived-task', scenes['sheets_without_worktree'])
+            self.assertEqual(
+                [], [item for item in scenes['leftover_evidence']
+                    if item in {'closed-task', 'archived-task', 'archive'}])
+            warned = ' '.join(result['warnings'])
+            self.assertIn('pending-task', warned)
+            for task_id in ('closed-task', 'archived-task'):
+                self.assertNotIn(task_id, warned)
+
+    def test_archive_directory_is_not_treated_as_task_evidence(self):
+        """`.pipeline/archive` is a sheet quarantine, not a task evidence dir.
+
+        The evidence scan excludes it alongside the `planning` and `metrics`
+        bookkeeping directories, so it never appears as a task named `archive`
+        and never produces leftover-evidence noise.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._scene_repo(root)
+            (root / '.pipeline' / 'archive').mkdir(parents=True)
+            (root / '.pipeline' / 'archive' / 'closed-task.md').write_text(
+                '# closed\n', encoding='utf-8')
+            (root / '.pipeline' / 'archive' / 'notes.md').write_text(
+                '# notes, not evidence\n', encoding='utf-8')
+            self._commit_all(root, 'archive a terminal sheet')
+
+            result = planning_preflight(root)
+            scenes = result['task_scenes']
+            for key, values in scenes.items():
+                self.assertNotIn('archive', values, key)
+            self.assertEqual([], scenes['leftover_evidence'])
+            reported = ' '.join(result['warnings'] + result['errors'])
+            self.assertNotIn('archive', reported)
+
+    def test_archived_sheet_still_answers_worktree_without_sheet(self):
+        """A terminal sheet still satisfies "no worktree without a sheet".
+
+        The invariant is about a task worktree existing without its committed
+        sheet; a sheet that was archived after the work was delivered still
+        answers it, so the scene is not reported as a violation.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._scene_repo(root)
+            (root / '.pipeline' / 'archive').mkdir(parents=True)
+            (root / '.pipeline' / 'archive' / 'closed-task.md').write_text(
+                '# closed\n', encoding='utf-8')
+            self._commit_all(root, 'archive a terminal sheet')
+            (root / '.worktrees' / 'closed-task').mkdir(parents=True)
+
+            result = planning_preflight(root)
+            self.assertEqual([], result['task_scenes']['worktrees_without_sheet'])
+            self.assertNotIn(
+                'task worktree has no committed task sheet: closed-task',
+                result['errors'],
+            )
+
+    def _archival_scene(self, root, *, with_worktree):
+        """A merged task with complete evidence and an optional live worktree."""
+        self._scene_repo(root)
+        sheet = root / 'docs' / 'tasks' / 'demo.md'
+        sheet.parent.mkdir(parents=True)
+        sheet.write_text(
+            '<!-- Task ID: demo -->\n```pipeline-contract\n'
+            + json.dumps(self._finalization_contract()) + '\n```\n', encoding='utf-8')
+        self._write_valid_finalization_fixture(root / '.pipeline' / 'demo')
+        self._commit_all(root, 'frozen sheet and stage evidence')
+        if with_worktree:
+            subprocess.run(
+                ['git', 'worktree', 'add', '-b', 'demo-task', '.worktrees/demo', 'HEAD'],
+                cwd=root, check=True, capture_output=True)
+        return root, root / '.pipeline' / 'demo', sheet
+
+    def test_finalization_moves_the_sheet_and_refuses_while_the_worktree_lives(self):
+        """Finalization archives the sheet, and a live worktree blocks the move.
+
+        With the worktree deleted the closed task's sheet moves from
+        `docs/tasks/` to its evidence directory and stays tracked by Git.  While
+        `.worktrees/<task-id>` still exists the delivery is unfinished, so the
+        step is blocked and moves nothing.
+        """
+        # (a) the worktree still lives: blocked, no file moved.
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, sheet = self._archival_scene(Path(d), with_worktree=True)
+            self.assertEqual(finalize_evidence(evidence, 'demo', True)['status'], 'finalized')
+            blocked = archive_task_sheet(root, 'demo')
+            self.assertEqual('blocked', blocked['status'], blocked)
+            self.assertIn('.worktrees/demo', ' '.join(blocked['errors']))
+            self.assertTrue(sheet.is_file())
+            self.assertFalse((evidence / 'demo.md').exists())
+
+        # (b) the worktree is gone: the sheet moves and stays tracked.
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, sheet = self._archival_scene(Path(d), with_worktree=False)
+            self.assertEqual(finalize_evidence(evidence, 'demo', True)['status'], 'finalized')
+            moved = archive_task_sheet(root, 'demo')
+            self.assertEqual('archived', moved['status'], moved)
+            self.assertEqual('docs/tasks/demo.md', moved['from'])
+            self.assertEqual('.pipeline/demo/demo.md', moved['to'])
+            self.assertTrue(moved['tracked'])
+            self.assertFalse(sheet.exists())
+            self.assertTrue((evidence / 'demo.md').is_file())
+            self.assertEqual(
+                0,
+                subprocess.run(
+                    ['git', 'ls-files', '--error-unmatch', '.pipeline/demo/demo.md'],
+                    cwd=root, capture_output=True).returncode,
+            )
+            # The moved sheet is still resolvable, now from its terminal home.
+            from pipeline_tools.core import task_sheet_resolution
+            resolved, errors = task_sheet_resolution(root, 'demo')
+            self.assertEqual([], errors)
+            self.assertEqual(evidence / 'demo.md', resolved)
+            # Repeating the step is an idempotent no-op.
+            again = archive_task_sheet(root, 'demo')
+            self.assertEqual('archived', again['status'], again)
+            self.assertTrue((evidence / 'demo.md').is_file())
+            self.assertFalse(sheet.exists())
 
 
 if __name__ == '__main__': unittest.main()

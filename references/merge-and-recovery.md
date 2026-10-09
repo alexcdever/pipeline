@@ -58,6 +58,18 @@ worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发�
 
 合并后不再修订任务单：`amendments.json` 是追加式哈希链（旧条目字节不变），合并不会改写它；此后的需求变化重新规划或开新任务。post-merge 复验证据同样写明它评判的 `sheet_revision` 与 `sheet_sha256`，有效性只按修订版本判定：合并在当前 `HEAD` 上引入了产品路径提交，"改动路径"判据在该阶段必然成立，因此不再施加。`observed_at_commit` 是可选记录事实，写明即有格式要求，缺失不算错误；不含 `sheet_revision` 的历史形态证据不因此新增错误，只报为 `unverified`。
 
+**报告的 `head` 记录"产生证据时的分支尖端"**：阶段报告与机器结果里的 `head` 不是"任务单冻结提交"，也不是"实现完成那一刻的提交"，而是**产生这份证据时该分支的尖端**（执行证据是任务 worktree 的 branch tip，主工作树终审是它在主工作树跑复验时的 `HEAD`）。实践反复证明：把 `head` 填成更早的"实现提交"会让之后任何一次证据提交都把它推离当前身份，判据永远无法同时成立；`head` 与 `observed_at_commit` 应当是同一次观测的产物。`active` 阶段仍按 `head_advanced_by_evidence_only` 容忍"证据自身推动了 HEAD"，但容忍不是借口——证据记录的起点必须真实。
+
+## 任务单归档
+
+任务单的**位置编码状态**，三个位置按固定顺序解析：`docs/tasks/<task-id>.md`（进行中或待派发）→ `.pipeline/<task-id>/<task-id>.md`（已终态且有证据目录）→ `.pipeline/archive/<task-id>.md`（已终态且没有证据目录）。解析由 `pipeline_tools/core.py` 的 `task_sheet_resolution` 统一执行并 fail-closed：同一 id 出现在多个位置、或三处都没有时都报错，不猜、不静默取第一个。
+
+- **工作清单按状态判定**（`planning preflight` 的 `task_scenes`）：`sheets_without_worktree` 与 `uncommitted_sheets` 只读 `docs/tasks/*.md`（active），所以已关闭的任务不会被报成"被中断的进行中工作"；`worktrees_without_sheet` 读 active **与** archived，因为归档单仍然满足「没有已提交任务单就不得存在任务 worktree」；`leftover_evidence` = 证据目录减去两者。
+- **`.pipeline/archive/` 不是任务证据**：它与 `planning`、`metrics` 同级，被排除在证据目录扫描之外，不会被当成一个叫 `archive` 的任务，也不产生 `leftover_evidence`。里面放的是没有证据目录的终态任务单。
+- **保留集与闸门豁免**：某任务的保留名 = `RETAINED_EVIDENCE_NAMES` ∪ `{<该任务 id>.md}`，所以最终化剪枝不会剪掉移进来的任务单；前向基线闸门（`scope history`）对 `.pipeline/archive/**` 豁免保留名规则。反向仍 fail-closed：同一任务证据目录下**别的**非保留名文件照旧判为漂移。
+- **最终化移动任务单**：任务关闭时，最终化的移动步骤 `pipeline_tools/planning.py` 的 `archive_task_sheet(root, task_id)` 把单子从 `docs/tasks/<task-id>.md` 移入 `.pipeline/<task-id>/<task-id>.md`（有证据目录时）或 `.pipeline/archive/<task-id>.md`（没有证据目录时），被 Git 跟踪的单子用 `git mv` 移动，保持跟踪。**`.worktrees/<task-id>` 仍然存在时该步骤 blocked 且不移动任何文件**——worktree 还在说明交付尚未结束；`docs/tasks/` 只反映进行中的工作。重复调用是幂等的。
+- **证据字节稳定**：`.gitattributes` 声明 `.pipeline/** -text`，使 `.pipeline/**` 下的报告与机器结果经 checkout 后字节不变；新增该属性不改写任何已提交的 blob。
+
 ## 状态恢复与并发护栏
 
 每次后台间隙、会话切换或重启后，在写报告、提交、合并或派发前重新核对：当前任务单；主分支 HEAD；`git worktree list`；活动进程和最新日志；是否已有另一个主代理接管并完成任务。

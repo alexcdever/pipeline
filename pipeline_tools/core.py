@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .layout import (
+    ARCHIVE_DIR_NAME,
     active_pipeline_dir,
     canonical_evidence_dir,
     evidence_root,
@@ -351,6 +352,33 @@ def _status_paths(output: str) -> list[str]:
     return sorted(paths)
 
 
+def is_archived_sheet_path(path: str) -> bool:
+    """Return whether a project-relative path is a sheet in the flat archive.
+
+    ``.pipeline/archive/`` is a quarantine for terminal task sheets, not a task
+    evidence directory, so the retained-name rule does not apply inside it.
+    """
+    parts = _normalize_path(path).split("/")
+    return len(parts) >= 3 and parts[0] == ".pipeline" and parts[1] == ARCHIVE_DIR_NAME
+
+
+def is_retained_evidence_path(path: str) -> bool:
+    """Return whether a project-relative evidence path is retained.
+
+    The retained set is the frozen file vocabulary plus the task's own sheet:
+    ``.pipeline/<task-id>/<task-id>.md`` is the task sheet after finalization
+    moved it out of ``docs/tasks/``, so it is kept beside the rest of the task's
+    retained evidence rather than pruned as scratch.
+    """
+    parts = _normalize_path(path).split("/")
+    if len(parts) < 3 or parts[0] != ".pipeline":
+        return False
+    name = parts[-1]
+    if name in RETAINED_EVIDENCE_NAMES:
+        return True
+    return len(parts) == 3 and name == f"{parts[1]}.md"
+
+
 def commit_history_check(
     root: Path,
     evidence_root: str,
@@ -365,6 +393,10 @@ def commit_history_check(
     cleaning up scratch evidence is not itself drift. ``since`` bounds the scan
     to ``<since>..HEAD``; when it is omitted the whole reachable history is
     scanned, exactly as before.
+
+    ``.pipeline/archive/**`` is exempt from the retained-name rule: the archive
+    is a quarantine for terminal task sheets, so publishing a sheet there (or
+    retiring one) is never drift.
     """
     evidence_root = _normalize_path(evidence_root)
     metrics_root = _normalize_path(metrics_root)
@@ -389,10 +421,14 @@ def commit_history_check(
             in_metrics = normalized == metrics_root or normalized.startswith(metrics_root.rstrip("/") + "/")
             if is_progress_log_path(normalized):
                 violations.append(f"{current_commit}: {status} {normalized} (progress log must not enter Git)")
+            elif is_archived_sheet_path(normalized):
+                # The archive is a sheet quarantine, not an evidence directory:
+                # the retained-name rule does not apply inside it.
+                continue
             elif in_evidence and not in_metrics:
                 # Removing a retained file is drift; removing scratch evidence is
                 # the cleanup the retention contract asks for.
-                retained = Path(normalized).name in RETAINED_EVIDENCE_NAMES
+                retained = is_retained_evidence_path(normalized)
                 if retained == deleting:
                     violations.append(f"{current_commit}: {status} {normalized}")
     return violations
@@ -1975,14 +2011,23 @@ def _canonical(value: Any) -> Any:
     return value
 
 
-def task_sheet_candidates(root: Path, task_id: str) -> list[Path]:
-    """Return the supported task-sheet locations in resolution order."""
+def task_sheet_candidates(
+    root: Path, task_id: str, *, pipeline_directory: Path | None = None
+) -> list[Path]:
+    """Return the supported task-sheet locations in resolution order.
+
+    A sheet's location encodes its state: ``docs/tasks/`` holds in-flight or
+    pending sheets, the task's own evidence directory holds terminal sheets, and
+    the flat archive holds terminal sheets whose task has no evidence directory.
+    ``pipeline_directory`` overrides the canonical ``.pipeline`` root so a
+    read-only caller can inspect a legacy layout without triggering migration.
+    """
     root = Path(root)
-    pipeline = active_pipeline_dir(root)
+    pipeline = Path(pipeline_directory) if pipeline_directory is not None else active_pipeline_dir(root)
     return [
         root / "docs" / "tasks" / f"{task_id}.md",
         pipeline / task_id / f"{task_id}.md",
-        pipeline / "archive" / f"{task_id}.md",
+        pipeline / ARCHIVE_DIR_NAME / f"{task_id}.md",
     ]
 
 
@@ -1994,6 +2039,33 @@ def task_sheet_path(root: Path, task_id: str) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
+
+
+def task_sheet_resolution(
+    root: Path, task_id: str, *, pipeline_directory: Path | None = None
+) -> tuple[Path | None, list[str]]:
+    """Resolve one task sheet fail-closed across the three supported locations.
+
+    The resolver never guesses: a sheet found in more than one location is an
+    ambiguity, and a sheet found in none of them is a missing contract. Both are
+    reported as errors with a ``None`` path so a caller cannot silently proceed.
+    ``pipeline_directory`` keeps a read-only caller from migrating a legacy
+    layout as a side effect of resolution.
+    """
+    if not _safe_task_identifier(task_id):
+        return None, [f"task id is not a safe identifier: {task_id}"]
+    root = Path(root)
+    found = [
+        candidate
+        for candidate in task_sheet_candidates(root, task_id, pipeline_directory=pipeline_directory)
+        if candidate.is_file()
+    ]
+    if not found:
+        return None, [f"task sheet not found for {task_id}"]
+    if len(found) > 1:
+        locations = ", ".join(sorted(path.relative_to(root).as_posix() for path in found))
+        return None, [f"task sheet appears in multiple locations for {task_id}: {locations}"]
+    return found[0], []
 
 
 def amendments_path(root: Path, task_id: str) -> Path:
