@@ -86,7 +86,7 @@
     {
       "id": "finalize-move-step",
       "kind": "repair",
-      "scope": "finalization moves the task sheet into its evidence directory, refusing while the worktree exists",
+      "scope": "an explicit archival step invoked at closure moves the task sheet into its evidence directory, refusing while the worktree still exists",
       "resources": ["pipeline_tools/planning.py"],
       "resource_mode": "single",
       "acceptance_tests": ["acceptance-test-5"]
@@ -243,7 +243,7 @@
 - **场景判定按状态**：`active` 只取 `docs/tasks/*.md`；`archived` 取 `.pipeline/<task-id>/<task-id>.md` 与 `.pipeline/archive/*.md`。`sheets_without_worktree` 与 `uncommitted_sheets` 只用 `active`；`worktrees_without_sheet` 用 `active ∪ archived`；`leftover_evidence` = 证据目录减去两者。
 - **archive 不是任务证据**：`.pipeline/archive` 必须加入证据目录扫描的排除集合（与 `planning`、`metrics` 同级），不得被当成一个叫 archive 的任务。
 - **保留集**：某任务的保留名 = `RETAINED_EVIDENCE_NAMES` ∪ {`<该任务 id>.md`}；前向基线闸门对 `.pipeline/archive/**` 下的路径豁免保留名规则。
-- **最终化移动**：最终化把任务单从 `docs/tasks/<task-id>.md` 移到 `.pipeline/<task-id>/<task-id>.md`（用 `git mv` 保持跟踪）；若 `.worktrees/<task-id>` 仍然存在，则 **blocked**，不移动任何文件。
+- **归档步骤（显式）**：任务收尾时调用一个显式的归档步骤，把任务单从 `docs/tasks/<task-id>.md` 移到 `.pipeline/<task-id>/<task-id>.md`（用 `git mv` 保持跟踪）；没有对应证据目录时移到 `.pipeline/archive/<task-id>.md`。若 `.worktrees/<task-id>` 仍然存在，则 **blocked**，不移动任何文件。该步骤**不折入** `finalize_evidence` 的保留集剪枝流程——折入会要求修改两个已关闭任务（`finalization-marker-head-tolerance` 与 `finalization-hygiene`）的验收测试期望，属另行裁决。
 - **字节稳定**：`.pipeline/**` 下的证据文件必须声明为不做换行转换，使其经 checkout 后字节不变；新增该属性**不得改写已提交的既有字节**。
 - fail-closed：三个位置都找不到任务单、或同一任务单出现在多个位置、或 worktree 与单子状态矛盾——一律报错，不猜。
 
