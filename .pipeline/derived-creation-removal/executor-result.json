@@ -37,10 +37,11 @@
     }
   ],
   "unverified": [
-    "round 1 stopped at decision point 4 (the derived creation path could not be removed without editing tests/test_security_repairs.py, which was outside revision 1 allowed_paths); round 2 executes the full removal and the two authorized test rewrites under revision 2",
-    "the reverse validation ran by temporarily removing the reject-derived criterion from pipeline_tools/planning.py in the working tree; acceptance test 1 then failed with exit 1 and the file was restored byte-identically (sha256 d35afdfb64abeb6cbb5a710f9bad8c2cc50fd7994a5f5e9ab2920ec309591b2d), so the experimental state was never committed",
-    "the full suite moved from 401 to 388 collected tests by 13 deliberate creation-path test deletions and 2 additions, with subtests moving from 28 to 30",
-    "the historical runtime behaviour of derived creation (worktree creation and rollback) is no longer exercisable because the entry point was removed; only the historical read path is verified",
-    "worktree cleanup and history migration remain explicit non-goals and were not implemented"
+    "revision 2 to 3 corrected the acceptance-test-4 test_ref class name from CliTests to CLITests; round 3 re-runs the five acceptance commands and the full suite under revision 3 and re-does the evidence, with the implementation unchanged at b4ca117",
+    "acceptance-test-4 test_ref resolution was confirmed three ways: source grep, an AST check that CLITests is the only class in tests/test_cli.py and owns the method, and the pipeline's own _acceptance_test_ref_position_errors returning an empty error list",
+    "gate pre-merge no longer reports any test_ref is absent error, but it still FAILs because all three pre-merge reports record head b4ca117 and the revision 3 amendment touched docs/tasks/derived-creation-removal.md, which evidence_only_paths does not treat as an evidence path; resolving this is the main agent's decision",
+    "the gate also reports UNVERIFIED goal hash unrecorded: docs/goal.md, unchanged from round 2; this task neither modified docs/goal.md nor recorded a hash for it",
+    "the gate pre-merge run predates this evidence commit, so its head comparison used d029938 as the current HEAD",
+    "the full suite is identical to round 2 at 388 passed, 30 subtests passed, because no implementation, test or documentation file changed this round"
   ]
 }
