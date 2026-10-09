@@ -8,7 +8,7 @@
 - branch：`finalization-marker-head-tolerance`
 - baseline HEAD：`fe72596fb2ba134549f9f269b8844a83bc9d5da0`
 - 实现提交：`39c8984b98dee0cd5669d5e670547e777bee794b`
-- role：executor，round 1
+- role：executor，round 2
 - sheet_revision：1
 - sheet_sha256：`b8af939a90f0e833f6b138499024bbb5e1ed8ac833bd009964372b7ba5f86f76`
 
@@ -102,6 +102,27 @@ $ python -m pytest -q tests/test_planning.py -k finalization_marker_head_survive
 - 既有 `tests/test_planning.py` 断言与其它测试文件断言未删未放宽；全量测试由基线 392 增至 395（+3 新增用例）。
 - `tests/test_acceptance_id_and_template_compliance.py` 的既有断言未动；`references/merge-and-recovery.md` 只**新增**一段（新增“最终化标记的 head 判据”），未删改既有行。
 
+## 改动文件清单（仅正文记录）
+
+实现提交 `39c8984b98dee0cd5669d5e670547e777bee794b` 触及的文件：
+
+- `pipeline_tools/core.py` —— `verify_finalization_snapshot` 的 head 判据。
+- `tests/test_planning.py` —— 三个新验收用例。
+- `references/merge-and-recovery.md` —— 「合并后」小节新增一段。
+
+这些是仓库根相对的产品/文档路径，只在此处正文记录；它们**不**出现在本报告的 `evidence_refs` 或 `commands[].evidence_ref` 中——引用解析规则（`_evidence_file_exists`）把不以 `.pipeline/` 开头的引用按证据目录内相对路径解析，产品路径写进引用会解析失败。
+
+## 本轮修订（round 2）
+
+上一轮独立审查发现：round 1 报告的 `evidence_refs` 混入了 4 条根相对产品路径（`pipeline_tools/core.py`、`tests/test_planning.py`、`references/merge-and-recovery.md`、`docs/tasks/finalization-marker-head-tolerance.md`），按 `_evidence_file_exists` 均不可解析，会让本任务最终化后 `evidence verify --phase finalized` 报 `executor-report.md evidence_ref is missing or not relative`。本轮只改证据：
+
+- `evidence_refs` 收敛为证据目录内真实存在的保留集文件（`.pipeline/finalization-marker-head-tolerance/executor-report.md`、`.pipeline/finalization-marker-head-tolerance/executor-result.json`）。
+- 产品/文档路径信息保留在上文正文与小节标题中，不再作为引用。
+- `commands[].evidence_ref` 原本已是 `.pipeline/...` 形态，可解析，未改。
+- `executor-result.json` 的 `acceptance[].evidence_refs` 原本已是 `.pipeline/...` 形态，可解析，未改。
+
+实现代码未动；round 1 的 `39c8984` 与针对它的审查证据 `e0199a8` 保持不变。
+
 ## 文档
 
 `references/merge-and-recovery.md` 的「合并后」小节新增一段（插在第 47 行后），写明：标记 `head` 等于 HEAD 或仅被本任务证据提交推进（复用 `head_advanced_by_evidence_only`，证据目录取该任务证据目录）；产品路径/非证据路径改动、head 非合法提交或非祖先仍报 `finalization head is stale`；`branch`/`worktree` 仍严格相等；`retained_sha256` 失配仍报 hash mismatch；重复 `evidence-finalize` 仍 `finalized`。
@@ -117,13 +138,13 @@ $ python -m pytest -q tests/test_planning.py -k finalization_marker_head_survive
   "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\finalization-marker-head-tolerance",
   "branch": "finalization-marker-head-tolerance",
   "role": "executor",
-  "round": 1,
+  "round": 2,
   "status": "PASS",
   "head": "39c8984b98dee0cd5669d5e670547e777bee794b",
   "sheet_revision": 1,
   "sheet_sha256": "b8af939a90f0e833f6b138499024bbb5e1ed8ac833bd009964372b7ba5f86f76",
   "observed_at_commit": "39c8984b98dee0cd5669d5e670547e777bee794b",
-  "generated_at": "2026-10-09T00:23:13+00:00",
+  "generated_at": "2026-10-09T00:40:00+00:00",
   "commands": [
     {
       "command": "python -m pipeline_tools task validate docs/tasks/finalization-marker-head-tolerance.md",
@@ -200,13 +221,10 @@ $ python -m pytest -q tests/test_planning.py -k finalization_marker_head_survive
   ],
   "evidence_refs": [
     ".pipeline/finalization-marker-head-tolerance/executor-report.md",
-    ".pipeline/finalization-marker-head-tolerance/executor-result.json",
-    "pipeline_tools/core.py",
-    "tests/test_planning.py",
-    "references/merge-and-recovery.md",
-    "docs/tasks/finalization-marker-head-tolerance.md"
+    ".pipeline/finalization-marker-head-tolerance/executor-result.json"
   ],
   "unverified": [
+    "Round 1 evidence_refs contained unresolvable root-relative product paths (pipeline_tools/core.py, tests/test_planning.py, references/merge-and-recovery.md, docs/tasks/finalization-marker-head-tolerance.md); this round records them in prose only and keeps evidence_refs to resolvable evidence-directory files.",
     "How many of the sixteen existing finalization.json markers would now pass was not enumerated (contract unknown-2); no historical evidence directory was read or modified.",
     "No post-merge gate was executed against the real repository; all post-merge runs used temporary repositories."
   ]

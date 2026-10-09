@@ -6,7 +6,7 @@
   "exit_code": 0,
   "worktree": "D:\\Projects\\Skills\\pipeline\\.worktrees\\finalization-marker-head-tolerance",
   "branch": "finalization-marker-head-tolerance",
-  "round": 1,
+  "round": 2,
   "identity": {
     "product_head": "39c8984b98dee0cd5669d5e670547e777bee794b",
     "head": "39c8984"
@@ -38,6 +38,7 @@
     }
   ],
   "unverified": [
+    "Round 1 evidence_refs contained unresolvable root-relative product paths; this round keeps acceptance evidence_refs to resolvable evidence-directory files and records product paths in the report prose only.",
     "How many of the sixteen existing finalization.json markers pass under the corrected rule was not enumerated (contract unknown-2).",
     "Only temporary repositories were used for the post-merge chain; the real repository was not gated."
   ]
