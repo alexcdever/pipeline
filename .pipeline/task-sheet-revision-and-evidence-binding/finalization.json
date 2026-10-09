@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "task_id": "task-sheet-revision-and-evidence-binding",
+  "status": "finalized",
+  "retained": [
+    "executor-report.md",
+    "review-report.md",
+    "final-check.md",
+    "executor-result.json",
+    "reviewer-result.json",
+    "final-result.json",
+    "finalization.json"
+  ],
+  "retained_sha256": {
+    "executor-report.md": "ad3eb35593514ff05294e3d20df8bd7cba498b434e40fcfa2e688749d9eb1b18",
+    "review-report.md": "5a7989354884f6cd971c7910f2b18e0e5b698430d7c3ccfaf2f791d6ee04c458",
+    "final-check.md": "d653b57ce2c4ef8163454b9ba46b385c01a4d82ef9b87bb083ae56e0ecc135c5",
+    "executor-result.json": "2eb97143765c602110774f630aa0045a680ce54b43d1ded9be9f72d18256b2dc",
+    "reviewer-result.json": "255fd6b1bad784651102ad7c8a3c5d6de4d39f744d02f86d24cfa28320e56249",
+    "final-result.json": "9feddd5c76efa0b96033b1c29a0475412d112a144c1f399ba9d2db197c967150"
+  },
+  "identity": {
+    "head": "609f857d84c5c28e556304f87135bb2ffdfacb41",
+    "branch": "main",
+    "worktree": "D:\\Projects\\Skills\\pipeline"
+  },
+  "finalized_at": "2026-10-09T02:21:12.270162+00:00",
+  "approved_by": "main"
+}
