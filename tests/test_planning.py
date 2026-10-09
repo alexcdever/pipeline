@@ -1049,5 +1049,141 @@ class PlanningTests(unittest.TestCase):
                 observed.append(label)
         self.assertEqual(sorted(observed), ['missing-field', 'role-mismatch', 'task-mismatch'])
 
+    # --- The finalization marker head across its own evidence commit ---------
+
+    def _run_cli(self, root, *args, timeout=120):
+        import sys
+        env = {**os.environ, 'PIPELINE_TOOLS_DISABLE_AUTO_METRICS': '1',
+               'PYTHONPATH': str(Path(__file__).resolve().parent.parent)}
+        return subprocess.run([sys.executable, '-m', 'pipeline_tools', *args],
+                              cwd=root, env=env, capture_output=True, text=True, timeout=timeout)
+
+    def _merged_finalization_repo(self, root):
+        """Main repo plus the merged task branch that wrote the schema-2 evidence."""
+        root = Path(root).resolve()
+
+        def git(*args, cwd=root, check=True):
+            return subprocess.run(['git', '-C', str(cwd), *args], check=check, capture_output=True, text=True)
+
+        git('init', '-q', '-b', 'main')
+        git('config', 'user.email', 'test@example.invalid')
+        git('config', 'user.name', 'Test')
+        (root / 'src').mkdir()
+        (root / 'src' / 'app.py').write_text('stable\n', encoding='utf-8')
+        (root / '.gitignore').write_text('/.worktrees/\n', encoding='utf-8')
+        sheet = root / 'docs' / 'tasks' / 'demo.md'
+        sheet.parent.mkdir(parents=True)
+        sheet.write_text(
+            '<!-- Task ID: demo -->\n```pipeline-contract\n'
+            + json.dumps(self._finalization_contract()) + '\n```\n', encoding='utf-8')
+        git('add', '.')
+        git('commit', '-qm', 'baseline')
+        baseline = git('rev-parse', 'HEAD').stdout.strip()
+        worktree = root / '.worktrees' / 'demo'
+        git('worktree', 'add', '-b', 'demo-task', str(worktree), baseline)
+        self._write_schema_two_evidence(
+            worktree / '.pipeline' / 'demo',
+            branch='demo-task', worktree=str(worktree), head=baseline, main_cwd=str(root),
+        )
+        git('add', '.pipeline', cwd=worktree)
+        git('commit', '-qm', 'task stage reports', cwd=worktree)
+        (worktree / 'src' / 'app.py').write_text('task change\n', encoding='utf-8')
+        git('add', 'src/app.py', cwd=worktree)
+        git('commit', '-qm', 'task product change', cwd=worktree)
+        git('merge', '--no-ff', '-m', 'merge demo-task', 'demo-task')
+        return root, root / '.pipeline' / 'demo', baseline, git('rev-parse', 'HEAD').stdout.strip()
+
+    def _unmerged_finalization_repo(self, root):
+        """Single-branch repo whose evidence directory is finalized in place."""
+        root = Path(root).resolve()
+
+        def git(*args, check=True):
+            return subprocess.run(['git', '-C', str(root), *args], check=check, capture_output=True, text=True)
+
+        git('init', '-q', '-b', 'main')
+        git('config', 'user.email', 'test@example.invalid')
+        git('config', 'user.name', 'Test')
+        (root / 'src').mkdir()
+        (root / 'src' / 'app.py').write_text('stable\n', encoding='utf-8')
+        git('add', '.')
+        git('commit', '-qm', 'baseline')
+        evidence = root / '.pipeline' / 'demo'
+        self._write_schema_two_evidence(
+            evidence, branch='main', worktree=str(root),
+            head=git('rev-parse', 'HEAD').stdout.strip())
+        return root, evidence, git
+
+    def test_finalization_marker_head_survives_evidence_only_commits(self):
+        from pipeline_tools.core import verify_finalization_snapshot
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, _baseline, merged = self._merged_finalization_repo(d)
+            gate = self._run_cli(root, 'gate', 'post-merge', str(evidence),
+                                 '--task-id', 'demo', '--branch', 'main')
+            self.assertEqual(gate.returncode, 0, gate.stdout + gate.stderr)
+            finalize = self._run_cli(root, 'planning', 'evidence-finalize', str(evidence),
+                                     '--task-id', 'demo', '--success')
+            self.assertEqual(finalize.returncode, 0, finalize.stdout + finalize.stderr)
+            self.assertEqual(json.loads(finalize.stdout)['status'], 'finalized')
+            marker_path = evidence / 'finalization.json'
+            self.assertTrue(marker_path.is_file())
+            marker = json.loads(marker_path.read_text(encoding='utf-8'))
+            self.assertEqual(merged, marker['identity']['head'])
+            # Publishing the marker is itself a commit, so it moves HEAD past the
+            # head the marker recorded.
+            subprocess.run(['git', '-C', str(root), 'add', '.pipeline/demo/finalization.json'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'finalization marker'], check=True)
+            published = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                                       check=True, capture_output=True, text=True).stdout.strip()
+            self.assertNotEqual(merged, published)
+            moved = subprocess.run(['git', '-C', str(root), 'diff', '--name-only', merged, 'HEAD'],
+                                   check=True, capture_output=True, text=True).stdout.split()
+            self.assertEqual(['.pipeline/demo/finalization.json'], moved)
+            self.assertEqual([], verify_finalization_snapshot(evidence, marker))
+            verify = self._run_cli(root, 'evidence', 'verify', str(evidence),
+                                   '--task-id', 'demo', '--phase', 'finalized')
+            self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
+            again = self._run_cli(root, 'planning', 'evidence-finalize', str(evidence),
+                                  '--task-id', 'demo', '--success')
+            self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+            self.assertEqual(json.loads(again.stdout)['status'], 'finalized')
+
+    def test_finalization_marker_head_is_still_stale_after_product_commits(self):
+        from pipeline_tools.core import verify_finalization_snapshot
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, git = self._unmerged_finalization_repo(d)
+            self.assertEqual(finalize_evidence(evidence, 'demo', True)['status'], 'finalized')
+            marker = json.loads((evidence / 'finalization.json').read_text(encoding='utf-8'))
+            # Publishing the marker (task evidence only) keeps it valid...
+            git('add', '.pipeline/demo/finalization.json')
+            git('commit', '-qm', 'finalization marker')
+            self.assertEqual([], verify_finalization_snapshot(evidence, marker))
+            # ...but a product-path commit after the marker head still fails.
+            (root / 'src' / 'app.py').write_text('product change\n', encoding='utf-8')
+            git('add', 'src/app.py')
+            git('commit', '-qm', 'product change')
+            self.assertIn('finalization head is stale', verify_finalization_snapshot(evidence, marker))
+            # A recorded head that is not an ancestor of HEAD stays fail-closed.
+            marker['identity']['head'] = '1' * 40
+            self.assertEqual(['finalization head is stale'], verify_finalization_snapshot(evidence, marker))
+
+    def test_finalization_marker_snapshot_mismatch_is_still_rejected(self):
+        from pipeline_tools.core import verify_finalization_snapshot
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, git = self._unmerged_finalization_repo(d)
+            self.assertEqual(finalize_evidence(evidence, 'demo', True)['status'], 'finalized')
+            marker = json.loads((evidence / 'finalization.json').read_text(encoding='utf-8'))
+            git('add', '.pipeline/demo/finalization.json')
+            git('commit', '-qm', 'finalization marker')
+            # The evidence-only advance is tolerated, so the only verdict left is
+            # the retention snapshot.
+            (evidence / 'final-check.md').write_text('tampered\n', encoding='utf-8')
+            self.assertEqual(
+                ['finalization retained evidence hash mismatch'],
+                verify_finalization_snapshot(evidence, marker),
+            )
+            blocked = finalize_evidence(evidence, 'demo', True)
+            self.assertEqual(blocked['status'], 'blocked')
+            self.assertIn('finalization retained evidence hash mismatch', blocked['missing'])
+
 
 if __name__ == '__main__': unittest.main()
