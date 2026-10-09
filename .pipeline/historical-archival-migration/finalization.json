@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "task_id": "historical-archival-migration",
+  "status": "finalized",
+  "retained": [
+    "executor-report.md",
+    "review-report.md",
+    "final-check.md",
+    "executor-result.json",
+    "reviewer-result.json",
+    "final-result.json",
+    "finalization.json"
+  ],
+  "retained_sha256": {
+    "executor-report.md": "30bba9e7180cb6712425d16b6c8577ad2e20fb84ed936c2e4acab8491b4cdbf6",
+    "review-report.md": "f9dda4211b9e6cf94d7b6455afba689241119149be05a6625e1bfdf92343d329",
+    "final-check.md": "6bdcddbee06b027fa6dcf6df5c44b7ed6c969a1a283424ce4570258bc406f37d",
+    "executor-result.json": "063fcfbd9b1948633f10ca9f2aa091b6ecfbd5f95f8a1d4d019e1944adaa7135",
+    "reviewer-result.json": "7051855e488ee7357db883fcdaf7072fabd31b8224dd4637d414524702c97092",
+    "final-result.json": "98b1f5ad60d0f8c9b9d3b56820b3e5dfb8378a86506d8f15b1099ef169c9c336"
+  },
+  "identity": {
+    "head": "1dbf51370972ff9dc5e6ceb776da3c6f92dd3751",
+    "branch": "main",
+    "worktree": "D:\\Projects\\Skills\\pipeline"
+  },
+  "finalized_at": "2026-10-09T07:48:25.997333+00:00",
+  "approved_by": "main"
+}
