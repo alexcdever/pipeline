@@ -13,10 +13,10 @@
   "allowed_paths": [
     "docs/tasks/**",
     ".pipeline/**",
-    "docs/tasks/README.md",
     "tests/test_planning.py",
     "tests/test_evidence.py",
     "tests/test_acceptance_id_and_template_compliance.py",
+    "tests/test_cli.py",
     "references/merge-and-recovery.md",
     "SKILL.md",
     "README.md"
@@ -39,24 +39,16 @@
     {
       "id": "classify-and-move-sheets",
       "kind": "repair",
-      "scope": "move every terminal task sheet into its evidence directory, or into the archive when it has none, leaving the two in-flight sheets in place",
+      "scope": "file every terminal task sheet under its declared task id, into its evidence directory or into the archive when it has none, leaving the two in-flight sheets in place",
       "resources": ["docs/tasks/**", ".pipeline/**"],
       "resource_mode": "batch",
-      "acceptance_tests": ["acceptance-test-1", "acceptance-test-2", "acceptance-test-5"]
-    },
-    {
-      "id": "orphan-evidence-note",
-      "kind": "repair",
-      "scope": "give the evidence directory that has no sheet a dated historical note",
-      "resources": [".pipeline/repository-evidence-hygiene-continuation-5/**"],
-      "resource_mode": "single",
-      "acceptance_tests": ["acceptance-test-3"]
+      "acceptance_tests": ["acceptance-test-1", "acceptance-test-2", "acceptance-test-3", "acceptance-test-5"]
     },
     {
       "id": "worklist-convention",
       "kind": "repair",
       "scope": "document that docs/tasks holds in-flight work only",
-      "resources": ["docs/tasks/README.md", "README.md", "SKILL.md", "references/merge-and-recovery.md"],
+      "resources": ["README.md", "SKILL.md", "references/merge-and-recovery.md"],
       "resource_mode": "batch",
       "acceptance_tests": ["acceptance-test-4"]
     }
@@ -106,8 +98,9 @@
   "required_evidence_levels": [3],
   "assumptions": [
     {"id": "assumption-1", "statement": "Among the sheets in docs/tasks only the in-flight work stays: this task's own sheet and the sheet of the still-open security-scan-repair-20261001 task; every other sheet in docs/tasks belongs to a terminal task."},
-    {"id": "assumption-2", "statement": "The terminal home is the presence of the task's own evidence directory: it exists means the sheet moves there, it does not means the sheet moves to the archive."},
-    {"id": "assumption-3", "statement": "Moving a file with git mv keeps it tracked and changes no byte, so the freeze hashes, retained snapshots and finalization markers stay valid."}
+    {"id": "assumption-2", "statement": "A sheet is filed under its declared task id (the Task ID comment), not its file name: any sheet whose file name differs from its declared id is moved to <declared-id>.md."},
+    {"id": "assumption-3", "statement": "The terminal home is the presence of the declared id's evidence directory: it exists means the sheet moves there, it does not means the sheet moves to the archive."},
+    {"id": "assumption-4", "statement": "Moving a file with git mv keeps it tracked and changes no byte, so the freeze hashes, retained snapshots and finalization markers stay valid."}
   ],
   "unknowns": [
     {"id": "unknown-1", "statement": "Whether every sheet in docs/tasks belongs to a terminal task has not been re-derived by hand; sheets that the mechanical rule cannot classify must stay in docs/tasks and be listed rather than guessed."}
@@ -130,15 +123,19 @@
 
 - `task-sheet-archival` 已合并：三位置解析、场景判定按状态、`archive` 隔离、保留集与闸门豁免、显式归档步骤、`.pipeline/** -text` 全部就位。
 - **在途排除清单**：`docs/tasks/` 中只有两张单子属于在途工作，必须留在原处：本任务自身的 `historical-archival-migration.md`，以及仍是开放任务的 `security-scan-repair-20261001.md`。除此之外的每一张 `docs/tasks/*.md` 都视为终态并可迁移。执行者必须以迁移时的实际清单为准，逐张记录判定依据。
-- 当前实测状态：迁移基线为 `docs/tasks/*.md` 共 **48** 张（含本任务自身的单子）；`.pipeline` 下已跟踪的任务证据目录 **43** 个（排除 `planning`、`metrics`、`archive`）；主工作树另有 1 个**未跟踪**证据目录 `.pipeline/security-scan-repair-20261001/`（在任务 worktree 中不可见）。可迁移的终态单子中，**3** 张没有对应证据目录（`implement-plan-coverage-repair-continuation-1`、`pipeline-evidence-lifecycle-migration`、`repository-evidence-hygiene`），应进入 `.pipeline/archive/`；**1** 个证据目录没有单（`.pipeline/repository-evidence-hygiene-continuation-5/`），需补一份历史说明单。
-- `planning preflight` 当前警告：38 条"单子无 worktree"（迁移后应只剩 2 张在途单，且其 worktree 由主代理维护）与 1 条"遗留证据目录"（补说明单后应消失）。
+- 当前实测状态：迁移基线为 `docs/tasks/*.md` 共 **48** 张（含本任务自身的单子）；`.pipeline` 下已跟踪的任务证据目录 **43** 个（排除 `planning`、`metrics`、`archive`）；主工作树另有 1 个**未跟踪**证据目录 `.pipeline/security-scan-repair-20261001/`（在任务 worktree 中不可见）。
+- **按声明 id 归档**：每张单以其 `<!-- Task ID: -->` 声明 id 归档，而不是文件名。实测只有 `docs/tasks/repository-evidence-hygiene.md` 的声明 id 是 `repository-evidence-hygiene-continuation-5`（文件名与声明 id 不符）；它的证据目录 `.pipeline/repository-evidence-hygiene-continuation-5/` 存在且已最终化，所以它应被归档为 `.pipeline/repository-evidence-hygiene-continuation-5/repository-evidence-hygiene-continuation-5.md`，而不是进 archive，也**不需要**补历史说明单（单子本来就在，只是文件名错位）。
+- 因此真正没有证据目录的终态单只有 **2** 张，进 `.pipeline/archive/`：`implement-plan-coverage-repair-continuation-1`、`pipeline-evidence-lifecycle-migration`。
+- `planning preflight` 当前警告：38 条"单子无 worktree"（迁移后应只剩 2 张在途单，且其 worktree 由主代理维护）与 1 条"遗留证据目录"（按声明 id 归档后应消失）。
+- **迁移会连带弄红两个既有用例**：`tests/test_cli.py` 的 `test_json_output_has_common_envelope_and_can_be_saved` 与 `test_task_validate_real_sheet` 硬编码 `ROOT/'docs'/'tasks'/'pipeline-tools-v1.md'`；该单迁移后路径变化，必须把这两处改为经三位置解析器定位（`pipeline_tools.planning.task_sheet_resolution`），否则全量回归不会全绿。
 
 ### 允许修改
 
-- `docs/tasks/**`（移出；以及新增 `docs/tasks/README.md`）
-- `.pipeline/**`（接收单子；补说明单）
+- `docs/tasks/**`（移出；不新增 README）
+- `.pipeline/**`（接收单子）
 - `tests/test_planning.py`、`tests/test_evidence.py`（新增回归用例）
 - `tests/test_acceptance_id_and_template_compliance.py`（扩展现有一致性用例，加工作清单约定断言）
+- `tests/test_cli.py`（把硬编码的已迁移单子路径改为经三位置解析器定位）
 - `references/merge-and-recovery.md`、`SKILL.md`、`README.md`（记录约定）
 - 本任务证据目录 `.pipeline/historical-archival-migration/**`
 
@@ -148,6 +145,7 @@
 - 任何 `finalization.json` 与其保留集内容
 - `pipeline_tools/**`（实现代码一律不动）
 - `docs/goal.md`
+- `docs/tasks/README.md`（不新增；`docs/tasks/*.md` 一律按任务单处理，命名约定只写进 `README.md`/`SKILL.md`/`references/merge-and-recovery.md`）
 
 ### 非目标
 
@@ -183,13 +181,14 @@
 → [可见结果] `planning preflight` 不再报那两类警告；已关闭任务的标记仍然可校验
 
 - **在途排除**：`historical-archival-migration`（本任务自身）与 `security-scan-repair-20261001`（仍是开放任务）留在 `docs/tasks/`，不迁移。
-- **机械判据**：对其余每张单，任务的证据目录 `.pipeline/<task-id>/` 存在 → 单子移到 `.pipeline/<task-id>/<task-id>.md`；不存在 → 移到 `.pipeline/archive/<task-id>.md`。
-- **字节不变**：只移动，不编辑；每张单迁移前后的 sha256 必须相同。
+- **机械判据**：对每张终态单，先取其**声明 id**（`<!-- Task ID: -->`）；`<声明 id>` 的证据目录 `.pipeline/<声明 id>/` 存在 → 单子移到 `.pipeline/<声明 id>/<声明 id>.md`；不存在 → 移到 `.pipeline/archive/<声明 id>.md`。文件名与声明 id 不符时，一律以声明 id 为准并改名到位。
+- **字节不变**：只移动，不编辑；每张单迁移前后的 sha256 必须相同（改的是路径/文件名，不是内容）。
 - **保持跟踪**：用 `git mv` 或等价做法，单子在迁移后仍被 Git 跟踪。
-- **不使用会 fail-closed 的入口判定在途**：任务 worktree 视角下 `.worktrees/**` 不可见，因此不得依赖"worktree 是否存在"来判定分类；分类只依据显式在途排除清单 + 证据目录是否存在。
-- **孤儿证据目录**：`.pipeline/repository-evidence-hygiene-continuation-5/` 补一份以该 id 命名的历史说明单，记录它的来历与它为何没有任务单；它**不必**是完整的 schema 4 契约，但必须能被三位置解析器按文件名找到。
+- **不使用会 fail-closed 的入口判定在途**：任务 worktree 视角下 `.worktrees/**` 不可见，因此不得依赖"worktree 是否存在"来判定分类；分类只依据显式在途排除清单 + 声明 id + 证据目录是否存在。
+- **不新增 `docs/tasks/README.md`**：工作清单扫描把 `docs/tasks/*.md` 一律当作任务单，放 README 会产生幻影单 `README`。命名约定只写进 `README.md`、`SKILL.md`、`references/merge-and-recovery.md`。
 - **已关闭标记不受影响**：迁移后对若干已关闭任务运行 `verify_finalization_snapshot`，不得出现保留集哈希失配。
-- **验收测试4必须被扩展而不是照旧通过**：`test_lifecycle_and_evidence_documentation_matches_current_contract` 在迁移前已存在且为绿；执行者必须在该用例内新增断言，使其在 `docs/tasks/README.md` 缺失、或未写明"此处只放进行中或待派发的任务单，已终态的单子在其证据目录或 `.pipeline/archive/`"时失败。只更新文档而不扩展断言视为未完成。
+- **`tests/test_cli.py` 的硬编码路径必须改**：`test_json_output_has_common_envelope_and_can_be_saved` 与 `test_task_validate_real_sheet` 里的 `ROOT/'docs'/'tasks'/'pipeline-tools-v1.md'` 要改为经三位置解析器（`pipeline_tools.planning.task_sheet_resolution`）定位到迁移后的真实位置；否则全量回归不会全绿。改后这两个用例仍须验证同样的行为（JSON 封套、真实单子校验通过）。
+- **验收测试4必须被扩展而不是照旧通过**：`test_lifecycle_and_evidence_documentation_matches_current_contract` 在迁移前已存在且为绿；执行者必须在该用例内新增断言，使其在 `README.md`/`SKILL.md`/`references/merge-and-recovery.md` 未写明"此处只放进行中或待派发的任务单，已终态的单子在其证据目录或 `.pipeline/archive/`"时失败。只更新文档而不扩展断言视为未完成。
 - **回归用例以夹具为准**：验收测试1/2/3/5 必须在 `tempfile` 临时仓库上构造夹具并调用解析/场景/标记校验入口断言机制行为，不得依赖本任务 worktree 中 `.worktrees/**` 不可见这一偶然事实，也不得断言真实仓库里 `sheets_without_worktree` 为空（真实仓库仍有 2 张在途单）。
 - **worktree 不在本任务范围内**：本任务不创建、不删除、不修改任何 `.worktrees/**`。迁移后仍留在 `docs/tasks/` 的在途单对应的、以及已终态任务遗留的 worktree，由主代理在本任务合并后作为独立维护动作处理。
 - **无法分类的**：留在 `docs/tasks/` 并列出来，不猜。
@@ -222,10 +221,10 @@
 - 证据等级：3
 - 结果要求：退出码 0。
 
-### 验收测试3：孤儿证据目录不再是遗留
+### 验收测试3：文件名与声明 id 不符的单子按其声明 id 归档，证据目录不再是遗留
 
-- 触发：在临时仓库夹具里构造一个只有证据目录、没有任务单的 `.pipeline/<id>/`，补入以该 id 命名的说明单后运行场景检查。
-- 断言：该目录能被三位置解析器按文件名找到；`task_scenes.leftover_evidence` 不再包含它。
+- 触发：在临时仓库夹具里构造一个已最终化的证据目录 `.pipeline/<声明 id>/`，并放一张文件名 ≠ 声明 id 的 `docs/tasks/<其它名>.md`（其 `Task ID` 注释为 `<声明 id>`）；按声明 id 归位后运行场景检查。
+- 断言：单子落到 `.pipeline/<声明 id>/<声明 id>.md`；该证据目录能被三位置解析器按文件名找到；`task_scenes.leftover_evidence` 不含它；`docs/tasks/` 不再留有该单。
 - 测试：`tests/test_planning.py: PlanningTests.test_orphan_evidence_directory_is_no_longer_leftover`
 - 命令：`python -m pytest -q tests/test_planning.py -k orphan_evidence_directory_is_no_longer_leftover`
 - 验收模式：集成
@@ -235,7 +234,7 @@
 ### 验收测试4：文档记录工作清单约定
 
 - 触发：运行文档与模板一致性检查。
-- 断言：一致性检查通过；`docs/tasks/README.md` 写明此处只放进行中或待派发的任务单，已终态的单子在其证据目录或 `.pipeline/archive/`；`README.md`、`SKILL.md`、`references/merge-and-recovery.md` 口径一致。
+- 断言：一致性检查通过；`README.md`、`SKILL.md`、`references/merge-and-recovery.md` 写明"`docs/tasks/` 只放进行中或待派发的任务单，已终态的单子在其证据目录 `.pipeline/<task-id>/<task-id>.md`，没有证据目录时在 `.pipeline/archive/<task-id>.md`"，三处口径一致。
 - 测试：`tests/test_acceptance_id_and_template_compliance.py: AcceptanceIdAndTemplateComplianceTests.test_lifecycle_and_evidence_documentation_matches_current_contract`
 - 命令：`python -m pytest -q tests/test_acceptance_id_and_template_compliance.py -k documentation_matches_current_contract`
 - 验收模式：组件
