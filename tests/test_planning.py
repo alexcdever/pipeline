@@ -920,26 +920,38 @@ class PlanningTests(unittest.TestCase):
             }],
         }
 
+    # Prose that follows a report's machine block and carries further fenced blocks.
+    TRAILING_FENCED_PROSE = (
+        '\n## Observations\n\n'
+        'The task branch reused the existing reader rather than adding a second one.\n\n'
+        '```text\nfirst trailing block\n```\n\n'
+        'A second illustration of the same rule:\n\n'
+        '```python\nprint("hello")\n```\n\n'
+        '```json\n{"note": "a third trailing block"}\n```\n'
+    )
+
     def _write_schema_two_evidence(self, directory, *, branch, worktree, head, revision=1,
-                                   main_cwd=None, task_id='demo'):
+                                   main_cwd=None, task_id='demo', trailing_prose=False):
         """Write the six finalization inputs in the schema 2 shape the templates emit."""
         directory.mkdir(parents=True, exist_ok=True)
         for name, role in (('executor-report.md', 'executor'), ('review-report.md', 'reviewer'),
                            ('final-check.md', 'main-final')):
-            (directory / name).write_text(
-                '```pipeline-evidence\n' + json.dumps({
-                    'schema': 2, 'task_id': task_id, 'worktree': worktree, 'branch': branch,
-                    'head': head, 'sheet_revision': revision, 'observed_at_commit': head,
-                    'generated_at': '2026-01-01T00:00:00+00:00',
-                    'role': role, 'round': 1, 'status': 'PASS',
-                    'commands': [{
-                        'command': 'python -m pytest -q tests/test_planning.py', 'exit_code': 0,
-                        'cwd': main_cwd if name == 'final-check.md' else worktree,
-                        'evidence_ref': name,
-                    }],
-                    'assertions': ['the observed result matches the contract'],
-                    'evidence_refs': [name], 'unverified': [],
-                }) + '\n```\n', encoding='utf-8')
+            body = '```pipeline-evidence\n' + json.dumps({
+                'schema': 2, 'task_id': task_id, 'worktree': worktree, 'branch': branch,
+                'head': head, 'sheet_revision': revision, 'observed_at_commit': head,
+                'generated_at': '2026-01-01T00:00:00+00:00',
+                'role': role, 'round': 1, 'status': 'PASS',
+                'commands': [{
+                    'command': 'python -m pytest -q tests/test_planning.py', 'exit_code': 0,
+                    'cwd': main_cwd if name == 'final-check.md' else worktree,
+                    'evidence_ref': name,
+                }],
+                'assertions': ['the observed result matches the contract'],
+                'evidence_refs': [name], 'unverified': [],
+            }) + '\n```\n'
+            if trailing_prose:
+                body += self.TRAILING_FENCED_PROSE
+            (directory / name).write_text(body, encoding='utf-8')
         for name, role in (('executor-result.json', 'executor'), ('reviewer-result.json', 'reviewer'),
                            ('final-result.json', 'main-final')):
             value = {
@@ -1049,6 +1061,102 @@ class PlanningTests(unittest.TestCase):
                 observed.append(label)
         self.assertEqual(sorted(observed), ['missing-field', 'role-mismatch', 'task-mismatch'])
 
+    # --- The machine block ends at the first fence after its opening ---------
+
+    def _fence_line_numbers(self, path):
+        lines = path.read_text(encoding='utf-8').splitlines()
+        starts = [i for i, line in enumerate(lines) if line.strip() == '```pipeline-evidence']
+        self.assertEqual(len(starts), 1, path)
+        closes = [i for i in range(starts[0] + 1, len(lines)) if lines[i].strip() == '```']
+        return starts, closes
+
+    def test_evidence_block_reader_accepts_fences_after_the_machine_block(self):
+        reports = ('executor-report.md', 'review-report.md', 'final-check.md')
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, _baseline, _merged = self._merged_finalization_repo(
+                d, trailing_prose=True)
+            before = {name: (evidence / name).read_bytes() for name in reports}
+            for name in reports:
+                _starts, closes = self._fence_line_numbers(evidence / name)
+                # The report carries the machine block plus further fenced blocks.
+                self.assertGreaterEqual(len(closes), 2, name)
+            gate = self._run_cli(root, 'gate', 'post-merge', str(evidence),
+                                 '--task-id', 'demo', '--branch', 'main')
+            self.assertEqual(gate.returncode, 0, gate.stdout + gate.stderr)
+            finalize = self._run_cli(root, 'planning', 'evidence-finalize', str(evidence),
+                                     '--task-id', 'demo', '--success')
+            self.assertEqual(finalize.returncode, 0, finalize.stdout + finalize.stderr)
+            self.assertEqual(json.loads(finalize.stdout)['status'], 'finalized')
+            self.assertTrue((evidence / 'finalization.json').is_file())
+            for name in reports:
+                self.assertEqual(before[name], (evidence / name).read_bytes(), name)
+
+    def test_evidence_block_reader_still_rejects_malformed_blocks(self):
+        from pipeline_tools.planning import _read_evidence_block
+
+        value = {
+            'schema': 2, 'task_id': 'demo', 'worktree': 'worktree', 'branch': 'demo-task',
+            'head': 'a' * 40, 'sheet_revision': 1, 'observed_at_commit': 'a' * 40,
+            'generated_at': '2026-01-01T00:00:00+00:00', 'role': 'executor', 'round': 1,
+            'status': 'PASS',
+            'commands': [{'command': 'python -m pytest -q', 'exit_code': 0,
+                          'cwd': 'worktree', 'evidence_ref': 'executor-report.md'}],
+            'assertions': ['the observed result matches the contract'],
+            'evidence_refs': ['executor-report.md'], 'unverified': [],
+        }
+        body = json.dumps(value)
+        cases = {
+            'missing-opening-fence': body + '\n',
+            'duplicate-opening-fence': (
+                '```pipeline-evidence\n' + body + '\n```\n'
+                '```pipeline-evidence\n' + body + '\n```\n'
+            ),
+            'missing-closing-fence': '```pipeline-evidence\n' + body + '\n',
+            'invalid-json': '```pipeline-evidence\n{"schema": 2, "task_id":\n```\n',
+        }
+        observed = []
+        for label, text in cases.items():
+            with tempfile.TemporaryDirectory() as d:
+                directory = Path(d) / '.pipeline' / 'demo'
+                self._write_schema_two_evidence(
+                    directory, branch='demo-task', worktree='worktree', head='a' * 40)
+                (directory / 'executor-report.md').write_text(text, encoding='utf-8')
+                self.assertIsNone(_read_evidence_block(directory / 'executor-report.md'), label)
+                result = finalize_evidence(directory, 'demo', True)
+                self.assertEqual(result['status'], 'blocked', (label, result))
+                self.assertIn('invalid executor-report.md', result['missing'], label)
+                self.assertFalse((directory / 'finalization.json').exists(), label)
+                observed.append(label)
+        self.assertEqual(sorted(observed), [
+            'duplicate-opening-fence', 'invalid-json',
+            'missing-closing-fence', 'missing-opening-fence',
+        ])
+
+    def test_finalization_and_gate_readers_agree_on_the_same_report(self):
+        from pipeline_tools.core import _read_machine_evidence
+        from pipeline_tools.planning import _read_evidence_block
+
+        reports = ('executor-report.md', 'review-report.md', 'final-check.md')
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, _baseline, _merged = self._merged_finalization_repo(
+                d, trailing_prose=True)
+            for name in reports:
+                path = evidence / name
+                gate_value, gate_errors = _read_machine_evidence(path)
+                self.assertEqual(gate_errors, [], name)
+                self.assertIsNotNone(gate_value, name)
+                self.assertEqual(gate_value, _read_evidence_block(path), name)
+            gate = self._run_cli(root, 'gate', 'post-merge', str(evidence),
+                                 '--task-id', 'demo', '--branch', 'main')
+            self.assertEqual(gate.returncode, 0, gate.stdout + gate.stderr)
+            finalize = self._run_cli(root, 'planning', 'evidence-finalize', str(evidence),
+                                     '--task-id', 'demo', '--success')
+            self.assertEqual(finalize.returncode, 0, finalize.stdout + finalize.stderr)
+            payload = json.loads(finalize.stdout)
+            self.assertNotIn('invalid executor-report.md', payload.get('missing', []))
+            self.assertNotIn('invalid review-report.md', payload.get('missing', []))
+            self.assertEqual(payload['status'], 'finalized')
+
     # --- The finalization marker head across its own evidence commit ---------
 
     def _run_cli(self, root, *args, timeout=120):
@@ -1058,7 +1166,7 @@ class PlanningTests(unittest.TestCase):
         return subprocess.run([sys.executable, '-m', 'pipeline_tools', *args],
                               cwd=root, env=env, capture_output=True, text=True, timeout=timeout)
 
-    def _merged_finalization_repo(self, root):
+    def _merged_finalization_repo(self, root, trailing_prose=False):
         """Main repo plus the merged task branch that wrote the schema-2 evidence."""
         root = Path(root).resolve()
 
@@ -1084,6 +1192,7 @@ class PlanningTests(unittest.TestCase):
         self._write_schema_two_evidence(
             worktree / '.pipeline' / 'demo',
             branch='demo-task', worktree=str(worktree), head=baseline, main_cwd=str(root),
+            trailing_prose=trailing_prose,
         )
         git('add', '.pipeline', cwd=worktree)
         git('commit', '-qm', 'task stage reports', cwd=worktree)

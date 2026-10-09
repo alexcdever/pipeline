@@ -2400,11 +2400,14 @@ def _read_evidence_block(path: Path) -> dict[str, Any] | None:
     starts = [i for i, line in enumerate(lines) if line.strip() == "```pipeline-evidence"]
     if len(starts) != 1:
         return None
-    ends = [i for i in range(starts[0] + 1, len(lines)) if lines[i].strip() == "```"]
-    if len(ends) != 1:
+    # The block ends at the first fence after the opening one; any fenced block
+    # in the prose that follows the machine block belongs to the report, not to
+    # the machine block.
+    end = next((i for i in range(starts[0] + 1, len(lines)) if lines[i].strip() == "```"), None)
+    if end is None:
         return None
     try:
-        value = json.loads("\n".join(lines[starts[0] + 1:ends[0]]))
+        value = json.loads("\n".join(lines[starts[0] + 1:end]))
     except (json.JSONDecodeError, TypeError):
         return None
     return value if isinstance(value, dict) else None
