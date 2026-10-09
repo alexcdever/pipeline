@@ -1145,6 +1145,113 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(sorted(['.pipeline/demo/scratch.md', 'src/app.py']), sorted(moved))
             self.assertIn('finalization head is stale', verify_finalization_snapshot(directory, marker))
 
+    # --- Retention rule: a task's own sheet, and the archive quarantine ------
+
+    def test_task_sheet_and_archive_are_exempt_from_the_retained_name_rule(self):
+        """A task's own sheet is retained; the archive subtree is exempt.
+
+        The forward baseline gate judges additions and deletions against the
+        retained set.  A task's sheet belongs beside its evidence
+        (``.pipeline/<task-id>/<task-id>.md``) so publishing it is not drift, and
+        the flat ``.pipeline/archive/`` quarantine is not an evidence directory at
+        all.  The other direction stays fail-closed: a *different* non-retained
+        file in the same evidence directory is still a violation.
+        """
+        from pipeline_tools.core import commit_history_check, is_retained_evidence_path
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            evidence_root = self._make_git_repo(root)
+            evidence = root / '.pipeline' / 'demo'
+            evidence.mkdir(parents=True)
+            (evidence / 'demo.md').write_text('own task sheet\n', encoding='utf-8')
+            archive = root / '.pipeline' / 'archive'
+            archive.mkdir(parents=True)
+            (archive / 'closed-task.md').write_text('archived sheet\n', encoding='utf-8')
+            self._git(root, 'add', '.pipeline')
+            self._git(root, 'commit', '-qm', 'own sheet and archived sheet')
+
+            self.assertTrue(is_retained_evidence_path('.pipeline/demo/demo.md'))
+            self.assertFalse(is_retained_evidence_path('.pipeline/demo/notes.md'))
+            self.assertEqual([], commit_history_check(root, '.pipeline/demo', since=evidence_root))
+
+            # The reverse direction: another non-retained file in the same task
+            # evidence directory is still drift.
+            (evidence / 'notes.md').write_text('scratch\n', encoding='utf-8')
+            self._git(root, 'add', '.pipeline/demo/notes.md')
+            self._git(root, 'commit', '-qm', 'stray evidence file')
+            violations = commit_history_check(root, '.pipeline/demo', since=evidence_root)
+            self.assertEqual(len(violations), 1, violations)
+            self.assertIn('notes.md', violations[0])
+
+    def test_pipeline_evidence_bytes_survive_a_checkout(self):
+        """``.pipeline/** -text`` keeps evidence bytes byte-identical on checkout.
+
+        Evidence must survive a checkout unchanged: the attribute makes a
+        checked-out report or machine result the same byte sequence that was
+        committed.  Declaring it must also not rewrite an already committed byte,
+        which is proved by comparing that blob's hash before and after the
+        attribute is added.  Ordinary text is the control: the repository-wide
+        `* text=auto eol=lf` rule still normalizes it, so the evidence path is
+        demonstrably the thing the new attribute protects.
+        """
+        import subprocess
+
+        payload = b'first line\r\nsecond line\r\n'
+        # The rule under test is the one this repository declares: the test reads
+        # the deliverable instead of restating it, so removing the attribute from
+        # `.gitattributes` fails here too.
+        declared = (Path(__file__).resolve().parents[1] / '.gitattributes').read_text(encoding='utf-8')
+        self.assertIn('.pipeline/** -text', declared)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'origin'
+            root.mkdir()
+            self._git(root, 'init', '-q', '-b', 'main')
+            self._git(root, 'config', 'user.email', 'test@example.invalid')
+            self._git(root, 'config', 'user.name', 'Test')
+            self._git(root, 'config', 'core.autocrlf', 'false')
+            # The pre-attribute repository: only the repository-wide text rule.
+            (root / '.gitattributes').write_text('* text=auto eol=lf\n', encoding='utf-8')
+            (root / 'src').mkdir()
+            (root / 'src' / 'app.py').write_bytes(payload)
+            evidence = root / '.pipeline' / 'demo' / 'final-check.md'
+            evidence.parent.mkdir(parents=True)
+            evidence.write_bytes(payload)
+            self._git(root, 'add', '.')
+            self._git(root, 'commit', '-qm', 'evidence committed before the attribute')
+            before = self._git(root, 'rev-parse', 'HEAD:.pipeline/demo/final-check.md').stdout.strip()
+
+            (root / '.gitattributes').write_text(declared, encoding='utf-8')
+            self._git(root, 'add', '.gitattributes')
+            self._git(root, 'commit', '-qm', 'declare evidence non-text')
+            after = self._git(root, 'rev-parse', 'HEAD:.pipeline/demo/final-check.md').stdout.strip()
+            # Adding the attribute rewrote no already committed byte.
+            self.assertEqual(before, after)
+
+            # New evidence is now committed byte for byte, while ordinary text
+            # under the same repository-wide rule is still normalized.
+            fresh = root / '.pipeline' / 'demo' / 'review-report.md'
+            fresh.write_bytes(payload)
+            (root / 'src' / 'control.txt').write_bytes(payload)
+            self._git(root, 'add', '.')
+            self._git(root, 'commit', '-qm', 'evidence committed after the attribute')
+
+            def blob(path):
+                return subprocess.run(
+                    ['git', '-C', str(root), 'cat-file', 'blob', f'HEAD:{path}'],
+                    check=True, capture_output=True,
+                ).stdout
+
+            self.assertEqual(payload, blob(fresh.relative_to(root).as_posix()))
+            self.assertNotEqual(payload, blob('src/control.txt'))
+
+            clone = Path(d) / 'clone'
+            subprocess.run(
+                ['git', 'clone', '-q', str(root), str(clone)],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertEqual(payload, (clone / '.pipeline' / 'demo' / 'review-report.md').read_bytes())
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):

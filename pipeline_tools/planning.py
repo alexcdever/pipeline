@@ -32,8 +32,10 @@ from .core import (
     POST_MERGE_REPORT_STATUSES,
     RESULT_STATUSES,
     RETAINED_EVIDENCE_NAMES,
+    git,
     git_identity,
     retained_evidence_snapshot,
+    task_sheet_resolution,
     task_sheet_revision,
     verify_finalization_snapshot,
     normalize_status,
@@ -42,6 +44,7 @@ from .core import (
     gate_check,
 )
 from .layout import (
+    ARCHIVE_DIR_NAME,
     LEGACY_PIPELINE_DIR_NAME,
     PIPELINE_DIR_NAME,
     LegacyPipelineLayoutError,
@@ -318,11 +321,21 @@ def _sheet_committed(root: Path, task_id: str) -> bool:
 def _task_scene_facts(root: Path, *, apply: bool = True) -> tuple[list[str], list[str], dict[str, list[str]]]:
     """Report pre-existing task scenes without judging their product meaning.
 
-    A task worktree without a frozen task sheet violates the recorded invariant
-    that no task worktree may exist without its committed sheet, and a sheet
-    that is present on disk but absent from HEAD is not frozen either; a sheet
-    without a worktree and leftover task evidence are reported as warnings so an
-    interrupted earlier run is visible before a new one starts.
+    A sheet's location encodes its state: ``docs/tasks/`` holds in-flight sheets,
+    while a terminal sheet lives in its own evidence directory
+    (``.pipeline/<task-id>/<task-id>.md``) or in the flat archive
+    (``.pipeline/archive/<task-id>.md``).  The worklist therefore judges by
+    state:
+
+    - ``sheets_without_worktree`` and ``uncommitted_sheets`` read only active
+      sheets, so a closed task is not reported as interrupted work;
+    - ``worktrees_without_sheet`` reads active *and* archived sheets, because a
+      terminal sheet still answers the "no worktree without a sheet" invariant;
+    - ``leftover_evidence`` is the evidence directories minus both, and the
+      archive is never an evidence directory.
+
+    Fail-closed: the same task id resolved to more than one location is an
+    error, not a silently preferred candidate.
     """
     warnings: list[str] = []
     errors: list[str] = []
@@ -332,13 +345,13 @@ def _task_scene_facts(root: Path, *, apply: bool = True) -> tuple[list[str], lis
         "uncommitted_sheets": [],
         "leftover_evidence": [],
     }
-    sheets: dict[str, Path] = {}
+    active: dict[str, Path] = {}
     tasks_directory = root / "docs" / "tasks"
     try:
         if tasks_directory.is_dir():
             for path in sorted(tasks_directory.glob("*.md")):
                 if path.is_file():
-                    sheets[path.stem] = path
+                    active[path.stem] = path
     except OSError:
         warnings.append("task sheet directory is unreadable")
     worktrees: dict[str, Path] = {}
@@ -361,21 +374,51 @@ def _task_scene_facts(root: Path, *, apply: bool = True) -> tuple[list[str], lis
     try:
         if pipeline_directory.is_dir():
             for path in sorted(pipeline_directory.iterdir()):
-                if path.is_dir() and path.name not in {"planning", "metrics"}:
+                # ``archive`` is a sheet quarantine, like ``planning`` and
+                # ``metrics`` bookkeeping: it is not a task evidence directory.
+                if path.is_dir() and path.name not in {"planning", "metrics", ARCHIVE_DIR_NAME}:
                     evidence[path.name] = path
     except OSError:
         warnings.append(".pipeline directory is unreadable")
 
-    for task_id in sorted(set(sheets) - set(worktrees)):
+    archived_locations: dict[str, list[Path]] = {}
+    for task_id, directory in evidence.items():
+        sheet = directory / f"{task_id}.md"
+        if sheet.is_file():
+            archived_locations.setdefault(task_id, []).append(sheet)
+    try:
+        archive_directory = pipeline_directory / ARCHIVE_DIR_NAME
+        if archive_directory.is_dir():
+            for path in sorted(archive_directory.glob("*.md")):
+                if path.is_file():
+                    archived_locations.setdefault(path.stem, []).append(path)
+    except OSError:
+        warnings.append("task sheet archive is unreadable")
+    archived = {
+        task_id: locations[0]
+        for task_id, locations in archived_locations.items()
+        if len(locations) == 1
+    }
+    for task_id, locations in sorted(archived_locations.items()):
+        if len(locations) > 1:
+            where = ", ".join(sorted(path.relative_to(root).as_posix() for path in locations))
+            errors.append(f"task sheet appears in multiple locations: {task_id} ({where})")
+    for task_id in sorted(set(active) & set(archived)):
+        errors.append(
+            f"task sheet appears in both active and archived locations: {task_id}"
+        )
+    known = set(active) | set(archived)
+
+    for task_id in sorted(set(active) - set(worktrees)):
         scenes["sheets_without_worktree"].append(task_id)
-    for task_id in sorted(set(worktrees) - set(sheets)):
+    for task_id in sorted(set(worktrees) - known):
         scenes["worktrees_without_sheet"].append(task_id)
         errors.append(f"task worktree has no committed task sheet: {task_id}")
-    for task_id in sorted(set(worktrees) & set(sheets)):
+    for task_id in sorted(set(worktrees) & set(active)):
         if not _sheet_committed(root, task_id):
             scenes["uncommitted_sheets"].append(task_id)
             errors.append(f"task sheet is not committed in HEAD: {task_id}")
-    for task_id in sorted(set(evidence) - set(sheets)):
+    for task_id in sorted(set(evidence) - known):
         scenes["leftover_evidence"].append(task_id)
     if scenes["sheets_without_worktree"]:
         warnings.append(
@@ -386,6 +429,125 @@ def _task_scene_facts(root: Path, *, apply: bool = True) -> tuple[list[str], lis
             "leftover task evidence directories: " + ", ".join(scenes["leftover_evidence"])
         )
     return warnings, errors, scenes
+
+
+def _sheet_tracked_in_git(root: Path, path: Path) -> bool:
+    """Return whether a task sheet is tracked by Git in this worktree."""
+    rc, _output = git(
+        root, "ls-files", "--error-unmatch", path.relative_to(root).as_posix(),
+        redact_output=False,
+    )
+    return rc == 0
+
+
+def archive_task_sheet(root: Path, task_id: str, *, apply: bool = True) -> dict[str, Any]:
+    """Move a terminal task sheet out of ``docs/tasks/`` into its terminal home.
+
+    This is the sheet-move step of finalization: once a task is closed its sheet
+    is no longer in-flight work, so it moves to
+    ``.pipeline/<task-id>/<task-id>.md`` beside the evidence it belongs to, or to
+    the flat ``.pipeline/archive/<task-id>.md`` when the task never had an
+    evidence directory.  A tracked sheet is moved with ``git mv`` so it stays
+    tracked; an untracked sheet (a project that does not track its sheets) is
+    moved on disk.
+
+    Fail-closed in both required directions: while ``.worktrees/<task-id>`` still
+    exists the delivery is not finished, so the step reports ``blocked`` and
+    moves nothing; a sheet resolved to more than one location is an error rather
+    than a preference.  A sheet already in its evidence directory or in the
+    archive is an idempotent no-op.
+    """
+    root = Path(root)
+    result: dict[str, Any] = {
+        "schema": 1,
+        "command": "planning.archive-task-sheet",
+        "task_id": task_id,
+        "status": "blocked",
+        "from": None,
+        "to": None,
+        "tracked": False,
+        "errors": [],
+        "next_actions": [],
+    }
+    try:
+        if apply:
+            pipeline_directory = active_pipeline_dir(root)
+        else:
+            pipeline_directory = root / PIPELINE_DIR_NAME
+    except (LegacyPipelineLayoutError, OSError) as error:
+        result["errors"] = [f"pipeline layout unavailable: {error}"]
+        result["next_actions"] = ["fix the layout conflict, then retry"]
+        return result
+    worktree = root / ".worktrees" / str(task_id)
+    try:
+        if worktree.exists():
+            result["errors"] = [
+                f"task worktree still exists: {worktree.relative_to(root).as_posix()}"
+            ]
+            result["next_actions"] = ["remove the task worktree, then archive the task sheet"]
+            return result
+    except OSError as error:
+        result["errors"] = [f"worktree state is unreadable: {error}"]
+        return result
+    sheet, resolution_errors = task_sheet_resolution(
+        root, task_id, pipeline_directory=pipeline_directory
+    )
+    if sheet is None:
+        result["errors"] = resolution_errors
+        result["next_actions"] = ["restore exactly one task sheet, then retry"]
+        return result
+    evidence_directory = pipeline_directory / str(task_id)
+    archived_sheet = pipeline_directory / ARCHIVE_DIR_NAME / f"{task_id}.md"
+    relative = sheet.relative_to(root).as_posix()
+    if sheet in {evidence_directory / f"{task_id}.md", archived_sheet}:
+        # Already terminal: a repeated step must not move the sheet again.
+        result.update(
+            {
+                "status": "archived",
+                "to": relative,
+                "tracked": _sheet_tracked_in_git(root, sheet),
+                "next_actions": ["no further action"],
+            }
+        )
+        return result
+    active_directory = root / "docs" / "tasks"
+    if sheet.parent != active_directory:
+        result["errors"] = [f"task sheet is not in a supported active location: {relative}"]
+        result["next_actions"] = ["reconcile the sheet location, then retry"]
+        return result
+    target = (
+        evidence_directory / f"{task_id}.md"
+        if evidence_directory.is_dir()
+        else archived_sheet
+    )
+    tracked = _sheet_tracked_in_git(root, sheet)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if tracked:
+            rc, output = git(
+                root, "mv", relative, target.relative_to(root).as_posix(),
+                redact_output=False,
+            )
+            if rc:
+                result["errors"] = [f"unable to move the task sheet: {output.strip()}"]
+                result["next_actions"] = ["inspect the Git index, then retry"]
+                return result
+        else:
+            os.replace(sheet, target)
+    except OSError as error:
+        result["errors"] = [f"unable to move the task sheet: {error}"]
+        result["next_actions"] = ["inspect the filesystem state, then retry"]
+        return result
+    result.update(
+        {
+            "status": "archived",
+            "from": relative,
+            "to": target.relative_to(root).as_posix(),
+            "tracked": tracked,
+            "next_actions": ["commit the moved task sheet"],
+        }
+    )
+    return result
 
 
 def planning_preflight(
@@ -2478,6 +2640,13 @@ def _finalize_evidence_unlocked(directory: Path, task_id: str, success: bool, *,
     # non-retained file (raw logs, scratch artifacts) is still pruned below.
     local_state = [name for name in LOCAL_STATE_FILE_NAMES if (directory / name).is_file()]
     spared = set(retained) | set(local_state)
+    # The task sheet moved into this directory at finalization is the task's own
+    # retained sheet: it belongs to the task, not to the scratch evidence the
+    # pruning below removes.  It stays outside ``retained_sha256`` the same way
+    # the local state files do.
+    own_sheet = f"{task_id}.md"
+    if (directory / own_sheet).is_file():
+        spared.add(own_sheet)
     if require_canonical:
         canonical = directory.resolve().parents[1] / PIPELINE_DIR_NAME / task_id
         if directory.resolve() != canonical.resolve():

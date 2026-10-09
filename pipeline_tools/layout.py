@@ -14,6 +14,11 @@ PIPELINE_DIR_NAME = ".pipeline"
 LEGACY_PIPELINE_DIR_NAME = ".workflow"
 PIPELINE_DIR_NAMES = (PIPELINE_DIR_NAME,)
 LAYOUT_DIR_NAMES = (PIPELINE_DIR_NAME, LEGACY_PIPELINE_DIR_NAME)
+# The flat archive for terminal task sheets whose task never had an evidence
+# directory.  It is a quarantine for sheets, not task evidence: it sits under
+# `.pipeline/` but is excluded from the evidence-directory scan, exactly like
+# the `planning` and `metrics` bookkeeping directories.
+ARCHIVE_DIR_NAME = "archive"
 
 
 class LegacyPipelineLayoutError(ValueError):

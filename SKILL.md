@@ -1,7 +1,7 @@
 ---
 name: pipeline
 description: "Use when an agent plans, builds, reviews, or merges code."
-version: 0.17.0
+version: 0.18.0
 author: Alex Chen (alexcdever)
 license: MIT
 platforms: [linux, macos, windows]
@@ -89,6 +89,8 @@ metadata:
 - `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。
 - 生成的 schema-4 契约携带 `goal` 字段（`path`/`sha256`/`planning_run_id`）与 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结；schema 1-3 只保留历史读取，继续使用旧 `implement_plan` 字段。
 - 正式 `evidence verify` 前先运行 `evidence readiness`；缺 final-check 或必要报告时记录“未准备好”，不要把阶段顺序问题误作产品验收失败。指标报告优先按 task/run/terminal 维度解释，不用全项目累计 `success_rate` 代替终态结论。
+- 任务单归档：任务关闭后单子不再留在 `docs/tasks/`，最终化的移动步骤（`pipeline_tools/planning.py` 的 `archive_task_sheet`）把它移入 `.pipeline/<task-id>/<task-id>.md`，没有证据目录时移入 `.pipeline/archive/<task-id>.md`，被跟踪的单子用 `git mv` 保持跟踪；`.worktrees/<task-id>` 仍存在时该步骤 blocked 且不移动任何文件。某任务的保留名是 `RETAINED_EVIDENCE_NAMES` ∪ `{<该任务 id>.md}`，所以最终化剪枝不会剪掉自己的单子；前向基线闸门对 `.pipeline/archive/**` 豁免保留名规则，但同一证据目录下别的非保留名文件仍是漂移。`.gitattributes` 的 `.pipeline/** -text` 使 `.pipeline/**` 下的证据经 checkout 后字节不变。
+- 阶段报告与机器结果的 `head` 记录**产生证据时的分支尖端**（执行证据是任务 worktree 的 branch tip，主工作树终审是复验时的 `HEAD`），`observed_at_commit` 与它同源；不要填"实现提交"或"冻结提交"，那会让之后任何一次证据提交都把它推离当前身份。
 - 正常只把短摘要放入上下文；完整输出、报告和统计事件留在项目文件中，需要诊断时再读取。
 
 ## 不可违反的规则
@@ -106,7 +108,7 @@ metadata:
 
 ## 标准生命周期
 
-1. 恢复核对：跨会话或重启后优先调用 `lifecycle resume/status/list/inspect`，再读任务单、Git 状态、`.pipeline/recovery-index.json` 和正式 evidence；通过任务单、worktree、分支和证据目录核对活动任务身份，过程记录以 lifecycle 事件和阶段报告为准；发现多个活动任务或状态不一致时先 reconcile，禁止从项目级状态文档、通知或自然语言报告推断状态或盲目重派。规划前置检查还要核验已有任务现场：`worktrees_without_sheet` 是阻塞项（没有已提交任务单就存在任务工作树），`uncommitted_sheets` 与它同级也是阻塞项（`docs/tasks/<task-id>.md` 已存在但未提交到 HEAD），`sheets_without_worktree` 和 `leftover_evidence` 是警告项。
+1. 恢复核对：跨会话或重启后优先调用 `lifecycle resume/status/list/inspect`，再读任务单、Git 状态、`.pipeline/recovery-index.json` 和正式 evidence；通过任务单、worktree、分支和证据目录核对活动任务身份，过程记录以 lifecycle 事件和阶段报告为准；发现多个活动任务或状态不一致时先 reconcile，禁止从项目级状态文档、通知或自然语言报告推断状态或盲目重派。规划前置检查还要核验已有任务现场，且**按任务单位置判定的状态**分类：任务单在 `docs/tasks/<task-id>.md` 是进行中，在 `.pipeline/<task-id>/<task-id>.md` 是已终态且有证据目录，在 `.pipeline/archive/<task-id>.md` 是已终态且没有证据目录，解析顺序固定且 fail-closed（同一 id 多处出现或三处都没有即报错）；`worktrees_without_sheet` 是阻塞项（active 或 archived 单子都算有单），`uncommitted_sheets` 与它同级也是阻塞项（`docs/tasks/<task-id>.md` 已存在但未提交到 HEAD），`sheets_without_worktree` 和 `leftover_evidence` 是警告项且只对进行中的单子判定；`.pipeline/archive/` 是任务单隔离区，不是任务证据目录。
 2. 规划拆分：以用户行为或可验证能力为单位；定依赖、范围、契约、风险、决策点、验收矩阵；未写成具体用例即设计未完成。有产物依赖顺序执行；仅文件范围与 fixture 完全不重叠且无隐含依赖才并行。
 3. 冻结任务单：默认 `docs/tasks/<task-id>.md`，证据 `.pipeline/<task-id>/`；提交任务单后把契约提交记录进 dispatch 记录与角色进度日志，主代理从主工作树用 `git worktree add` 创建 `<仓库根目录>/.worktrees/<task-id>`，确认主分支 HEAD、新 worktree、branch 与契约提交的关系；之后契约冻结，后续变化只走记录的修订版本。
 4. 执行：子代理只在任务 worktree 实现；用户功能贯通 UI→前端/协议→核心→领域事实→持久化/投影→回显→重启恢复；纯基建任务标 prerequisite，不得冒充产品闭环。

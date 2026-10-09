@@ -8,11 +8,13 @@
 
 1. 读产品目标、架构决策和与当前工作相关的任务单；任务单承载冻结契约与人类可读的契约说明，过程记录（锚点、验收台账、执行记录、最终结果）在 `.pipeline/<task-id>/` 的角色进度日志和阶段报告中。
 2. 查主分支、活动 worktree、未提交修改、最近提交和已有任务证据。
-2.1 检查已有任务现场。`pipeline-tools planning preflight` 的 `task_scenes` 结果报告三类事实，判断标准不同：
-   - `worktrees_without_sheet`：**阻塞**。存在任务工作树却没有已提交任务单，违反「没有已提交且冻结的任务单不得存在对应任务工作树」。
-   - `sheets_without_worktree`：警告。任务单已提交但工作树不在，通常是上一轮被中断，需要先 reconcile。
-   - `leftover_evidence`：警告。`.pipeline/<task-id>/` 有证据目录但无对应任务单，通常是遗留现场，需要先 reconcile。
+2.1 检查已有任务现场。任务单的位置编码状态：`docs/tasks/<task-id>.md` 是进行中或待派发，`.pipeline/<task-id>/<task-id>.md` 是已终态且有自己的证据目录，`.pipeline/archive/<task-id>.md` 是已终态且没有证据目录；三者按此顺序解析，同一 id 出现在多个位置或三处都没有时 fail-closed 报错（`pipeline_tools/core.py` 的 `task_sheet_resolution`）。`pipeline-tools planning preflight` 的 `task_scenes` 结果据此报告四类事实，判断标准不同：
+   - `worktrees_without_sheet`：**阻塞**。存在任务工作树却没有任务单（active 或 archived 都算有单），违反「没有已提交且冻结的任务单不得存在对应任务工作树」。
+   - `uncommitted_sheets`：**阻塞**。`docs/tasks/<task-id>.md` 已存在但未提交到 HEAD；只对 active 单子判定。
+   - `sheets_without_worktree`：警告。进行中的单子已提交但工作树不在，通常是上一轮被中断，需要先 reconcile；只看 active 单子，已关闭的任务（证据目录内或 archive 里的单子）不产生该警告。
+   - `leftover_evidence`：警告。`.pipeline/<task-id>/` 有证据目录但既无 active 单子也无 archived 单子，通常是遗留现场，需要先 reconcile。`.pipeline/archive/` 是任务单隔离区而不是证据目录（与 `planning`、`metrics` 同级排除），不会被当成一个叫 `archive` 的任务。
    只要 `task_scenes` 非空，`next_actions` 就会给出 `reconcile existing task scenes before planning`；先 reconcile，再规划。
+2.2 任务关闭后单子进入终态位置：最终化的移动步骤 `pipeline_tools/planning.py` 的 `archive_task_sheet(root, task_id)` 把单子从 `docs/tasks/` 移入 `.pipeline/<task-id>/<task-id>.md`（没有证据目录时移入 `.pipeline/archive/<task-id>.md`），被跟踪的单子用 `git mv` 保持跟踪；`.worktrees/<task-id>` 仍存在时该步骤 blocked，不移动任何文件。`docs/tasks/` 因此只反映进行中的工作。
 3. 读将改变的符号、直接调用方、持久化边界和现有测试。
 4. 搜索被替换的标签、接口、字段、错误、日志事件和旧测试。
 5. 记录现有测试对产品行为的约束，分类为保留/迁移/替换/删除。
