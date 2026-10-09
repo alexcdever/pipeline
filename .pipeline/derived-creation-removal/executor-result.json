@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "task_id": "derived-creation-removal",
+  "role": "executor",
+  "status": "blocked",
+  "exit_code": 1,
+  "acceptance": [
+    {
+      "id": "acceptance-test-1",
+      "status": "blocked",
+      "exit_code": 5,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-2",
+      "status": "blocked",
+      "exit_code": 5,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-3",
+      "status": "blocked",
+      "exit_code": 5,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-4",
+      "status": "blocked",
+      "exit_code": 5,
+      "evidence_refs": ["executor-report.md"]
+    },
+    {
+      "id": "acceptance-test-5",
+      "status": "blocked",
+      "exit_code": 0,
+      "evidence_refs": ["executor-report.md"]
+    }
+  ],
+  "unverified": [
+    "round 1 stopped at decision point 4: fully removing the derived creation path requires modifying tests/test_security_repairs.py, which is not in the contract allowed_paths, so no implementation, test, or documentation file was changed",
+    "acceptance tests 1-4 are not implemented; their commands currently exit 5 (no tests collected), and acceptance test 5 currently passes as an existing unrelated test that does not check the derived wording in references/task-design.md",
+    "the reverse validation (temporarily dropping the reject-derived rule to show acceptance test 1 fails) was not run because neither the implementation nor the test exists yet",
+    "the post-removal full-suite count was not measured; the baseline is 401 passed, 28 subtests passed",
+    "the main agent can unblock by amending allowed_paths to add tests/test_security_repairs.py, or by authorizing a fail-closed deprecation stub in place of removing create_derived_dispatch"
+  ]
+}
