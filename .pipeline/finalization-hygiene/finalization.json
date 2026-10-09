@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "task_id": "finalization-hygiene",
+  "status": "finalized",
+  "retained": [
+    "executor-report.md",
+    "review-report.md",
+    "final-check.md",
+    "executor-result.json",
+    "reviewer-result.json",
+    "final-result.json",
+    "finalization.json"
+  ],
+  "retained_sha256": {
+    "executor-report.md": "dc16ca80ea840842108eab95fb078a9dacc4a379882cc382db392407580dded7",
+    "review-report.md": "d8a873a6e50457a3a31461ee2dbd4a15096de2d8fcba58193da38c575c8be4a0",
+    "final-check.md": "82b91ff9599bda091bf1b4e2be97f9d4e373dc1d70c30a5c85dd403e3e08b34d",
+    "executor-result.json": "56da50c6f66441041b8b2a3529ea174c2a20c642f14dad46da2782bf04afb8f3",
+    "reviewer-result.json": "27550fa2d4ab67c91f414c9bdf408bc337068b65eeeaea8d419e8b6da9029b8c",
+    "final-result.json": "7a90b98929f0d6fb37a797dca712a9982ac371b5e42b4f4969f265e02b461836"
+  },
+  "identity": {
+    "head": "ae0fd081a953d96ad4dd844289c46eefc5de452c",
+    "branch": "main",
+    "worktree": "D:\\Projects\\Skills\\pipeline"
+  },
+  "finalized_at": "2026-10-09T03:15:42.740910+00:00",
+  "approved_by": "main"
+}
