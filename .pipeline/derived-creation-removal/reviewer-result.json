@@ -2,12 +2,12 @@
   "schema": 1,
   "task_id": "derived-creation-removal",
   "role": "reviewer",
-  "round": 1,
+  "round": 2,
   "status": "pass",
   "exit_code": 0,
-  "head": "b4ca1179f30b054493e0c5227bcb86f3f6602e6b",
-  "sheet_revision": 2,
-  "observed_at_commit": "4251e0e09a41417620d8b15981bcd10e122f966c",
+  "head": "d89ba7f4e9465d1d2ba4a03cb678ea4048bcb6d1",
+  "sheet_revision": 3,
+  "observed_at_commit": "d89ba7f4e9465d1d2ba4a03cb678ea4048bcb6d1",
   "acceptance": [
     {
       "id": "acceptance-test-1",
@@ -41,8 +41,9 @@
     }
   ],
   "unverified": [
+    "round 2 corrects the head semantics: head and observed_at_commit now record the branch tip at the moment the evidence was produced (d89ba7f), not the implementation commit b4ca117, which predated the revision 2 and 3 amendments and could never satisfy the evidence-only advance rule",
     "the runtime behaviour of the removed creation path (child worktree creation, rollback, continuation idempotency) cannot be re-exercised after removal because the entry point no longer exists; only its absence is verified",
-    "whether the '失败时保留父现场' guarantee the deleted recovery test used to cover needs a replacement assertion elsewhere was not decided here; reported as a finding for the main agent"
+    "final-check.md still records head b4ca117; it is another role's evidence and is not rewritten here, so the gate still reports its head mismatch until the final role re-produces it"
   ],
   "blockers": [],
   "recommendation": "ready_for_finalization"
