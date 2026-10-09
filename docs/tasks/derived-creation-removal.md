@@ -17,6 +17,7 @@
     "tests/test_planning.py",
     "tests/test_task_generation.py",
     "tests/test_derived_task_dispatch_recovery.py",
+    "tests/test_security_repairs.py",
     "tests/test_cli.py",
     "tests/test_acceptance_id_and_template_compliance.py",
     "SKILL.md",
@@ -49,8 +50,8 @@
     {
       "id": "remove-derived-creation",
       "kind": "repair",
-      "scope": "remove the derived task creation path from the tool and the CLI",
-      "resources": ["pipeline_tools/core.py", "pipeline_tools/__main__.py"],
+      "scope": "remove the derived task creation path from the tool, the CLI, and the security regression test that exercises it",
+      "resources": ["pipeline_tools/core.py", "pipeline_tools/__main__.py", "tests/test_security_repairs.py"],
       "resource_mode": "batch",
       "acceptance_tests": ["acceptance-test-2", "acceptance-test-4"]
     },
@@ -164,6 +165,15 @@
 - `pipeline_tools/contract.py`——`TASK_TYPES` 与 `_validate_derived_from` 是历史读取路径，保持原样
 - `docs/goal.md`；任何历史任务单与历史证据；六个已完成任务的证据目录
 - metrics 侧的 `include_derived` / `--no-derived` / `--confidence derived`（与任务类型无关）
+
+### 允许的测试改写（已授权，不视为放宽既有断言）
+
+以下两处**必须**随文档模型与创建路径的移除一起改写：
+
+- `tests/test_acceptance_id_and_template_compliance.py` 中钉住 `references/task-design.md` 派生生成措辞的用例（当前为 `test_references_task_design_documents_derived_generation_support`）：改为断言"新任务不再派生、接替关系用 `dependencies` 表达、历史 `derived` 仅作读取兼容"，并保留其"文档必须描述当前状态模型"的约束意图；被替换的措辞逐条记录理由。
+- `tests/test_security_repairs.py` 中只覆盖派生创建路径的用例（顶层 import 该函数、以及调用它做不安全标识符校验的用例）随之删除或改为对保留的历史读取路径的断言；逐条记录理由。
+
+除以上两处，其它既有断言一个都不能删除或放宽。
 
 ### 非目标
 
