@@ -16,6 +16,8 @@
     "tests/test_planning.py",
     "tests/test_evidence.py",
     "references/merge-and-recovery.md",
+    "references/acceptance-evidence.md",
+    "references/execution-and-review.md",
     "SKILL.md",
     "docs/tasks/finalization-hygiene.md",
     ".pipeline/finalization-hygiene/**"
@@ -59,8 +61,8 @@
     {
       "id": "documentation",
       "kind": "repair",
-      "scope": "record the re-verification window and the retained local state files",
-      "resources": ["references/merge-and-recovery.md", "SKILL.md"],
+      "scope": "record the re-verification window, the retained local state files, and the widened evidence-only scope in every document that states it",
+      "resources": ["references/merge-and-recovery.md", "references/acceptance-evidence.md", "references/execution-and-review.md", "SKILL.md"],
       "resource_mode": "batch",
       "acceptance_tests": ["acceptance-test-4"]
     }
