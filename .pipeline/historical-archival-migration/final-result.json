@@ -13,7 +13,7 @@
     {"id": "acceptance-test-5", "status": "pass", "exit_code": 0, "evidence_refs": ["final-check.md"]}
   ],
   "unverified": [
-    "post-merge re-verification is pending in the main worktree",
-    "stale task worktrees may be removed by the main agent after this task merges"
+    "finalization marker is written in the following step",
+    "stale task worktrees may be removed by the main agent after this task finalizes"
   ]
 }
