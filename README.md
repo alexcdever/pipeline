@@ -1,136 +1,21 @@
 # pipeline
 
-服务于大语言模型与具备子代理机制的 agent 软件的编程工作流，以及配套的 Python 机械闸门工具。
+一份纯流程契约：规定 agent 在开发编程项目时，主代理、执行子代理、审查子代理怎么协作，什么算完成，什么不算。
 
-## 工作流边界
+**没有脚本、没有工具、没有运行时。** 只有一个 markdown 契约和一个术语表。
 
-- 主代理负责任务拆分、冻结契约、真实设计判断、独立审查调度和最终裁决。
-- 执行子代理在隔离 worktree 实现冻结任务。
-- 审查子代理从独立上下文复验。
-- `pipeline_tools` 只校验机械事实：契约结构、Git 身份、范围、命令退出码、证据身份和本地统计；它不判断产品语义，也不自动合并。
+## 文件
 
-默认项目约定：
+| 文件 | 作用 |
+|---|---|
+| `SKILL.md` | 流程契约本身——全部规则都在这里，也是唯一的权威 |
+| `GLOSSARY.md` | 术语表。`SKILL.md` 的用词与它冲突时，以它为准 |
 
-- 任务单：`docs/tasks/` 只放**进行中或待派发**的任务单（`docs/tasks/*.md` 一律按任务单处理，不放 README 之类的说明文件）；任务关闭后移入 `.pipeline/<task-id>/<task-id>.md`（有证据目录时）或 `.pipeline/archive/<task-id>.md`（没有证据目录时），有终态的单子一律按其**声明 id**（`<!-- Task ID: -->`）归档，文件名与声明 id 不符时以声明 id 为准。三个位置按此顺序解析，同一 id 出现在多处或三处都没有即报错（`pipeline_tools/core.py` 的 `task_sheet_resolution`）
-- 正式任务证据：`.pipeline/<task-id>/`（仅阶段报告、机器结果、任务单副本和 `finalization.json`；成功收敛前的临时文件不属于交付）
-- `.pipeline/archive/` 是终态任务单的隔离区，**不是**任务证据目录：它和 `planning`、`metrics` 一样被排除在证据目录扫描之外
-- 恢复索引：`.pipeline/recovery-index.json`；规划中间审计和 stage 文件写入系统临时目录 `pipeline-tools/planning/`，项目只保留恢复索引
-- 临时目录与原始日志：系统临时目录下的 `pipeline-tools/`；`command run` 未指定 `--log` 时不会写入仓库
-- 项目级统计：`.pipeline/metrics/`（由工具自动生成；是否纳入 Git 由项目开发者决定）
-- 执行 worktree：`.worktrees/<task-id>`（主代理从主工作树创建唯一目录）
-- `.gitattributes` 声明 `.pipeline/** -text`，使 `.pipeline/**` 下的证据经 checkout 后字节不变；该属性不改写任何已提交的 blob
-- 任务契约提交后冻结，之后按记录的修订版本演进；每次修订用 `pipeline-tools task amend` 追加一条含前后哈希、理由、发起角色、裁决引用与结构性差异的记录（`.pipeline/<task-id>/amendments.json`）。身份字段（`schema`、`task_id`、`task_type`、`derived_from`）不可修订；放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；合并后不再修订，需求变化重新规划或新建任务（接替关系写进 `dependencies`），不回写历史
-- 任务级状态只由 lifecycle API/CLI 管理；状态写入（`transition`、`event`）只允许主代理角色接口（`role=main-agent`），其他角色只能读取或报告 findings
-- 任务单只承载冻结契约与人类可读的契约说明；过程记录和阶段报告写入 `.pipeline/<task-id>/`，不另行维护项目级状态文档
-- 跨会话优先使用 `lifecycle resume/status/list/inspect` 恢复和读取任务状态，不从通知、自然语言报告或项目级状态文件推断
-- 合并前需要执行、独立审查和主代理终检；实现提交与 `.pipeline/<task-id>/` 正式 evidence 提交分开；合并后在主工作树复验并单独提交 post-merge evidence
-- 审批策略：`.pipeline/config.json` 的 `approval_mode`（`automatic` | `manual`）是项目级默认，解析顺序为显式参数 → 运行记录 → 项目配置 → 默认 `automatic`；该文件需手工创建，没有命令会写入它
+## 用起来
 
-## 任务类型与命名
+把整个目录放进宿主的技能目录，或者直接让 agent 读 `SKILL.md`。
 
-契约里的任务类型 token 只有三个（`pipeline_tools/contract.py` 的 `TASK_TYPES`）：`vertical-feature`、`prerequisite`、`repair`。选择依据是任务与用户功能的关系，不是工作量：
-
-- `vertical-feature`：交付一条完整用户链路（入口 → 交互 → 应用处理 → 领域事实 → 持久化 → 回读 → 恢复），有真实外部入口和可观察的用户结果。链路段不允许豁免，证据下限至少 2。
-- `repair`：修复已有用户功能链路上的缺陷；按 `vertical-feature` 的标准覆盖完整链路，链路段同样不允许豁免。
-- `prerequisite`：只产出被后续任务消费的底座（schema、协议、算法、持久化、构建或环境能力）。契约必须写明 `non_user_completion_reason`；链路段允许结构化豁免。
-
-**新任务不再派生**：接替关系一律用 `dependencies` 表达；规划期声明 `type: derived`（或带 `parent_task_id`/`derived_from`）的计划会被 `validate_task_plan` fail-closed 拒绝，生成器不再产出 `task_type: derived` 的任务单，派发期的 `dispatch derived-create` 入口已移除。修正已冻结任务单改用 `task amend`。**历史 `derived` 只作读取兼容**：`TASK_TYPES` 仍含 `derived`，`contract.py` 的 `_validate_derived_from`、`_requires_full_chain` 与 `evidence_floor` 的 `parent_task_type` 分支保持原样，含 `derived_from` 的历史契约照旧通过 `task validate`；`continuation` 作为历史机器 id/path token 同样保留。详见 `references/task-design.md` 的「历史 `derived` 契约的读取规则」。
-
-创建实现 worktree 时，从仓库根目录执行：
-
-```bash
-git worktree add -b "<branch>" ".worktrees/<task-id>" "<baseline-head>"
-```
-
-`git worktree add` 会创建目标目录及缺失的 `.worktrees` 父目录，不需要预先 `mkdir`。项目根目录的 `.gitignore` 应包含 `/.worktrees/`。执行和审查子代理只使用主代理传入的 worktree，不自行创建第二个目录。
-
-## 机械工具
-
-Python 3.11 标准库即可运行；不联网、不遥测、不上传数据：
-
-```bash
-python -m pipeline_tools --help
-python -m pipeline_tools task validate docs/tasks/<task-id>.md
-python -m pipeline_tools task amend . --task-id <task-id> --reason '<why this revision is needed>' --adjudication '<reference>'
-python -m pipeline_tools task preflight . --contract <frozen-commit> --task-sheet docs/tasks/<task-id>.md
-python -m pipeline_tools scope check . --allowed 'src/**' --forbidden '**/.env'
-python -m pipeline_tools command run --cwd . --timeout 180 -- python -m unittest  # 原始日志默认进入系统临时目录
-python -m pipeline_tools evidence verify .pipeline/<task-id> --task-id <task-id> --branch <branch>
-python -m pipeline_tools gate pre-merge .pipeline/<task-id> --task-id <task-id> --branch <branch>
-python -m pipeline_tools gate post-merge .pipeline/<task-id> --task-id <task-id> --branch <branch>
-```
-
-退出码：`0` 通过、`1` 被执行命令失败、`2` 参数/配置错误、`3` 证据不足或环境阻塞、`4` 身份/契约/范围漂移。
-
-## 任务单修订与证据绑定
-
-`task amend` 只校验、分类与登记修订，不生成也不重写任务单内容：主代理先手工改 `docs/tasks/<task-id>.md`，再调用 `task amend`，由工具把新契约与上一版契约做结构性比对，并把结果追加到 `.pipeline/<task-id>/amendments.json`。
-
-- 判据一「是否改变验证面」：`acceptance_tests`、`allowed_paths`、`forbidden_paths`、`chain`、`required_evidence_levels`、`operations`、`risk` 任一实质变化即 `verification_surface_changed: true`，已有阶段证据作废。
-- 判据二「是否放松约束」：删除验收测试、降低某条 `evidence_level`、降低任务级 `required_evidence_levels` 的下限（`max(required_evidence_levels)` 下降，或元素移除后下限随之下降）、改写该条的 `test_ref`/`command_ref`、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标即 `loosened: true`；缺少 `--adjudication` 时拒绝。下限上升不算放松。
-- 身份字段 `schema`、`task_id`、`task_type`、`derived_from` 不可修订；`dependencies` 的增删只需理由，但必须校验依赖任务单真实存在（解析顺序 `docs/tasks/<id>.md` → `.pipeline/<id>/<id>.md` → `.pipeline/archive/<id>.md`）且依赖图无环。
-- 修订记录是追加式的：`revision` 从 2 起单调递增，旧条目字节不变，每条给出前版与新版哈希、理由、发起角色、裁决引用和结构性差异；拒绝或校验失败时不留下任何记录、哈希变化或文件移动。
-- `freeze_check` 以最新修订版的 `sheet_sha256` 为基准（没有修订记录时回退到 `.pipeline/<task-id>/goal.json`），所以已登记的修订不再报漂移，未走 `task amend` 的直接改动仍报 `task sheet changed after freeze`。
-- 证据有效性绑定修订版本：报告与机器结果写明 `sheet_revision`、`sheet_sha256` 和 `observed_at_commit`；只有当修订版本与当前版本不一致，或 `observed_at_commit..HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交时，证据才失效——`HEAD` 单纯前移不影响有效性。
-- 报告里的 `head` 是它评判的实现提交：`evidence verify`/`gate` 接受 `head` 是 `HEAD` 的祖先且 `head..HEAD` 只动本任务证据目录（含 `.pipeline/metrics/`）的情形（提交报告本身就会移动 `HEAD`，不能让报告自判失效）；`head` 不是祖先、或区间内动了产品/测试路径时仍报 `head does not match current Git identity`。
-- `task amend` 的退出码沿用统一语义：`0` 接受并登记、`2` 参数或契约结构错误、`3` 被拒绝（角色不符、改身份字段、缺少裁决、依赖缺失或成环）。
-
-新任务单使用 `templates/task-sheet.md`，填完后复制其 `pipeline-contract` 区块；用 `templates/pipeline-evidence.json` 为 executor、reviewer 和 main-final 报告生成机器证据。空模板本身故意不能通过校验，填入真实字段后才应通过。
-
-## 项目级反馈
-
-除 `metrics` 子命令外，所有 `pipeline-tools` 阶段命令默认自动记录一个结构化指标事件到
-目标项目的 `.pipeline/metrics/`。该目录由工具自动创建和写入；是否把它纳入 Git 由项目开发者
-决定，技能既不要求也不禁止（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。自动采集
-只使用命令退出码、结构化结果和可定位的证据路径，不会从自然语言报告推断产品结论，也不会
-记录 token、凭据、完整命令输出或业务数据。
-
-自动采集可以通过环境变量 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 暂时关闭（仅用于测试或
-明确的诊断场景）；正常任务执行不要关闭。`metrics` 子命令本身不递归生成阶段事件，但
-`metrics record` 仍可用于补充经过直接证据确认的事件。
-
-```bash
-python -m pipeline_tools metrics record . retry --confidence observed --task-id <task-id> --result unknown --attempt 1
-python -m pipeline_tools metrics report .
-python -m pipeline_tools metrics report . --task-id <task-id> --terminal-only
-python -m pipeline_tools metrics export . .pipeline/metrics-summary.json
-python -m pipeline_tools metrics purge .
-python -m pipeline_tools metrics import-opencode-session . <session-export.json> --task-id <task-id>
-python -m pipeline_tools runtime preflight . --node 22.23.2 --pnpm 10.27.0
-python -m pipeline_tools runtime handshake . .pipeline/<task-id> --role reviewer --node 22.23.2 --pnpm 10.27.0
-python -m pipeline_tools runtime role-scope . --role main-agent --product-pattern 'packages/**'
-python -m pipeline_tools --format json --output .pipeline/<task-id>/task-validate.json task validate docs/tasks/<task-id>.md
-python -m pipeline_tools --format json lifecycle resume . --task-id <task-id>
-python -m pipeline_tools --format json lifecycle status . --task-id <task-id>
-python -m pipeline_tools --format json lifecycle list .
-python -m pipeline_tools --format json lifecycle inspect . --task-id <task-id>
-# 兼容旧版证据查询：仍支持 --evidence
-python -m pipeline_tools --format json lifecycle status . --task-id <task-id> --evidence .pipeline/<task-id>
-python -m pipeline_tools dispatch write dispatch.json .pipeline/<task-id>/dispatch.json
-python -m pipeline_tools result verify .pipeline/<task-id>/reviewer-result.json --task-id <task-id> --role reviewer
-python -m pipeline_tools --format json freshness . .pipeline/<task-id> --result .pipeline/<task-id>/reviewer-result.json
-python -m pipeline_tools --format json evidence readiness .pipeline/<task-id> --task-id <task-id>
-```
-
-自动事件和 `metrics record` 事件都逐文件原子写入 `.pipeline/metrics/`。只有 `observed` 和 `derived` 进入核心聚合；`reported` 只留作追溯。新版本工具第一次访问已有 `.workflow/` 项目时会自动把整个目录原样迁移到 `.pipeline/`，核对文件哈希并将后续工具写入路径统一切换到 `.pipeline/`；不会改写 evidence 文件内部的历史文本引用。若 `.pipeline/` 已存在则停止并报告冲突，不会覆盖或双写。详见 `references/metrics-contract.md`。
-
-`metrics import-opencode-session` 只从 OpenCode Desktop 的结构化导出中提取可验证的工具错误、子代理错误和用户流程纠正信号；不会把自然语言 PASS 当作验收事实。`runtime preflight` 应在派发 executor/reviewer 前执行，`runtime role-scope` 用于阻止未授权的主代理产品代码修改。
-
-`runtime handshake` 是可选的能力检查，写入 `<workflow>/capability-handshake.json`，记录仓库可读、workflow 可写、产品代码写权限与 runtime 状态；它不是被移除的那个强制握手机制，新任务不依赖该命令也能完成闭环。版本差异见 `references/compat-and-migration.md`。
-
-角色进度日志 `.pipeline/<task-id>/<role>-progress.jsonl` 是过程记录，由 `.gitignore` 规则 `.pipeline/*/*-progress.jsonl` 排除，不进入 Git；规划 stage、规划中间审计和原始日志优先写入系统临时目录 `pipeline-tools/`，项目侧仅保留 `.pipeline/recovery-index.json` 用于恢复索引，不把临时产物当正式 evidence。正式任务 evidence 仍在 `.pipeline/<task-id>/`；pre-merge 必须先提交包含 `final-check.md`/`final-result.json` 在内的完整报告和机器结果集合以满足 gate，merge 后主工作树更新这些同名文件并提交 `final-check.md`、`final-result.json`、`finalization.json` 作为独立 post-merge evidence；`.pipeline/metrics/` 的指标事件不受这条规则约束，是否纳入 Git 由项目开发者决定（本仓库把 `.pipeline/metrics/` 加入了 `.gitignore`）。正式 `evidence verify` 前先执行 `evidence readiness`，避免把尚未生成 final-check 的正常阶段顺序误报为最终证据缺陷。
-
-结构化命令使用统一响应外壳：`schema`、`command`、`status`、`exit_code`、`observed`、`errors`、`blockers`、`artifacts`、`next_actions` 和 `unverified`。JSON 文件是流程编排输入，终端摘要只用于人类查看。
-
-结构化闭环顺序为：`dispatch write` → agent 写入 `executor-result.json`/`reviewer-result.json` → `final-check` → `evidence readiness` → `result verify` → `freshness` → `lifecycle status` → merge gate。跨会话恢复时先用 `lifecycle resume/status/list/inspect`，再读取 `.pipeline/recovery-index.json` 和正式 evidence；Markdown 报告用于人类阅读，JSON 结果用于机械编排。
-
-## 测试
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Windows 入口：`bin\pipeline-tools.cmd`；POSIX 入口：`bin/pipeline-tools`。两者会把工具根目录加入 Python 模块搜索路径，因此可以从其他工作目录调用。
+**用之前先看 `SKILL.md` 的「硬前提」。** 不满足的话，这个技能不适用——它没有降级模式，也不接受同一个上下文既实现又审查。
 
 ## 许可证
 
