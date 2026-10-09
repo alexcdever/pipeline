@@ -1090,6 +1090,61 @@ class EvidenceTests(unittest.TestCase):
             for name in self.REPORT_FILES:
                 self.assertIn(f'{name} sheet_revision must be a positive integer', errors)
 
+    # --- A closed task still fails after product-path commits ----------------
+
+    def test_finalized_verification_still_fails_after_product_commits(self):
+        from pipeline_tools.core import verify_finalization_snapshot
+        from pipeline_tools.planning import finalize_evidence
+
+        def closed_repo(root):
+            """Merge the task, finalize its evidence and publish the marker."""
+            directory, _worktree, _head = self._task_branch_repo(root)
+            self._git(root, 'merge', '--no-ff', '-m', 'merge demo-task', 'demo-task')
+            # Point every reference at a retained name so finalization's dangling
+            # reference check has nothing to object to, then approve the finalize.
+            for name in self.REPORT_FILES:
+                path = directory / name
+                path.write_text(
+                    path.read_text(encoding='utf-8').replace('test.log', 'executor-report.md'),
+                    encoding='utf-8',
+                )
+            final = directory / 'final-result.json'
+            value = json.loads(
+                final.read_text(encoding='utf-8').replace('test.log', 'executor-report.md')
+            )
+            value['decision'] = 'READY_FOR_EVIDENCE_FINALIZATION'
+            final.write_text(json.dumps(value), encoding='utf-8')
+            result = finalize_evidence(directory, 'demo', True, require_canonical=True)
+            self.assertEqual('finalized', result['status'], result)
+            self._git(root, 'add', '.pipeline/demo/finalization.json')
+            self._git(root, 'commit', '-qm', 'finalization marker')
+            published = self._git(root, 'rev-parse', 'HEAD').stdout.strip()
+            marker = json.loads((directory / 'finalization.json').read_text(encoding='utf-8'))
+            self.assertEqual([], verify_finalization_snapshot(directory, marker))
+            return directory, marker, published
+
+        # (a) a product-only commit after the recorded head still invalidates it.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, marker, _published = closed_repo(root)
+            (root / 'src' / 'app.py').write_text('later product change\n', encoding='utf-8')
+            self._git(root, 'add', 'src/app.py')
+            self._git(root, 'commit', '-qm', 'later product change')
+            self.assertIn('finalization head is stale', verify_finalization_snapshot(directory, marker))
+
+        # (b) a mixed commit that touches an evidence path and a product path must
+        # stay fail-closed: the range is not evidence-only.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory, marker, published = closed_repo(root)
+            (directory / 'scratch.md').write_text('scratch\n', encoding='utf-8')
+            (root / 'src' / 'app.py').write_text('mixed change\n', encoding='utf-8')
+            self._git(root, 'add', '.pipeline/demo/scratch.md', 'src/app.py')
+            self._git(root, 'commit', '-qm', 'mixed evidence and product')
+            moved = self._git(root, 'diff', '--name-only', published, 'HEAD').stdout.split()
+            self.assertEqual(sorted(['.pipeline/demo/scratch.md', 'src/app.py']), sorted(moved))
+            self.assertIn('finalization head is stale', verify_finalization_snapshot(directory, marker))
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):

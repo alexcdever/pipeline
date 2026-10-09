@@ -1294,5 +1294,102 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual(blocked['status'], 'blocked')
             self.assertIn('finalization retained evidence hash mismatch', blocked['missing'])
 
+    # --- Local state files survive finalization pruning ----------------------
+
+    def _revision_chain_evidence_dir(self, evidence):
+        """Give the merged task a revision-2 chain the reports were produced for."""
+        digest = 'b' * 64
+        (evidence / 'amendments.json').write_text(json.dumps({
+            'schema': 1, 'task_id': 'demo',
+            'revisions': [{
+                'revision': 2, 'at': '2026-01-01T00:00:00+00:00', 'by': 'main',
+                'requested_by': 'main', 'reason': 'tighten one acceptance assertion',
+                'previous_sheet_sha256': 'a' * 64, 'sheet_sha256': digest,
+                'changes': {},
+            }],
+        }), encoding='utf-8')
+        (evidence / 'goal.json').write_text(json.dumps({
+            'schema': 1, 'task_id': 'demo', 'task_sheet_sha256': digest,
+        }), encoding='utf-8')
+        for name in ('executor-report.md', 'review-report.md', 'final-check.md'):
+            self._rewrite_schema_two_report(evidence, name, sheet_revision=2)
+        return digest
+
+    def test_finalization_keeps_local_state_files(self):
+        from pipeline_tools.core import (
+            RETAINED_EVIDENCE_NAMES,
+            _recorded_task_sheet_sha256,
+            task_sheet_revision,
+        )
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, _baseline, _merged = self._merged_finalization_repo(d)
+            digest = self._revision_chain_evidence_dir(evidence)
+            goal_before = (evidence / 'goal.json').read_bytes()
+            (evidence / 'raw-process.log').write_text('scratch\n', encoding='utf-8')
+            gate = self._run_cli(root, 'gate', 'post-merge', str(evidence),
+                                 '--task-id', 'demo', '--branch', 'main')
+            self.assertEqual(gate.returncode, 0, gate.stdout + gate.stderr)
+            finalize = self._run_cli(root, 'planning', 'evidence-finalize', str(evidence),
+                                     '--task-id', 'demo', '--success')
+            self.assertEqual(finalize.returncode, 0, finalize.stdout + finalize.stderr)
+            self.assertEqual(json.loads(finalize.stdout)['status'], 'finalized')
+            # The freeze record and the revision chain survive pruning...
+            self.assertTrue((evidence / 'goal.json').is_file())
+            self.assertTrue((evidence / 'amendments.json').is_file())
+            # ...unchanged, so the facts the tool reads back are still the ones the
+            # reports were produced against.
+            self.assertEqual(goal_before, (evidence / 'goal.json').read_bytes())
+            self.assertEqual(2, task_sheet_revision(root, 'demo')[0])
+            self.assertEqual(digest, _recorded_task_sheet_sha256(root, 'demo'))
+            # The retained evidence set is untouched...
+            for name in RETAINED_EVIDENCE_NAMES:
+                self.assertTrue((evidence / name).is_file(), name)
+            # ...while an unrelated process artifact is still pruned.
+            self.assertFalse((evidence / 'raw-process.log').exists())
+            spared = set(RETAINED_EVIDENCE_NAMES) | {'goal.json', 'amendments.json'}
+            leftovers = sorted(
+                path.name for path in evidence.iterdir()
+                if path.name not in spared and path.name != '.lifecycle.lock'
+            )
+            self.assertEqual([], leftovers)
+
+    def test_finalized_verification_survives_another_tasks_evidence_commit(self):
+        from pipeline_tools.core import verify_finalization_snapshot
+        with tempfile.TemporaryDirectory() as d:
+            root, evidence, _baseline, merged = self._merged_finalization_repo(d)
+            gate = self._run_cli(root, 'gate', 'post-merge', str(evidence),
+                                 '--task-id', 'demo', '--branch', 'main')
+            self.assertEqual(gate.returncode, 0, gate.stdout + gate.stderr)
+            finalize = self._run_cli(root, 'planning', 'evidence-finalize', str(evidence),
+                                     '--task-id', 'demo', '--success')
+            self.assertEqual(finalize.returncode, 0, finalize.stdout + finalize.stderr)
+            self.assertEqual(json.loads(finalize.stdout)['status'], 'finalized')
+            marker_path = evidence / 'finalization.json'
+            subprocess.run(['git', '-C', str(root), 'add', '.pipeline/demo/finalization.json'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'finalization marker'], check=True)
+            marker_bytes = marker_path.read_bytes()
+            # Another task publishes its own evidence: a .pipeline path, not a
+            # product change, so it must not invalidate this closed task.
+            other = root / '.pipeline' / 'other-task'
+            other.mkdir(parents=True)
+            (other / 'executor-report.md').write_text('other task evidence\n', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', '.pipeline/other-task'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'other task evidence'], check=True)
+            moved = subprocess.run(
+                ['git', '-C', str(root), 'diff', '--name-only', merged, 'HEAD'],
+                check=True, capture_output=True, text=True,
+            ).stdout.split()
+            self.assertIn('.pipeline/other-task/executor-report.md', moved)
+            self.assertNotIn('src/app.py', moved)
+            # The verdict survives without deleting the marker or rewriting its identity.
+            self.assertTrue(marker_path.is_file())
+            self.assertEqual(marker_bytes, marker_path.read_bytes())
+            marker = json.loads(marker_bytes)
+            self.assertEqual(merged, marker['identity']['head'])
+            self.assertEqual([], verify_finalization_snapshot(evidence, marker))
+            verify = self._run_cli(root, 'evidence', 'verify', str(evidence),
+                                   '--task-id', 'demo', '--phase', 'finalized')
+            self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
+
 
 if __name__ == '__main__': unittest.main()

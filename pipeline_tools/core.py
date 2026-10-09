@@ -33,6 +33,13 @@ MACHINE_RESULT_NAMES = ("executor-result.json", "reviewer-result.json", "final-r
 # the history gate (this module) and evidence finalization (planning) read this
 # one source so the retained set can never drift apart.
 RETAINED_EVIDENCE_NAMES = REPORT_NAMES + MACHINE_RESULT_NAMES + ("finalization.json",)
+# Untracked local state that evidence finalization must not prune along with the
+# rest of the scratch evidence.  The freeze record and the append-only revision
+# chain are audit facts that later checks read back: losing the chain makes the
+# tool report revision 1 for a task whose reports declare a higher revision.
+# These files are kept alongside the retained evidence set but stay outside it --
+# they are local state, not evidence, so they never enter ``retained_sha256``.
+LOCAL_STATE_FILE_NAMES = ("goal.json", "amendments.json")
 CONFIDENCES = {"observed", "derived", "reported"}
 METRIC_RESULTS = {"pass", "passed", "fail", "failed", "blocked", "flaky", "unknown"}
 BLOCKER_CLASSES = {"product", "environment", "permission", "evidence", "dependency", "workflow", None}
@@ -590,7 +597,7 @@ def evidence_verify(
                 # the strict identity rule.
                 reported_head = value.get("head")
                 if reported_head != current_identity.get("head") and not head_advanced_by_evidence_only(
-                    root, reported_head, current_identity.get("head"), directory
+                    root, reported_head, current_identity.get("head")
                 ):
                     errors.append(f"{name} head does not match current Git identity")
                 if value.get("branch") != (branch or current_identity.get("branch")):
@@ -1187,7 +1194,7 @@ def verify_finalization_snapshot(directory: Path, marker: dict[str, Any], root: 
             # the same evidence-only advance the stage reports accept; anything
             # else (unknown, non-ancestor or product-touching range) stays stale.
             if key == "head" and head_advanced_by_evidence_only(
-                identity_root, recorded, current.get("head"), directory
+                identity_root, recorded, current.get("head")
             ):
                 continue
             errors.append(f"finalization {key} is stale")
@@ -1820,7 +1827,7 @@ def evidence_freshness(root: Path, evidence_directory: Path, result_path: Path |
                 # host project (see references/metrics-contract.md). scope_check
                 # already exempts them; evidence_only must use the same basis or
                 # every task that ran pipeline-tools flips to a false product drift.
-                evidence_only = evidence_only_paths(root, evidence_directory, changed_paths)
+                evidence_only = evidence_only_paths(changed_paths)
                 observed.append({"fact": "product_head", "value": product_head})
                 observed.append({"fact": "changed_paths", "value": changed_paths})
                 observed.append({"fact": "evidence_only", "value": evidence_only})
@@ -2691,41 +2698,52 @@ def changed_paths_between(root: Path, base: str, head: str | None = None) -> lis
     return [path.replace("\\", "/") for path in output.splitlines() if path.strip()]
 
 
-def evidence_only_paths(root: Path, evidence_directory: Path, changed_paths: list[str]) -> bool:
-    """Whether every changed path belongs to this task's own evidence.
+def evidence_only_paths(changed_paths: list[str]) -> bool:
+    """Whether every changed path is pipeline evidence bookkeeping.
 
-    Committing the task's evidence tree (and the metrics stream) is workflow
-    bookkeeping: it advances HEAD without changing the product or the tests, so
-    it must never invalidate evidence.  This is the single basis shared by
+    ``.pipeline/`` is the pipeline's own bookkeeping tree: every task's evidence
+    directory, the metrics stream and the planning records live there, and
+    committing them advances HEAD without changing the product or the tests, so
+    they must never invalidate evidence.  The scope is every task's evidence, not
+    just the task being judged -- another task publishing its own evidence is not
+    a product change either.  Any path outside ``.pipeline`` is a product-path
+    change.
+
+    The judgement is fail-closed in both required directions: a commit that
+    touches an evidence path *and* a product path is not evidence-only, and a
+    path that cannot be resolved inside the project (empty, absolute or carrying
+    traversal) is treated as a product path.  This is the single basis shared by
     ``evidence_freshness`` and the schema-2 report head check.
     """
-    try:
-        evidence_root = Path(evidence_directory).resolve().relative_to(Path(root).resolve()).as_posix()
-    except (OSError, ValueError):
+    for path in changed_paths:
+        normalized = _normalize_path(path)
+        if (
+            not normalized
+            or normalized.startswith("/")
+            or bool(re.match(r"^[A-Za-z]:/", normalized))
+            or ".." in normalized.split("/")
+        ):
+            return False
+        if normalized == ".pipeline" or normalized.startswith(".pipeline/"):
+            continue
+        if is_metrics_path(normalized):
+            continue
         return False
-    if not evidence_root:
-        return False
-    return all(
-        path == evidence_root
-        or path.startswith(evidence_root + "/")
-        or is_metrics_path(path)
-        for path in changed_paths
-    )
+    return True
 
 
 def head_advanced_by_evidence_only(
     root: Path,
     reported_head: Any,
     current_head: Any,
-    evidence_directory: Path,
 ) -> bool:
-    """Whether HEAD moved past ``reported_head`` by committing only task evidence.
+    """Whether HEAD moved past ``reported_head`` by committing only evidence.
 
     A record names the commit it judged.  Publishing that record moves HEAD, so
     requiring exact equality would make every report invalidate itself.  Only a
-    plain commit range whose changed paths are all this task's evidence (or the
-    metrics stream) is accepted; an unknown, non-ancestor or product-touching
-    range keeps the strict rule.
+    plain commit range whose changed paths are all evidence paths (any task's
+    ``.pipeline/`` evidence, the metrics stream) is accepted; an unknown,
+    non-ancestor or product-touching range keeps the strict rule.
     """
     if not isinstance(reported_head, str) or not isinstance(current_head, str):
         return False
@@ -2739,7 +2757,7 @@ def head_advanced_by_evidence_only(
     changed = changed_paths_between(root, reported_head, current_head)
     if changed is None:
         return False
-    return evidence_only_paths(root, evidence_directory, changed)
+    return evidence_only_paths(changed)
 
 
 def evidence_revision_status(

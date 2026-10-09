@@ -79,7 +79,7 @@ metadata:
 - 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`；迁移只移动并校验文件，不改写 evidence 内部历史路径文本，后续工具统一使用 `.pipeline/`。
 - 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
 - `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
-- 证据身份按阶段分工：`active`（pre-merge）阶段把报告绑定到它观察的提交——`head` 必须等于当前 HEAD 或仅被本任务证据提交推进、`branch`/`worktree` 必须等于当前 Git 身份；`finalized`（post-merge）阶段**只用任务单 id 与 `sheet_revision` 识别证据**，不再判定提交引用（合并本身必然在当前 HEAD 上引入产品路径提交，任何提交相对判据都不成立）。`finalized` 阶段仍要求 `head`、`branch`、`worktree` 存在且格式合法，`observed_at_commit` 则是可选记录事实：写明即有格式要求，缺失不算错误。fail-closed：`task_id` 不符、证据目录名与任务 id 不符、阶段取值无法确定时一律报错；`sheet_revision` 字段存在但不合法或与当前修订版本不符时报错，字段缺失则按历史形态处理（不新增错误，只报 `unverified`）。`active` 的判定与错误文本与改动前逐字一致。
+- 证据身份按阶段分工：`active`（pre-merge）阶段把报告绑定到它观察的提交——`head` 必须等于当前 HEAD 或仅被证据提交推进（判据是整个 `.pipeline/**` 子树，含别的任务的证据目录与 `.pipeline/metrics/`；`.pipeline` 之外的任何改动都不算）、`branch`/`worktree` 必须等于当前 Git 身份；`finalized`（post-merge）阶段**只用任务单 id 与 `sheet_revision` 识别证据**，不再判定提交引用（合并本身必然在当前 HEAD 上引入产品路径提交，任何提交相对判据都不成立）。`finalized` 阶段仍要求 `head`、`branch`、`worktree` 存在且格式合法，`observed_at_commit` 则是可选记录事实：写明即有格式要求，缺失不算错误。fail-closed：`task_id` 不符、证据目录名与任务 id 不符、阶段取值无法确定时一律报错；`sheet_revision` 字段存在但不合法或与当前修订版本不符时报错，字段缺失则按历史形态处理（不新增错误，只报 `unverified`）。`active` 的判定与错误文本与改动前逐字一致。
 - 对账（`evidence reconcile`）按交付是否已合并选择判据：存在 `finalized` 标记，或报告记录的分支尖端已是当前 `HEAD` 的祖先，即按 post-merge 判据（不再施加提交绑定）。判断分支时排除 `HEAD` 当前所在分支——主工作树终审报告记的就是它，其尖端永远是 `HEAD` 的祖先，留在候选里会把未合并任务误判为已合并。标记或分支尖端才是阳性证明，分支引用缺失、不是祖先、或是当前分支都只是缺少该证明，不等于"未合并"，未合并任务仍施加完整提交绑定。报告身份的一致与完整只看 `task_id` 与 `sheet_revision`。
 - 最终化的报告校验接受模板实际产出的 schema：schema 1（历史形态）与 schema 2（当前模板）都接受；schema 2 报告必须带合法的 `head`。其余必需字段、角色、`task_id` 与 post-merge 状态集合的校验两者一致。
 - 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
@@ -99,7 +99,7 @@ metadata:
 4. 独立审查：独立上下文直接复验；转述他人结果不算。
 5. 证据属当前任务：`active` 阶段 task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成；`finalized`（post-merge）阶段身份是 task-id 加 `sheet_revision`，提交引用只作记录，不改写报告。
 6. 真实链路不可替代：单元/组件/协议/持久化/真实浏览器/设备各自证明各自边界。
-7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）；post-merge `final-check.md`、`final-result.json` 与 `finalization.json` 作为独立 evidence 提交。
+7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）；post-merge `final-check.md`、`final-result.json` 与 `finalization.json` 作为独立 evidence 提交。复验窗口的语义是"关闭时通过即算通过"：任务关闭时的那次 `finalized verify` 通过就不必再刷标记，之后只有产品路径提交进入 HEAD 才会让记录的 `head` 合法变旧（此时重新复验，不改写或删除标记）；别的任务提交自己的证据（`.pipeline/**`）不会让标记变旧，同一提交同时改动证据路径与产品路径则 fail-closed 判为非仅证据提交。
 8. 超时有界：单条测试默认 3 分钟硬上限，超时必须停止诊断；整套用更大的明确累计上限。
 9. 决策点停下：缺产品决策、协议兼容、权限、外部服务或验收环境时保留现场上报，不替用户定案。
 10. 数量≠覆盖率：绿色数、退出码、完成通知、报告存在、代码行数增加都不能单独 PASS。
@@ -113,7 +113,7 @@ metadata:
 5. 独立审查：新上下文核身份和报告新鲜度，逐条复验；通过 ≠ 已合并。
 6. 最终检查：读任务单/执行/审查/最终检查报告，抽查高风险测试，重跑关键验收、全量测试、构建、lint、范围、冲突检查；全部有证据才 ready-to-merge。
 7. 合并复验：提交实现+证据，用 branch ref 合并；主工作树重装依赖，重跑聚焦验收、全量测试、构建、lint、差异检查；通过才标已合并。
-8. 持久化：把验收台账、执行记录、`derived`/`continuation` 任务索引和最终结果写入 `.pipeline/<task-id>/` 的角色进度日志、阶段报告和机器结果；成功最终化后只保留阶段报告、机器结果和 `finalization.json`，失败时保留完整现场。不另行维护项目级状态文档。完成通知含项目、task-id、阶段、分支、合并提交、验收状态、遗留项。
+8. 持久化：把验收台账、执行记录、`derived`/`continuation` 任务索引和最终结果写入 `.pipeline/<task-id>/` 的角色进度日志、阶段报告和机器结果；成功最终化后只保留阶段报告、机器结果和 `finalization.json` 以及两个本地状态文件（冻结记录 `goal.json`、追加式修订链 `amendments.json`），其余过程产物照旧剪掉，失败时保留完整现场。不另行维护项目级状态文档。完成通知含项目、task-id、阶段、分支、合并提交、验收状态、遗留项。
 
 ## 证据目录最小要求
 
