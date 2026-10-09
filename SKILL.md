@@ -1,148 +1,106 @@
 ---
 name: pipeline
-description: "Use when an agent plans, builds, reviews, or merges code."
-version: 0.18.0
-author: Alex Chen (alexcdever)
-license: MIT
-platforms: [linux, macos, windows]
-metadata:
-  tags: [coding, workflow, planning, testing, review, worktree, agents]
-  related_skills: []
+description: 使用子代理交付用户行为的编程工作流：谁做什么、按什么顺序、什么算完成。
 ---
 
 # 编程工作流
 
-服务于大语言模型与具备子代理机制的 agent 软件的编程工作流：定义主代理、执行子代理、审查子代理之间的协作契约，以及任务单、验收测试、证据、恢复与合并规则。它面向的是能读写项目文件、运行命令并派发子代理的 LLM 宿主（如 agent 软件、IDE 内置 agent、CLI agent）；不规定具体模型、子代理调用方式或通知方式；实现 worktree 的路径、创建和核对规则除外。
+一份纯流程契约：规定主代理、执行子代理、审查子代理怎么协作，什么算完成，什么不算。它不规定用什么模型、什么子代理机制、什么编程语言，也不附带任何脚本；Git 是唯一被指定的工具。
 
-## 适用场景
+## 硬前提
 
-具备子代理机制的大语言模型 agent 修改、重构、修复、扩展或验证 Git 项目时使用，尤其需要隔离 worktree、独立审查和真实测试的任务。
+**宿主必须能派发具备独立上下文的子代理，并且能读写项目文件、运行命令、使用 Git worktree。**
 
-执行 agent 须能读写项目文件、运行构建/测试命令、创建 Git worktree 并创建子代理；能力不足时在结果中标注证据边界，单代理自检 ≠ 独立审查。主代理成功返回、测试数量增加、退出码为 0 或报告文件存在，都不能单独代表产品完成。
+独立上下文的判据（它约束的是审查者）：审查者能看到的东西，全部来自派发时传给它的材料、和它被指到的那棵 worktree；它读不到主代理与执行者的对话历史。
 
-## 角色契约
+做不到这两点，本技能不适用——**不要自己给自己降级**：不要让同一个上下文既实现又审查。没有独立审查，这套流程剩下的部分全部失去意义。
 
-- **用户**：提供目标、优先级；裁决真实设计决策、外部授权、不可逆风险。
-- **主代理**：读状态 → 拆任务 → 写任务单+逐条验收测试 → 提交冻结后派发 → 调度执行/审查子代理 → 核全部证据并重跑关键验收 → 把任务级过程记录写入 `.pipeline/<task-id>/` 的角色进度日志和阶段报告 → 全闸门通过后合并并在主工作树复验。实现提交与正式 evidence 提交分开；pre-merge 必须包含满足 gate 的完整三份报告和三份机器结果，post-merge 更新同名 `final-check.md`/`final-result.json` 并提交 `finalization.json`，三者作为独立 evidence 提交。不默认替执行子代理写业务代码；遇真实决策点保留现场停下，不猜测。
-- **执行子代理**：在指定 worktree 按红→绿→蓝实现冻结任务单；跑验收命令与必要回归；只在自己任务证据目录写执行报告。不改冻结目标/范围/验收测试，不自行扩大产品设计；发现契约缺陷时提交结构化反馈（原因、期望、证据定位）给主代理，由主代理裁决并修订任务单，不得自行改契约。
-- **审查子代理**：独立上下文读任务单、代码、执行报告；亲自重跑验收测试；查正确性、边界、范围、覆盖率与证据新鲜度；发现问题报 BLOCKED/FAIL。默认只读，不改产品代码。
+## 角色
 
-## 实现 worktree 约定
+- **主代理**：面向用户，决定做什么、以及什么算完成。规划、写单元描述、派发子代理、核对结果、合并。**自己不改产品代码**（合并与跑验收命令不算改代码）。
+- **执行子代理**：在隔离 worktree 中实现一个用户行为，遵循红绿蓝循环。不动单元描述里的验收口径；口径有问题就报回来，不自行改。
+- **审查子代理**：在独立上下文中亲手复验，不采信任何转述，只看代码、测试，和自己跑出来的结果。它不改产品代码、不提交任何东西——复验时留下的临时改动留在工作区，不进提交。
 
-- 任务单契约提交后冻结，之后只按记录的修订版本演进：主代理先手工改任务单，再用 `pipeline-tools task amend <root> --task-id <id> --reason <text>` 校验并登记一条修订记录（`.pipeline/<task-id>/amendments.json`）；身份字段 `schema`/`task_id`/`task_type`/`derived_from` 不可修订，放松约束（删除或放宽验收测试、降低证据等级——含任务级 `required_evidence_levels` 的下限、扩大 `allowed_paths`、收窄 `forbidden_paths`、删除非目标）必须带 `--adjudication`；未记录的改动仍是静默篡改，会被 `freeze_check` 判为漂移。合并后不再修订，需求变化走重新规划或新建任务（接替关系写进 `dependencies`），不回写已合并的历史。随后由主代理从主工作树创建该任务唯一的实现 worktree。标准路径是 `<仓库根目录>/.worktrees/<task-id>`；不得使用仓库同级目录、项目内的 `worktrees/`，也不得为同一个任务创建第二个实现 worktree。
-- 必须从主工作树根目录执行：
+## 用户行为
 
-  ```bash
-  git worktree add -b "<branch>" ".worktrees/<task-id>" "<baseline-head>"
-  ```
+**用户行为：一条从可操作入口开始、到可观察状态变化结束的完整链路。它是执行与审查的唯一单位。**
 
-  `git worktree add` 会创建不存在的目标目录及缺失的 `.worktrees` 父目录；不需要先执行 `mkdir`。该命令同时把目录登记为 Git worktree。目标路径已存在、分支已被其他 worktree 使用或身份不明确时，先停止并 reconcile，不得换到仓库外另建目录绕过冲突。
-- 创建前确认 `git rev-parse --show-toplevel`、`git status --short --branch` 和 `git worktree list --porcelain`；创建后再次运行 `git worktree list --porcelain`，并用目标 worktree 的 `git rev-parse --show-toplevel`、`git branch --show-current` 和 `git rev-parse HEAD` 核对路径、分支和基线。
-- 核对后的绝对路径写入 executor/reviewer dispatch 记录（以及任务锚点进度事件），不写入任务单——任务单只承载冻结契约。执行子代理和审查子代理使用主代理传入的路径，不得自行选择或创建另一个 worktree；独立审查上下文不等于再创建一个 Git worktree。
-- 项目根目录的 `.gitignore` 必须忽略 `/.worktrees/`，避免实现 worktree 的文件污染主工作树状态。缺少该规则时，须在允许修改范围内先补齐并记录；不能在契约冻结后静默扩大范围。
-- 发现任务单、dispatch、报告或 `git worktree list` 中的路径不一致，必须标记身份漂移并保留现场；不得把仓库同级目录或第二个路径改写成规范路径后继续执行。
+- 入口可以是按钮、命令、接口、配置文件；状态变化可以是界面、数据库、文件、日志。
+- 「改了三层代码」不是用户行为，「用户点了 X，Y 变了」才是。
+- 一个用户行为只配一个 worktree、只做一次合并；审查可以来回几轮，重做不另起 worktree。
+- 重构、基建、文档：找出它的可操作入口和可观察状态变化，套进同一个形状（比如一份文档的入口可以是「人照着它做」，状态变化是「他做出来的东西变了」）。套不进去，就把它拆到能套进去为止。
 
-## 主代理阶段推进不变量
+（别的项目文档里叫「功能点」的，在这里一律叫用户行为。）
 
-主代理把执行/审查子代理视为阶段性工具调用。子代理返回只证明该阶段返回，不证明任务完成；主代理不得因为收到子代理结果、看到测试摘要或已经写出阶段总结，就结束当前任务。
+## 工作台
 
-- 每个子代理返回后，主代理必须重新读取当前任务单、Git/worktree 身份和本轮 `.pipeline/<task-id>/` 证据，核对 task-id、branch、HEAD、角色和报告新鲜度。
-- 任务单规定还有后续阶段时，主代理必须继续推进下一个阶段，而不是先向用户发送总结；阶段性报告不是终止条件。
-- 标准闭环是：执行子代理 → 独立审查子代理 → 主代理最终检查 → 合并后主工作树复验。审查通过不等于主代理最终检查通过。
-- 子代理返回 FAIL、BLOCKED、超时或证据缺失时，主代理必须分类并按恢复规则保留现场、新建接替任务（新 ID、从当前 `HEAD` 建 worktree，接替关系写进 `dependencies`）或上报阻塞；不得把阶段结果改写为 PASS，也不得跳过后续核验。
-- 只有当前任务的最终证据全部齐全，或遇到必须由用户裁决、外部授权或无法自愈的阻塞，主代理才能结束本轮。
-- 默认推进策略是自动推进后续任务：完成并合并当前任务后，主代理继续队列中的下一个任务，不需要用户逐条确认。这是默认行为，不是例外。
-- 该策略按两级切换：运行级存于该次运行的 `lifecycle.json` 的 `approval_mode`，项目级存于 `.pipeline/config.json`；解析顺序是显式参数 → 运行记录 → 项目配置 → 默认 `automatic`。切换为 `manual` 时，主代理在每个任务派发前停下等待人工确认。项目级配置的形态、键名、枚举和回退规则见 `references/task-design.md` 的「审批策略配置」。
+`.pipeline/` 在子工作树里（`<worktree>/.pipeline/`）—— 进行中的用户行为唯一的工作现场，**一个用户行为一份**，寿命就是那个用户行为的寿命：worktree 被删掉，它随之消失。`<id>` 是这个用户行为的短标识（kebab-case），同时用作 worktree 目录名和分支名。
 
-## 事实与上下文规则
+四个文件。规则是**一个文件一个写者，且每个文件回答一个别人没回答过的问题**：
 
-- 事实只能来自本轮直接读取的文件、命令输出或测试产物；推断必须标为推断，未执行或未读取必须标为未验证，不能补造结果。
-- PASS 必须能回溯到当前 task-id、HEAD、worktree、branch、完整命令、退出码、关键断言和产物；通知、代理自述和旧报告不能代替当前证据。
-- 任务单只承载契约与人类可读的契约说明：任务身份、依赖与范围、事实与假设、设计与行为契约、环境前置、验收测试和决策点；契约提交后冻结，身份字段不可修订，其余字段只能按记录的修订版本改变，状态字段不作为手工状态存储。
-- 过程记录不在任务单内。细粒度事件由主代理通过 lifecycle API/CLI 写入 `.pipeline/<task-id>/`；阶段结论写入三份阶段报告（`executor-report.md`、`review-report.md`、`final-check.md`）、机器结果 JSON 和 `finalization.json`；任务锚点与合并提交保存在进度事件和 dispatch 记录中。规划中间审计、stage 文件和原始日志优先进入系统临时目录，项目只保留 `.pipeline/recovery-index.json` 作为恢复索引，正式 evidence 仍在 `.pipeline/<task-id>/`。
-- 主代理按需读取本文件和相关 reference，不默认加载全部资料；委派简报只传任务身份、冻结契约路径、允许范围、验收 ID/命令、决策点和报告格式，证据不足再扩展阅读。
+- **`unit.md`** —— 只有主代理写。上段是单元描述（目标、范围、验收口径），写完不再改；下段是终态，合并后才写（合并提交、主树复验结果、已合并可清场）。**它回答：要做什么。**
+- **`progress.md`** —— 只有执行子代理写。**它回答：还剩什么。** 把这次要做的拆成若干步，每步后面写它现在是什么状态——用你自己的话，不规定词表。随时覆盖，永远只反映当前。
+- **`executor.md`** —— 只有执行子代理写。**它回答：发生了什么。** 宣布完成时写一次，详略得当，给主代理看。
+- **`reviewer.md`** —— 只有审查子代理写。**它回答：复验看到了什么。** 最后写的是它的结论。
 
-## 机械工具与项目级反馈
+四个文件都是散文：没有 schema、没有必填字段、没有机器可读区块。**要加第五个，先回答它解决的是哪个还没人回答的问题**——两个文件回答同一个问题，就说明有一个是多余的。
 
-机械检查和统计由本技能内置的 `pipeline_tools` 命令程序执行；不要再依赖已废弃的独立工具 worktree。技能只规定调用时机和判断边界。新任务单必须包含 `pipeline-contract` 机器区块，由 `pipeline-tools task validate` 校验；任务执行前运行 `task preflight`，契约修订用 `task amend`（只做校验、分类与登记，不生成也不重写任务单内容），执行中用 `command run` 统一超时和日志，范围用 `scope check`，正式证据校验前运行 `evidence readiness`，合并前后用 `evidence verify` 与 `gate`。
+- **恢复 = `git worktree list`**：`.worktrees/` 下有一个目录，就有一个未关闭的用户行为。读它里面的 `.pipeline/`：`unit.md` 看要做什么，`progress.md` 看还剩什么，`executor.md` 与 `reviewer.md` 看发生过什么。换一次会话、换一个 agent 软件，都一样。
+- **它随 worktree 一起生灭。** 没有独立的「删除工作台」这个动作——清场就是删 worktree。
 
-- 工具输出的退出码和原始日志是机械事实；终端摘要不替代日志。
-- 在派发 executor/reviewer 前先运行 runtime preflight，确认 Node/pnpm/Git、native ABI 和项目所需测试能力；环境不匹配不得伪装成产品失败或继续正式验收。
-- 子代理启动前，主代理生成环境检查列表，包含：可读任务与worktree、可执行验收命令、可写 `.pipeline/**`、reviewer不可写产品代码等。子代理按检查列表逐项验证，通过后开始工作，任何检查失败立即向主代理报告BLOCKED。
-- 主代理未经用户明确授权不得修改产品代码；executor/reviewer 失败后应重派、新建接替任务（新 ID，接替关系写进 `dependencies`）或保留决策点，不得接管实现。
-- OpenCode Desktop 会话可用 `metrics import-opencode-session` 导入结构化流程信号；导入器不得从自然语言推断产品 PASS。
-- 程序化命令应优先使用 `--format json --output <path>`；JSON 结果是后续阶段的权威输入，终端短摘要不作为流程状态来源。
-- 使用任务级 lifecycle API/CLI 管理状态：`lifecycle resume/status/list/inspect` 是跨会话恢复和读取的优先入口；`transition`/`event` 等状态写入只允许 `role=main-agent`，执行/审查角色只能读取并提交 recommendation/findings，不能直接把自然语言结论当作状态或 gate。旧 `lifecycle status --evidence` 仍保留，用于兼容 legacy evidence 查询，不是新的状态写入入口。`lifecycle status` 在 merge 阶段返回的动作标识 `merge_branch_in_main_worktree` 表示由主代理手工合并，`pipeline-tools` 没有对应的合并命令，不要去找它。
-- 结构化执行闭环使用 `dispatch write`、`result verify` 和 `freshness`；只有当前 task-id、角色、HEAD、验收结果和证据引用均通过机械校验，才能把语义代理的 recommendation 交给下一阶段。
-- 工具不可用、命令超时、证据缺失或身份/范围漂移时标为 `BLOCKED`/漂移，不绕过工具改写成 PASS。
-- 报告必须包含机器可读的 `pipeline-evidence` 区块；自然语言报告不能单独产生验收结论。
-- 每个非 `metrics` 的 `pipeline-tools` 阶段命令默认自动写入一个 `observed` 结果事件到项目 `.pipeline/metrics/`；超时、环境阻塞、证据缺口、范围漂移等只根据机械退出码和结构化结果追加 `derived` 反馈事件。`reported` 只能保留追溯，统计不参与验收，不自动改写技能或契约。旧 `.workflow/` 目录的自动迁移规则见 `references/compat-and-migration.md`；迁移只移动并校验文件，不改写 evidence 内部历史路径文本，后续工具统一使用 `.pipeline/`。
-- 自动采集不得从自然语言报告推断产品 PASS；不得记录 prompt、完整命令输出、凭据、token 或业务数据。仅在测试/明确诊断时使用 `PIPELINE_TOOLS_DISABLE_AUTO_METRICS=1` 关闭。
-- `gate` 的 pre-merge 要求 `executor-result.json`、`reviewer-result.json`、`final-result.json` 存在且各为 JSON 对象；post-merge 要求 `final-check.md` 中至少有一条 `exit_code == 0` 且 `cwd` 为主工作树根的命令（合并后复验），二者缺一即 FAIL。
-- 证据身份按阶段分工：`active`（pre-merge）阶段把报告绑定到它观察的提交——`head` 必须等于当前 HEAD 或仅被证据提交推进（判据是整个 `.pipeline/**` 子树，含别的任务的证据目录与 `.pipeline/metrics/`；`.pipeline` 之外的任何改动都不算）、`branch`/`worktree` 必须等于当前 Git 身份；`finalized`（post-merge）阶段**只用任务单 id 与 `sheet_revision` 识别证据**，不再判定提交引用（合并本身必然在当前 HEAD 上引入产品路径提交，任何提交相对判据都不成立）。`finalized` 阶段仍要求 `head`、`branch`、`worktree` 存在且格式合法，`observed_at_commit` 则是可选记录事实：写明即有格式要求，缺失不算错误。fail-closed：`task_id` 不符、证据目录名与任务 id 不符、阶段取值无法确定时一律报错；`sheet_revision` 字段存在但不合法或与当前修订版本不符时报错，字段缺失则按历史形态处理（不新增错误，只报 `unverified`）。`active` 的判定与错误文本与改动前逐字一致。
-- 对账（`evidence reconcile`）按交付是否已合并选择判据：存在 `finalized` 标记，或报告记录的分支尖端已是当前 `HEAD` 的祖先，即按 post-merge 判据（不再施加提交绑定）。判断分支时排除 `HEAD` 当前所在分支——主工作树终审报告记的就是它，其尖端永远是 `HEAD` 的祖先，留在候选里会把未合并任务误判为已合并。标记或分支尖端才是阳性证明，分支引用缺失、不是祖先、或是当前分支都只是缺少该证明，不等于"未合并"，未合并任务仍施加完整提交绑定。报告身份的一致与完整只看 `task_id` 与 `sheet_revision`。
-- 最终化的报告校验接受模板实际产出的 schema：schema 1（历史形态）与 schema 2（当前模板）都接受；schema 2 报告必须带合法的 `head`。其余必需字段、角色、`task_id` 与 post-merge 状态集合的校验两者一致。
-- 需求权威文件是 `docs/goal.md`；兼容解析顺序为 `docs/goal.md`、仓库根目录旧版 `goal.md`、更旧的 `implement-plan.md`。缺少 canonical 文件时，`planning goal-sync` 将首个 legacy 来源复制到 `docs/goal.md` 并加入准确的 provenance header；canonical 存在时绝不覆盖，之后只编辑 `docs/goal.md`。
-- 任务单在 freeze 时记录 sha256（schema 4 写入 `.pipeline/<task-id>/goal.json`，schema 1-3 仍写 `implement-plan.json`）并同时留存该版本契约快照；`freeze_check` 用「最新修订版的哈希」（有 `amendments.json` 时取最后一条修订的 `sheet_sha256`，否则取该记录）检测任务单在冻结后被改动，未经 `task amend` 登记的直接改动仍判为漂移。
-- 每份阶段报告与机器结果写明它评判的任务单**修订版本**（`sheet_revision`、`sheet_sha256`）与观察提交（`observed_at_commit`）。`active` 阶段的证据失效判据有两条：修订版本与当前版本不一致，或从 `observed_at_commit` 到 `HEAD` 之间变化的路径与该证据所属 operation 的 `resources` 相交；`HEAD` 单纯前移不让证据失效。`finalized`（post-merge）阶段只保留第一条，身份是任务单 id 加修订版本——合并必然前移 `HEAD`，路径相交判据在该阶段不被判定。
-- `planning_to_dispatch` 支持 `expected_requirements_sha256` 绑定规划期需求基线；传入后 preflight 用它在派发前核对 `goal.md` 哈希是否漂移。
-- `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。
-- 生成的 schema-4 契约携带 `goal` 字段（`path`/`sha256`/`planning_run_id`）与 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结；schema 1-3 只保留历史读取，继续使用旧 `implement_plan` 字段。
-- 正式 `evidence verify` 前先运行 `evidence readiness`；缺 final-check 或必要报告时记录“未准备好”，不要把阶段顺序问题误作产品验收失败。指标报告优先按 task/run/terminal 维度解释，不用全项目累计 `success_rate` 代替终态结论。
-- 任务单归档：`docs/tasks/` 只放**进行中或待派发**的任务单（`docs/tasks/*.md` 一律按任务单处理，不放 README 之类的说明文件）；任务关闭后单子不再留在 `docs/tasks/`，最终化的移动步骤（`pipeline_tools/planning.py` 的 `archive_task_sheet`）把它移入 `.pipeline/<task-id>/<task-id>.md`，没有证据目录时移入 `.pipeline/archive/<task-id>.md`，被跟踪的单子用 `git mv` 保持跟踪；终态单子一律按其**声明 id**（`<!-- Task ID: -->`）归档，文件名与声明 id 不符时改名到位。`.worktrees/<task-id>` 仍存在时该步骤 blocked 且不移动任何文件。某任务的保留名是 `RETAINED_EVIDENCE_NAMES` ∪ `{<该任务 id>.md}`，所以最终化剪枝不会剪掉自己的单子；前向基线闸门对 `.pipeline/archive/**` 豁免保留名规则，但同一证据目录下别的非保留名文件仍是漂移。`.gitattributes` 的 `.pipeline/** -text` 使 `.pipeline/**` 下的证据经 checkout 后字节不变。
-- 阶段报告与机器结果的 `head` 记录**产生证据时的分支尖端**（执行证据是任务 worktree 的 branch tip，主工作树终审是复验时的 `HEAD`），`observed_at_commit` 与它同源；不要填"实现提交"或"冻结提交"，那会让之后任何一次证据提交都把它推离当前身份。
-- 正常只把短摘要放入上下文；完整输出、报告和统计事件留在项目文件中，需要诊断时再读取。
+项目的 `.gitignore` 必须**在创建第一个 worktree 之前**就提交 `/.worktrees/` 与 `/.pipeline/`。前者让主工作树看不见整棵子工作树。后者不是给主工作树用的（主工作树里根本没有 `.pipeline/`）——它是给子工作树自己用的：`.gitignore` 里的 `/` 锚定在它所在的目录，同一个文件检出进 `.worktrees/<id>/` 后，`/.pipeline/` 在那里重新生效；少了它，执行者的 `git add -A` 会把工作台提交进分支。
+
+## 流程
+
+1. **规划**：读项目，确定下一个用户行为，给它一个短标识 `<id>`。做完一个直接做下一个，不要每个之间都停下来问用户；只在缺决策、缺授权、或无法自愈时才停。
+2. **建 worktree**：主代理从主工作树当前 HEAD 建 `.worktrees/<id>`（`git worktree add -b <id> .worktrees/<id>`）。工作台随之出生。
+3. **写单元描述**：写进 `<worktree>/.pipeline/unit.md`，含验收口径。写完不再改——要改就重写上段，并作废此前的审查结论。
+4. **派执行子代理**：传入 worktree 绝对路径、验收口径（单元描述就在它 cwd 的 `.pipeline/unit.md` 上段）。它先把这次要做的拆成步骤写进 `.pipeline/progress.md`，然后在 worktree 里走红绿蓝、随时更新那份清单；做完**自检**（自己跑一遍验收、亲手从入口走一遍），自检通过后写 `executor.md`，再回来报告完成。
+5. **派审查子代理**：主代理先核对执行者的报告与提交，再传入 worktree 绝对路径、同一份单元描述、代码与提交、验收口径——**不传执行者的结论**。审查者亲手复验、亲手按口径走一遍入口；**先把自己的结论写进 `.pipeline/reviewer.md`，再读执行者留下的东西**（`progress.md` 与 `executor.md`）对照。
+6. **合并**：主代理核对证据后合并到主分支，在主工作树跑一次这个用户行为的验收命令，然后把 `unit.md` 的终态段写成**已合并、可清场**。
+7. **清场**：主代理删除 worktree 与分支——工作台随它一起消失。
+
+审查不通过时分两种：**问题在实现**（跑不通、做错了）→ 原地重做；**问题在描述**（口径本身错了）→ 重写单元描述，重新派执行者与审查者。不新建任务 ID，不留接替痕迹。
+
+## 红绿蓝
+
+红和绿各一个提交，蓝有就加一个：
+
+1. **红**：只加验收测试（可以是若干条用例，但只覆盖这一个用户行为），它必须失败，且失败的原因必须是**要做的事还没做**——不是环境坏了、也不是测试写错了。
+2. **绿**：让它通过的最小实现。
+3. **蓝**：在测试保持通过的前提下重构。**确实没有可重构之处就不提交**——不要为空提交而提交。
+
+**TDD 的顺序不可事后审查**：`executor.md` 里写「我先写了失败的测试」是自我声明，而提交顺序是事实。所以审查者**先**检出「红」那个提交、亲手跑一次看它确实失败，**跑完回到原来的分支尖端**，**再**看「绿」与「蓝」的 diff——「蓝」的 diff 是发现测试被偷偷弱化的地方（没有「蓝」就跳过）。
+
+## 验收口径
+
+写成**可执行的步骤序列**：做什么操作 → 期待什么状态变化。**不写测试文件名、不写断言实现**——那些会腐烂。
+
+- 口径由主代理定，必须精确到能被人照着走一遍。
+- 测试代码由执行者写。口径写在代码之前，所以测试可以先写。
+- **判断权在审查者**：它按口径亲手走一遍入口，再判断那条测试是否真的证明了口径。测试全绿不算通过——「看起来是端到端的、其实把中间层全 mock 了」是这类工作里最常见的假绿。
+
+## 证据与恢复
+
+证据是主代理当场获得的事实：命令与退出码、测试输出、审查结论。用途是让主代理知道刚刚发生了什么、下一步该设计成什么样。
+
+- **不承担审计职能。** 用户行为做完了，结果就在代码里；做失败了，也不必留一份失败档案。
+- **不进入 Git。** 工作台在被忽略的 `.pipeline/` 里，随时可删。
+- **不另建落盘处。** 除了工作台本身，没有报告目录、没有归档区、没有 JSON 结果文件。
+
+代价说清楚：换机器、重新 clone 都会丢掉工作台；**`git clean -fdx` 会连整个 `.worktrees/` 一起删掉——那里是正在进行的工作，不是缓存。** 它服务的是同一台机器上换一个 agent 软件继续干，不是异地恢复。
 
 ## 不可违反的规则
 
-1. 任务单先于实现：契约必须提交后才能创建唯一 `.worktrees/<task-id>` 实现 worktree 或派发；提交后任务单冻结，之后只能按记录的修订版本改变（`task amend`），执行/审查子代理不得改契约，也不得另建 worktree。
-2. 契约冻结与修订：不得为迁就实现改验收测试或手工改状态；修订必须留痕（理由、发起角色、裁决引用、结构性差异），身份字段不可修订，放松约束必须带裁决引用；设计真变时记裁决并用 `task amend` 修订任务单，只有范围或目标已变成另一个任务时才新建任务（新 ID，接替关系写进 `dependencies`），保留原历史，合并后不再修订。
-3. 验收测试即用例：每条必须指向当前测试文件、用例、断言、命令、结果边界。
-4. 独立审查：独立上下文直接复验；转述他人结果不算。
-5. 证据属当前任务：`active` 阶段 task-id、worktree、branch、测试输出、报告路径必须一致且本轮生成；`finalized`（post-merge）阶段身份是 task-id 加 `sheet_revision`，提交引用只作记录，不改写报告。
-6. 真实链路不可替代：单元/组件/协议/持久化/真实浏览器/设备各自证明各自边界。
-7. 合并后复验：worktree 通过 ≠ 主工作树通过（依赖、构建产物、原生模块可能不同）；post-merge `final-check.md`、`final-result.json` 与 `finalization.json` 作为独立 evidence 提交。复验窗口的语义是"关闭时通过即算通过"：任务关闭时的那次 `finalized verify` 通过就不必再刷标记，之后只有产品路径提交进入 HEAD 才会让记录的 `head` 合法变旧（此时重新复验，不改写或删除标记）；别的任务提交自己的证据（`.pipeline/**`）不会让标记变旧，同一提交同时改动证据路径与产品路径则 fail-closed 判为非仅证据提交。
-8. 超时有界：单条测试默认 3 分钟硬上限，超时必须停止诊断；整套用更大的明确累计上限。
-9. 决策点停下：缺产品决策、协议兼容、权限、外部服务或验收环境时保留现场上报，不替用户定案。
-10. 数量≠覆盖率：绿色数、退出码、完成通知、报告存在、代码行数增加都不能单独 PASS。
+1. 没有独立审查就没做完。自检、自己审自己、主代理替执行者背书，都不算。
+2. 先写单元描述再开工；**`unit.md` 只有主代理写**。描述改了，此前的审查结论一律作废。
+3. 一个用户行为一个 worktree，固定在 `.worktrees/<id>`。不建第二个，不在仓库外建。
+4. 红绿蓝的顺序不能倒。没有失败的测试，就没有「绿」。
+5. 合并后必须在主工作树再跑一次验收。worktree 通过 ≠ 主树通过。
+6. 做完就清场：删掉 worktree 与分支，工作台随它一起消失。
+7. 缺产品决策、协议兼容、外部服务或权限时停下来问用户，不自己定案。
+8. 数量不等于完成。测试变绿、退出码为 0、报告写完，单独都不能说明做完。
 
-## 标准生命周期
+## 词汇
 
-1. 恢复核对：跨会话或重启后优先调用 `lifecycle resume/status/list/inspect`，再读任务单、Git 状态、`.pipeline/recovery-index.json` 和正式 evidence；通过任务单、worktree、分支和证据目录核对活动任务身份，过程记录以 lifecycle 事件和阶段报告为准；发现多个活动任务或状态不一致时先 reconcile，禁止从项目级状态文档、通知或自然语言报告推断状态或盲目重派。规划前置检查还要核验已有任务现场，且**按任务单位置判定的状态**分类：任务单在 `docs/tasks/<task-id>.md` 是进行中，在 `.pipeline/<task-id>/<task-id>.md` 是已终态且有证据目录，在 `.pipeline/archive/<task-id>.md` 是已终态且没有证据目录，解析顺序固定且 fail-closed（同一 id 多处出现或三处都没有即报错）；`worktrees_without_sheet` 是阻塞项（active 或 archived 单子都算有单），`uncommitted_sheets` 与它同级也是阻塞项（`docs/tasks/<task-id>.md` 已存在但未提交到 HEAD），`sheets_without_worktree` 和 `leftover_evidence` 是警告项且只对进行中的单子判定；`.pipeline/archive/` 是任务单隔离区，不是任务证据目录。
-2. 规划拆分：以用户行为或可验证能力为单位；定依赖、范围、契约、风险、决策点、验收矩阵；未写成具体用例即设计未完成。有产物依赖顺序执行；仅文件范围与 fixture 完全不重叠且无隐含依赖才并行。
-3. 冻结任务单：默认 `docs/tasks/<task-id>.md`，证据 `.pipeline/<task-id>/`；提交任务单后把契约提交记录进 dispatch 记录与角色进度日志，主代理从主工作树用 `git worktree add` 创建 `<仓库根目录>/.worktrees/<task-id>`，确认主分支 HEAD、新 worktree、branch 与契约提交的关系；之后契约冻结，后续变化只走记录的修订版本。
-4. 执行：子代理只在任务 worktree 实现；用户功能贯通 UI→前端/协议→核心→领域事实→持久化/投影→回显→重启恢复；纯基建任务标 prerequisite，不得冒充产品闭环。
-5. 独立审查：新上下文核身份和报告新鲜度，逐条复验；通过 ≠ 已合并。
-6. 最终检查：读任务单/执行/审查/最终检查报告，抽查高风险测试，重跑关键验收、全量测试、构建、lint、范围、冲突检查；全部有证据才 ready-to-merge。
-7. 合并复验：提交实现+证据，用 branch ref 合并；主工作树重装依赖，重跑聚焦验收、全量测试、构建、lint、差异检查；通过才标已合并。
-8. 持久化：把验收台账、执行记录、任务索引和最终结果写入 `.pipeline/<task-id>/` 的角色进度日志、阶段报告和机器结果；成功最终化后只保留阶段报告、机器结果和 `finalization.json` 以及两个本地状态文件（冻结记录 `goal.json`、追加式修订链 `amendments.json`），其余过程产物照旧剪掉，失败时保留完整现场。不另行维护项目级状态文档。完成通知含项目、task-id、阶段、分支、合并提交、验收状态、遗留项。
-
-## 证据目录最小要求
-
-`.pipeline/<task-id>/` 至少含 `executor-report.md`、`review-report.md`、`final-check.md`；每份写明 task-id、worktree、branch、轮次、命令、退出码、关键断言，以及它评判的任务单修订版本（`sheet_revision`、`sheet_sha256`）和证据观察提交 `observed_at_commit`。正式 evidence 始终位于该目录；验收失败时可在系统临时目录保存完整日志等诊断证据，成功时无需把原始输出写入项目。项目侧仅保留 `.pipeline/recovery-index.json` 作为恢复索引。旧 `.workflow/<task-id>/` 必须迁移到这里，不能继续作为运行目录。
-
-## 版本兼容与迁移
-
-版本历史、`.workflow/` 目录迁移规则，以及主代理在「恢复核对」阶段执行的一次性优化动作，见 `references/compat-and-migration.md`。这些内容不影响正在进行中的任务，也不改变上面的运行时规则。
-
-## 任务规模与接替任务
-
-- 含多个独立领域聚合、十个以上互不共享 fixture 的验收族或多平台任务，先拆成可独立审查的切片。
-- 实现失败/证据缺失/环境阻塞/设计改变分开记录；设计或契约改变时先记裁决并用 `task amend` 修订任务单，只有在范围或目标已变成另一个任务时才新建任务——用新 ID、新任务单、新证据目录，从当前 `HEAD` 建 worktree，接替关系写进 `dependencies`，父任务失败、裁决、已验收部分不得覆盖。
-- 保留实现和证据现场，不无理由删 worktree、分支或报告。
-- 新任务不再派生：规划期声明 `type: derived` 会被 `validate_task_plan` fail-closed 拒绝，生成器不产出 `task_type: derived` 的任务单，`dispatch derived-create` 入口已移除。**历史 `derived` 只作读取兼容**：`pipeline_tools/contract.py` 的 `TASK_TYPES` 仍含 `derived`，`_validate_derived_from`、`_requires_full_chain` 与 `evidence_floor` 的 `parent_task_type` 分支一字未改，含 `derived_from` 的历史契约照旧通过 `task validate`（父类型为 `vertical-feature`/`repair` 时的链路收紧与证据下限行为不变）。
-
-## 参考文件（按需读取）
-
-| 关注点 | 文件 |
-|---|---|
-| 任务单模板 | `templates/task-sheet.md` |
-| 规划、拆分、契约冻结 | `references/task-design.md` |
-| 验收矩阵、证据完整性、结论分类 | `references/acceptance-evidence.md` |
-| 执行/审查子代理规则、主代理最终检查 | `references/execution-and-review.md` |
-| 恢复、合并、主工作树复验 | `references/merge-and-recovery.md` |
-| 真实浏览器、设备、多层证据 | `references/live-and-browser.md` |
-| 跨介质操作故障矩阵 | `references/multi-medium.md` |
-| 项目级反馈事件与 Git 追踪 | `references/metrics-contract.md` |
-| 版本历史、`.workflow/` 迁移、一次性优化动作 | `references/compat-and-migration.md` |
-| 任务单 Markdown 结构检查（旧版辅助；真正的闸门是 `pipeline-tools task validate`） | `scripts/validate_task_sheet.py` |
+术语见同目录的 `GLOSSARY.md`；本文的用词与它冲突时，以它为准。
