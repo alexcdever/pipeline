@@ -28,6 +28,7 @@ from .contract import (
 )
 from .core import (
     ACCEPTANCE_STATUSES,
+    LOCAL_STATE_FILE_NAMES,
     POST_MERGE_REPORT_STATUSES,
     RESULT_STATUSES,
     RETAINED_EVIDENCE_NAMES,
@@ -2592,6 +2593,12 @@ def _finalize_evidence_unlocked(directory: Path, task_id: str, success: bool, *,
         "final-check.md", "final-result.json",
     ]
     retained = list(RETAINED_EVIDENCE_NAMES)
+    # The two local state files are not evidence, but pruning them destroys audit
+    # facts later checks read back: the freeze record and the append-only revision
+    # chain.  They are spared alongside the retained set when present; every other
+    # non-retained file (raw logs, scratch artifacts) is still pruned below.
+    local_state = [name for name in LOCAL_STATE_FILE_NAMES if (directory / name).is_file()]
+    spared = set(retained) | set(local_state)
     if require_canonical:
         canonical = directory.resolve().parents[1] / PIPELINE_DIR_NAME / task_id
         if directory.resolve() != canonical.resolve():
@@ -2658,7 +2665,7 @@ def _finalize_evidence_unlocked(directory: Path, task_id: str, success: bool, *,
                 value = None
         refs.extend(_extract_evidence_refs(value))
     refs = [reference for reference in refs if not reference.startswith(".pipeline/") or Path(reference).name not in {"blocker-facts.json"}]
-    dangling = _validate_retained_references(directory, refs, set(retained))
+    dangling = _validate_retained_references(directory, refs, spared)
     if dangling:
         return {
             "status": "blocked",
@@ -2683,12 +2690,11 @@ def _finalize_evidence_unlocked(directory: Path, task_id: str, success: bool, *,
         if staging.exists():
             raise OSError("stale finalization staging directory")
         staging.mkdir()
-        retained_set = set(retained)
         for path in sorted(directory.rglob("*"), key=lambda item: len(item.parts)):
             if path == staging or staging in path.parents or path.name == ".lifecycle.lock":
                 continue
             relative = path.relative_to(directory).as_posix()
-            if relative in retained_set:
+            if relative in spared:
                 continue
             staged = staging / path.relative_to(directory)
             if path.is_file() or path.is_symlink():
