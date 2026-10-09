@@ -1252,6 +1252,62 @@ class EvidenceTests(unittest.TestCase):
             )
             self.assertEqual(payload, (clone / '.pipeline' / 'demo' / 'review-report.md').read_bytes())
 
+    def test_closed_task_markers_still_verify_after_the_migration(self):
+        """Moving a closed sheet into its evidence directory keeps the marker valid.
+
+        A finalization marker snapshots the retained evidence vocabulary, not the
+        task sheet, so migrating the sheet with ``git mv`` must not produce a
+        ``finalization retained evidence hash mismatch``.  A stale head is the
+        only drift a later commit may introduce, and it is recorded rather than
+        fatal.
+        """
+        from pipeline_tools.core import (
+            git_identity,
+            retained_evidence_snapshot,
+            verify_finalization_snapshot,
+        )
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._make_git_repo(root)
+            task_ids = ('closed-1', 'closed-2', 'closed-3')
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            directories = {}
+            for task_id in task_ids:
+                (root / 'docs' / 'tasks' / f'{task_id}.md').write_text(
+                    f'<!-- Task ID: {task_id} -->\n', encoding='utf-8')
+                directory = root / '.pipeline' / task_id
+                directory.mkdir(parents=True)
+                for name in ('executor-report.md', 'review-report.md', 'final-check.md'):
+                    (directory / name).write_text('report\n', encoding='utf-8')
+                for name in ('executor-result.json', 'reviewer-result.json', 'final-result.json'):
+                    (directory / name).write_text('{}\n', encoding='utf-8')
+                directories[task_id] = directory
+            self._git(root, 'add', '.')
+            self._git(root, 'commit', '-qm', 'closed tasks frozen')
+            identity = git_identity(root)
+            for task_id, directory in directories.items():
+                (directory / 'finalization.json').write_text(json.dumps({
+                    'schema': 1, 'task_id': task_id,
+                    'retained_sha256': retained_evidence_snapshot(directory),
+                    'identity': identity,
+                }), encoding='utf-8')
+            self._git(root, 'add', '.pipeline')
+            self._git(root, 'commit', '-qm', 'finalization markers')
+
+            for task_id in task_ids:
+                self._git(root, 'mv', f'docs/tasks/{task_id}.md',
+                          f'.pipeline/{task_id}/{task_id}.md')
+            self._git(root, 'commit', '-qm', 'migrate closed task sheets')
+
+            self.assertEqual(3, len(directories))
+            for task_id, directory in directories.items():
+                marker = json.loads((directory / 'finalization.json').read_text(encoding='utf-8'))
+                errors = verify_finalization_snapshot(directory, marker, root)
+                self.assertNotIn(
+                    'finalization retained evidence hash mismatch', errors, (task_id, errors))
+                self.assertTrue((directory / f'{task_id}.md').is_file(), task_id)
+
 
 class MachineResultGateTests(unittest.TestCase):
     def test_pre_merge_requires_all_three_machine_results(self):

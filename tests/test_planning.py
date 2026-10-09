@@ -1602,5 +1602,128 @@ class PlanningTests(unittest.TestCase):
             self.assertTrue((evidence / 'demo.md').is_file())
             self.assertFalse(sheet.exists())
 
+    def test_migrated_sheets_keep_their_bytes_and_are_tracked(self):
+        """The migration moves terminal sheets without touching a byte.
+
+        A terminal sheet with an evidence directory lands in
+        ``.pipeline/<task-id>/<task-id>.md``; one without lands in
+        ``.pipeline/archive/<task-id>.md``.  In both cases the bytes are
+        identical to the frozen sheet and Git still tracks it, so no freeze
+        hash or retained snapshot can move.
+        """
+        import hashlib
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._scene_repo(root)
+            task_ids = ('closed-with-evidence', 'closed-archived', 'another-closed')
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            for task_id in task_ids:
+                (root / 'docs' / 'tasks' / f'{task_id}.md').write_text(
+                    f'<!-- Task ID: {task_id} -->\n', encoding='utf-8')
+            for task_id in ('closed-with-evidence', 'another-closed'):
+                (root / '.pipeline' / task_id).mkdir(parents=True)
+            self._commit_all(root, 'frozen task sheets')
+
+            before = {
+                task_id: hashlib.sha256(
+                    (root / 'docs' / 'tasks' / f'{task_id}.md').read_bytes()
+                ).hexdigest()
+                for task_id in task_ids
+            }
+            for task_id in task_ids:
+                moved = archive_task_sheet(root, task_id)
+                self.assertEqual('archived', moved['status'], moved)
+                self.assertTrue(moved['tracked'], moved)
+
+            for task_id in task_ids:
+                if task_id == 'closed-archived':
+                    target = root / '.pipeline' / 'archive' / f'{task_id}.md'
+                else:
+                    target = root / '.pipeline' / task_id / f'{task_id}.md'
+                self.assertTrue(target.is_file(), target)
+                self.assertFalse((root / 'docs' / 'tasks' / f'{task_id}.md').exists(), task_id)
+                self.assertEqual(
+                    before[task_id],
+                    hashlib.sha256(target.read_bytes()).hexdigest(),
+                    task_id,
+                )
+                self.assertEqual(
+                    0,
+                    subprocess.run(
+                        ['git', 'ls-files', '--error-unmatch', target.relative_to(root).as_posix()],
+                        cwd=root, capture_output=True).returncode,
+                    task_id,
+                )
+
+    def test_migration_leaves_no_active_sheet_without_a_worktree(self):
+        """A migrated terminal sheet leaves the in-flight worklist.
+
+        Once the sheet of a closed task lives in its evidence directory or in the
+        archive it is no longer in-flight work, so the scene check must not count
+        it as a sheet without a worktree.  A terminal sheet left behind in
+        ``docs/tasks/`` would still be counted, so the fixture names any
+        straggler rather than asserting a clean repository.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._scene_repo(root)
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            (root / 'docs' / 'tasks' / 'pending-task.md').write_text(
+                '<!-- Task ID: pending-task -->\n', encoding='utf-8')
+            for task_id in ('closed-a', 'closed-b'):
+                (root / '.pipeline' / task_id).mkdir(parents=True)
+                (root / '.pipeline' / task_id / f'{task_id}.md').write_text(
+                    f'# {task_id}\n', encoding='utf-8')
+            (root / '.pipeline' / 'archive').mkdir(parents=True)
+            (root / '.pipeline' / 'archive' / 'closed-c.md').write_text(
+                '# closed-c\n', encoding='utf-8')
+            self._commit_all(root, 'migrated terminal sheets')
+
+            scenes = planning_preflight(root)['task_scenes']
+            self.assertEqual(['pending-task'], scenes['sheets_without_worktree'], scenes)
+            self.assertEqual(
+                [],
+                [task_id for task_id in scenes['sheets_without_worktree']
+                 if task_id in {'closed-a', 'closed-b', 'closed-c'}],
+                scenes,
+            )
+            # The archive is not a task evidence directory and a moved sheet
+            # answers the directory, so nothing is left over.
+            self.assertEqual([], scenes['leftover_evidence'], scenes)
+
+    def test_orphan_evidence_directory_is_no_longer_leftover(self):
+        """An evidence directory with no sheet is leftover until a note names it.
+
+        Adding a sheet named after the directory (``.pipeline/<id>/<id>.md``)
+        makes the directory resolvable by filename and removes it from the
+        leftover set, without changing anything the resolver already holds.
+        """
+        from pipeline_tools.core import task_sheet_resolution
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._scene_repo(root)
+            task_id = 'orphan-continuation'
+            evidence = root / '.pipeline' / task_id
+            evidence.mkdir(parents=True)
+            (evidence / 'executor-report.md').write_text('report\n', encoding='utf-8')
+            self._commit_all(root, 'orphan evidence directory')
+
+            before = planning_preflight(root)['task_scenes']
+            self.assertIn(task_id, before['leftover_evidence'], before)
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertIsNone(resolved, errors)
+
+            (evidence / f'{task_id}.md').write_text(
+                f'<!-- Task ID: {task_id} -->\n', encoding='utf-8')
+            self._commit_all(root, 'historical note names the directory')
+
+            after = planning_preflight(root)['task_scenes']
+            self.assertNotIn(task_id, after['leftover_evidence'], after)
+            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertEqual([], errors, errors)
+            self.assertEqual(evidence / f'{task_id}.md', resolved)
+
 
 if __name__ == '__main__': unittest.main()

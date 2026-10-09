@@ -13,16 +13,33 @@ from pipeline_tools.contract import validate_task
 from scripts.validate_task_sheet import validate as validate_structure
 
 
+def sheet(task_id):
+    """Resolve a task sheet across its three supported locations.
+
+    A migrated repository keeps in-flight sheets in ``docs/tasks/`` and terminal
+    sheets in their evidence directory (``.pipeline/<task-id>/<task-id>.md``) or
+    in the flat archive (``.pipeline/archive/<task-id>.md``); the resolver finds
+    whichever applies without guessing.
+    """
+    from pipeline_tools.core import task_sheet_resolution
+
+    resolved, errors = task_sheet_resolution(ROOT, task_id)
+    if resolved is None:
+        raise AssertionError(errors)
+    return resolved
+
+
 TASKS = (
-    ROOT / "docs/tasks/pipeline-tools-v1.md",
-    ROOT / "docs/tasks/pipeline-evidence-lifecycle-migration.md",
-    ROOT / "docs/tasks/pipeline-tools-v1-continuation-1.md",
+    "pipeline-tools-v1",
+    "pipeline-evidence-lifecycle-migration",
+    "pipeline-tools-v1-continuation-1",
 )
 
 
 class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
     def test_migrated_pipeline_task_sheets_use_complete_ids(self):
-        for path in TASKS:
+        for task_id in TASKS:
+            path = sheet(task_id)
             text = path.read_text(encoding="utf-8")
             self.assertIsNone(re.search(r"\bAT[0-9][A-Z0-9]*\b", text), path)
             self.assertEqual(validate_task(path), [], path)
@@ -32,7 +49,7 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertEqual(len(ids), len(set(ids)), path)
 
     def test_schema2_rejects_abbreviated_operation_reference(self):
-        source = (ROOT / "docs/tasks/acceptance-id-and-template-compliance.md").read_text(encoding="utf-8")
+        source = sheet("acceptance-id-and-template-compliance").read_text(encoding="utf-8")
         contract = re.search(r"```pipeline-contract\n(.*?)\n```", source, re.DOTALL)
         self.assertIsNotNone(contract)
         value = json.loads(contract.group(1))
@@ -47,7 +64,7 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             path.unlink(missing_ok=True)
 
     def test_legacy_schema1_acceptance_id_remains_read_only_compatible(self):
-        path = ROOT / "docs/tasks/pipeline-tools-v1.md"
+        path = sheet("pipeline-tools-v1")
         before = path.read_bytes()
         self.assertEqual(validate_task(path), [])
         self.assertEqual(path.read_bytes(), before)
@@ -73,11 +90,11 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             "tests/test_planning_dispatch_integration.py: PlanningDispatchIntegrationTests.test_valid_planning_run_reaches_identity_verified_dispatch",
             "tests/test_derived_task_dispatch_recovery.py: DerivedTaskDispatchRecoveryTests.test_continuation_is_unique_idempotent_and_does_not_rewrite_parent_history",
         }
-        source = (ROOT / "docs/tasks/acceptance-id-and-template-compliance.md").read_text(encoding="utf-8")
+        source = sheet("acceptance-id-and-template-compliance").read_text(encoding="utf-8")
         self.assertTrue(expected.issubset(set(re.findall(r'"test_ref": "([^"]+)"', source))))
 
     def test_frozen_contract_paths_exclude_metrics_and_forbidden_files(self):
-        source = (ROOT / "docs/tasks/acceptance-id-and-template-compliance.md").read_text(encoding="utf-8")
+        source = sheet("acceptance-id-and-template-compliance").read_text(encoding="utf-8")
         contract = re.search(r"```pipeline-contract\n(.*?)\n```", source, re.DOTALL)
         self.assertIsNotNone(contract)
         value = json.loads(contract.group(1))
@@ -86,7 +103,7 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertIn("IDEA.md", value["forbidden_paths"])
 
     def test_all_frozen_acceptance_ids_have_exact_test_references(self):
-        source = (ROOT / "docs/tasks/acceptance-id-and-template-compliance.md").read_text(encoding="utf-8")
+        source = sheet("acceptance-id-and-template-compliance").read_text(encoding="utf-8")
         contract = re.search(r"```pipeline-contract\n(.*?)\n```", source, re.DOTALL)
         self.assertIsNotNone(contract)
         value = json.loads(contract.group(1))
@@ -121,7 +138,8 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         task_sheets = [
             path
             for path in sorted((ROOT / "docs" / "tasks").glob("*.md"))
-            if not self._merged_into_head(path.read_text(encoding="utf-8"))
+            if path.name != "README.md"
+            and not self._merged_into_head(path.read_text(encoding="utf-8"))
         ]
         self.assertGreater(len(task_sheets), 1)
         for path in task_sheets:
@@ -191,17 +209,17 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         self.assertTrue(any("floor" in error for error in errors), errors)
 
     def test_schema1_and_schema2_sheets_keep_today_outcome(self):
-        for name in (
-            "pipeline-tools-v1.md",
-            "pipeline-evidence-lifecycle-migration.md",
-            "acceptance-id-and-template-compliance.md",
-            "task-worktree-dispatch-identity.md",
+        for task_id in (
+            "pipeline-tools-v1",
+            "pipeline-evidence-lifecycle-migration",
+            "acceptance-id-and-template-compliance",
+            "task-worktree-dispatch-identity",
         ):
-            path = ROOT / "docs/tasks" / name
+            path = sheet(task_id)
             before = path.read_bytes()
-            self.assertEqual(validate_task(path), [], name)
-            self.assertEqual(validate_structure(path), [], name)
-            self.assertEqual(path.read_bytes(), before, name)
+            self.assertEqual(validate_task(path), [], task_id)
+            self.assertEqual(validate_structure(path), [], task_id)
+            self.assertEqual(path.read_bytes(), before, task_id)
 
     def test_template_emits_schema4_without_process_record_sections(self):
         text = (ROOT / "templates/task-sheet.md").read_text(encoding="utf-8")
@@ -213,9 +231,8 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             self.assertNotIn(heading, text, heading)
 
     def test_tracked_pipeline_evidence_contains_only_retained_names(self):
-        from pipeline_tools.core import RETAINED_EVIDENCE_NAMES
+        from pipeline_tools.core import is_archived_sheet_path, is_retained_evidence_path
 
-        retained = set(RETAINED_EVIDENCE_NAMES)
         completed = subprocess.run(
             ["git", "ls-files", ".pipeline"],
             cwd=ROOT,
@@ -229,7 +246,13 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             if line.strip() and not line.strip().startswith(".pipeline/metrics/")
         ]
         self.assertTrue(tracked)
-        offenders = [path for path in tracked if Path(path).name not in retained]
+        # The retained vocabulary plus a task's own moved sheet, and the flat
+        # archive where a terminal sheet without an evidence directory lives.
+        offenders = [
+            path
+            for path in tracked
+            if not (is_retained_evidence_path(path) or is_archived_sheet_path(path))
+        ]
         self.assertEqual(offenders, [], offenders)
         progress_logs = [path for path in tracked if path.endswith("-progress.jsonl")]
         self.assertEqual(progress_logs, [], progress_logs)
@@ -262,10 +285,10 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
     def test_validate_task_sheet_script_accepts_schema4_sheet(self):
         from scripts.validate_task_sheet import validate
 
-        sheet = ROOT / "docs/tasks/evidence-retention-forward-gate.md"
-        text = sheet.read_text(encoding="utf-8")
+        path = sheet("evidence-retention-forward-gate")
+        text = path.read_text(encoding="utf-8")
         self.assertIn('"schema": 4', text)
-        self.assertEqual(validate(sheet), [])
+        self.assertEqual(validate(path), [])
 
         poisoned = self._write_temp(text + "\n## 任务级进度\n\n### 执行记录\n")
         try:
@@ -358,6 +381,18 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             f"SKILL.md version must be at least 0.16.0 (found {declared_version.group(0).strip()})",
         )
         self.assertIn("v0.13.0 → v0.14.0", migration)
+        # 工作清单约定：`docs/tasks/` 只放进行中或待派发的任务单，终态单子在其
+        # 证据目录或 `.pipeline/archive/`；缺文件或缺这句话即失败。
+        worklist = ROOT / "docs/tasks/README.md"
+        self.assertTrue(worklist.is_file(), "docs/tasks/README.md must document the worklist")
+        worklist_text = worklist.read_text(encoding="utf-8")
+        self.assertIn("只放", worklist_text)
+        self.assertIn("进行中或待派发", worklist_text)
+        self.assertIn(".pipeline/<task-id>/<task-id>.md", worklist_text)
+        self.assertIn(".pipeline/archive/<task-id>.md", worklist_text)
+        for text in (readme, skill, recovery):
+            self.assertIn("docs/tasks/README.md", text, text)
+            self.assertIn("进行中或待派发", text, text)
 
     def test_references_compat_and_migration_documents_known_items(self):
         reference = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")
