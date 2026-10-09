@@ -37,11 +37,10 @@
     }
   ],
   "unverified": [
-    "revision 2 to 3 corrected the acceptance-test-4 test_ref class name from CliTests to CLITests; round 3 re-runs the five acceptance commands and the full suite under revision 3 and re-does the evidence, with the implementation unchanged at b4ca117",
-    "acceptance-test-4 test_ref resolution was confirmed three ways: source grep, an AST check that CLITests is the only class in tests/test_cli.py and owns the method, and the pipeline's own _acceptance_test_ref_position_errors returning an empty error list",
-    "gate pre-merge no longer reports any test_ref is absent error, but it still FAILs because all three pre-merge reports record head b4ca117 and the revision 3 amendment touched docs/tasks/derived-creation-removal.md, which evidence_only_paths does not treat as an evidence path; resolving this is the main agent's decision",
-    "the gate also reports UNVERIFIED goal hash unrecorded: docs/goal.md, unchanged from round 2; this task neither modified docs/goal.md nor recorded a hash for it",
-    "the gate pre-merge run predates this evidence commit, so its head comparison used d029938 as the current HEAD",
-    "the full suite is identical to round 2 at 388 passed, 30 subtests passed, because no implementation, test or documentation file changed this round"
+    "round 4 corrects the head semantics: head and observed_at_commit now record the branch tip at the moment the evidence was produced (875f4a5452b88932078b4a0f36db401604c39af1) instead of the implementation commit b4ca117, which predated the contract amendments and could never satisfy the evidence-only advance rule",
+    "with this report on disk the gate no longer reports executor-report.md head does not match current Git identity; review-report.md and final-check.md still do, because they are other roles' evidence for earlier rounds and still record head b4ca117",
+    "the gate also reports UNVERIFIED goal hash unrecorded: docs/goal.md, unchanged from earlier rounds; this task neither modified docs/goal.md nor recorded a hash for it",
+    "gate run 1 (three head mismatches) and gate run 2 (two head mismatches) both ran before this evidence commit; the post-commit run is recorded in the round handoff",
+    "the full suite is identical to the previous rounds at 388 passed, 30 subtests passed, because no implementation, test or documentation file changed"
   ]
 }
