@@ -111,7 +111,7 @@
     {
       "id": "acceptance-test-4",
       "evidence_level": 3,
-      "test_ref": "tests/test_cli.py: CliTests.test_dispatch_derived_create_is_no_longer_exposed",
+      "test_ref": "tests/test_cli.py: CLITests.test_dispatch_derived_create_is_no_longer_exposed",
       "command_ref": "python -m pytest -q tests/test_cli.py -k dispatch_derived_create_is_no_longer_exposed"
     },
     {
@@ -259,7 +259,7 @@
 
 - 触发：调用 `dispatch derived-create`。
 - 断言：命令不可用或明确返回不再支持；不得创建任何 worktree、分支或任务单。
-- 测试：`tests/test_cli.py: CliTests.test_dispatch_derived_create_is_no_longer_exposed`
+- 测试：`tests/test_cli.py: CLITests.test_dispatch_derived_create_is_no_longer_exposed`
 - 命令：`python -m pytest -q tests/test_cli.py -k dispatch_derived_create_is_no_longer_exposed`
 - 验收模式：集成
 - 证据等级：3
