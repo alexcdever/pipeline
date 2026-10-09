@@ -50,6 +50,8 @@ worktree 通过而主工作树失败 → 仍 FAIL/BLOCKED，不因合并已发�
 
 **证据身份的阶段分工**：`active`（pre-merge）阶段把报告绑定到它观察的提交——`head` 等于 `HEAD` 或仅被本任务证据提交推进，`branch`/`worktree` 等于当前 Git 身份；`finalized`（post-merge）阶段**只用任务单 id 与 `sheet_revision` 识别证据**，`head`、`branch`、`worktree` 降为记录事实（仍必须存在且格式合法），`observed_at_commit` 为可选记录事实，该阶段不再作任何相等性或路径相交判定——合并必然在当前 `HEAD` 上引入产品路径提交，所以该阶段这些判据都不可能成立，闸门因此不再要求刷新 head 或改写报告身份。fail-closed：`sheet_revision` 缺失或与当前修订版本不符、`task_id` 与受验任务不符、证据目录名与任务 id 不符、阶段取值无法确定，一律报错。`reconcile` 的报告身份一致与完整判据同样只看 `task_id` 与 `sheet_revision`（`branch`、`worktree`、`head` 不再参与一致性比较），任务分支报告与主工作树终审报告并存不再判为 `report identity conflict`。`reconcile` 对已合并交付（存在 `finalized` 标记，或报告记录的分支尖端已是当前 `HEAD` 的祖先——判断分支时排除 `HEAD` 当前所在分支，主工作树终审报告记的正是它，其尖端永远是 `HEAD` 的祖先）走 post-merge 判据，对未合并任务仍施加完整提交绑定。`active` 阶段的判定与错误文本与改动前逐字一致；`gate post-merge` 与 `evidence verify --phase finalized` 走 post-merge 判据，`gate pre-merge` 与默认（`--phase active`）走 active 判据。
 
+**报告机器块的边界**：阶段报告的 `pipeline-evidence` 机器块从起始围栏行开始，到其后**第一条**收尾围栏行（只由三个反引号组成的那一行）结束。机器块之后的正文可以再有自己的 fenced 代码块，它们不属于机器块。最终化读取器（`planning._read_evidence_block`）与闸门读取器（`core._read_machine_evidence`）用同一判据定位边界，因此对同一份报告结论一致，该一致性由 `tests/test_planning.py` 的一致性用例钉住。仍 fail-closed：没有起始围栏、起始围栏出现多次、找不到收尾围栏、块内 JSON 非法或不是对象——一律判为不可读、最终化 blocked。该边界判据只影响读取，从不改写报告字节，因此机器块之后带代码块的历史报告被自然接纳。
+
 合并后不再修订任务单：`amendments.json` 是追加式哈希链（旧条目字节不变），合并不会改写它；此后的需求变化重新规划或开新任务。post-merge 复验证据同样写明它评判的 `sheet_revision` 与 `sheet_sha256`，有效性只按修订版本判定：合并在当前 `HEAD` 上引入了产品路径提交，"改动路径"判据在该阶段必然成立，因此不再施加。`observed_at_commit` 是可选记录事实，写明即有格式要求，缺失不算错误；不含 `sheet_revision` 的历史形态证据不因此新增错误，只报为 `unverified`。
 
 ## 状态恢复与并发护栏
