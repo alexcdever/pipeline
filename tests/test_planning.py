@@ -1693,37 +1693,46 @@ class PlanningTests(unittest.TestCase):
             self.assertEqual([], scenes['leftover_evidence'], scenes)
 
     def test_orphan_evidence_directory_is_no_longer_leftover(self):
-        """An evidence directory with no sheet is leftover until a note names it.
+        """A sheet filed under its declared id stops leaving evidence leftover.
 
-        Adding a sheet named after the directory (``.pipeline/<id>/<id>.md``)
-        makes the directory resolvable by filename and removes it from the
-        leftover set, without changing anything the resolver already holds.
+        A sheet whose file name differs from its declared ``Task ID`` is filed
+        under the declared id, not its file name.  That puts it beside the
+        evidence directory that already carries the declared id, so the
+        directory is no longer a leftover evidence directory and the
+        three-location resolver finds the sheet by its declared name.
         """
-        from pipeline_tools.core import task_sheet_resolution
+        from pipeline_tools.planning import task_sheet_resolution
 
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             self._scene_repo(root)
-            task_id = 'orphan-continuation'
-            evidence = root / '.pipeline' / task_id
+            declared_id = 'repository-evidence-hygiene-continuation-5'
+            evidence = root / '.pipeline' / declared_id
             evidence.mkdir(parents=True)
-            (evidence / 'executor-report.md').write_text('report\n', encoding='utf-8')
-            self._commit_all(root, 'orphan evidence directory')
+            (evidence / 'finalization.json').write_text('{}\n', encoding='utf-8')
+            (root / 'docs' / 'tasks').mkdir(parents=True)
+            misfiled = root / 'docs' / 'tasks' / 'repository-evidence-hygiene.md'
+            misfiled.write_text(
+                f'# sheet\n\n<!-- Task ID: {declared_id} -->\n', encoding='utf-8')
+            self._commit_all(root, 'misfiled sheet and its evidence directory')
 
             before = planning_preflight(root)['task_scenes']
-            self.assertIn(task_id, before['leftover_evidence'], before)
-            resolved, errors = task_sheet_resolution(root, task_id)
-            self.assertIsNone(resolved, errors)
+            self.assertIn(declared_id, before['leftover_evidence'], before)
 
-            (evidence / f'{task_id}.md').write_text(
-                f'<!-- Task ID: {task_id} -->\n', encoding='utf-8')
-            self._commit_all(root, 'historical note names the directory')
+            # File it under its declared id, not its file name.
+            target = evidence / f'{declared_id}.md'
+            subprocess.run(
+                ['git', 'mv', misfiled.relative_to(root).as_posix(),
+                 target.relative_to(root).as_posix()],
+                cwd=root, check=True)
+            self._commit_all(root, 'file the sheet under its declared id')
 
             after = planning_preflight(root)['task_scenes']
-            self.assertNotIn(task_id, after['leftover_evidence'], after)
-            resolved, errors = task_sheet_resolution(root, task_id)
+            self.assertNotIn(declared_id, after['leftover_evidence'], after)
+            self.assertFalse(misfiled.exists())
+            resolved, errors = task_sheet_resolution(root, declared_id)
             self.assertEqual([], errors, errors)
-            self.assertEqual(evidence / f'{task_id}.md', resolved)
+            self.assertEqual(target, resolved)
 
 
 if __name__ == '__main__': unittest.main()

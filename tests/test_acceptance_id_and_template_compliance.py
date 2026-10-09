@@ -138,8 +138,7 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
         task_sheets = [
             path
             for path in sorted((ROOT / "docs" / "tasks").glob("*.md"))
-            if path.name != "README.md"
-            and not self._merged_into_head(path.read_text(encoding="utf-8"))
+            if not self._merged_into_head(path.read_text(encoding="utf-8"))
         ]
         self.assertGreater(len(task_sheets), 1)
         for path in task_sheets:
@@ -381,18 +380,17 @@ class AcceptanceIdAndTemplateComplianceTests(unittest.TestCase):
             f"SKILL.md version must be at least 0.16.0 (found {declared_version.group(0).strip()})",
         )
         self.assertIn("v0.13.0 → v0.14.0", migration)
-        # 工作清单约定：`docs/tasks/` 只放进行中或待派发的任务单，终态单子在其
-        # 证据目录或 `.pipeline/archive/`；缺文件或缺这句话即失败。
-        worklist = ROOT / "docs/tasks/README.md"
-        self.assertTrue(worklist.is_file(), "docs/tasks/README.md must document the worklist")
-        worklist_text = worklist.read_text(encoding="utf-8")
-        self.assertIn("只放", worklist_text)
-        self.assertIn("进行中或待派发", worklist_text)
-        self.assertIn(".pipeline/<task-id>/<task-id>.md", worklist_text)
-        self.assertIn(".pipeline/archive/<task-id>.md", worklist_text)
+        # 工作清单约定：`docs/tasks/` 只放进行中或待派发的任务单，终态单子在其证据
+        # 目录，没有证据目录时在 `.pipeline/archive/`；三处文档口径必须一致，缺任
+        # 何一处表述即失败。`docs/tasks/README.md` 不作为约定载体（工作清单扫描会把
+        # `docs/tasks/*.md` 一律当任务单）。
         for text in (readme, skill, recovery):
-            self.assertIn("docs/tasks/README.md", text, text)
+            self.assertIn("只放", text, text)
             self.assertIn("进行中或待派发", text, text)
+            self.assertIn(".pipeline/<task-id>/<task-id>.md", text, text)
+            self.assertIn(".pipeline/archive/<task-id>.md", text, text)
+        self.assertFalse((ROOT / "docs/tasks/README.md").exists(),
+                         "docs/tasks/README.md must not exist: the worklist scan reads every docs/tasks/*.md as a sheet")
 
     def test_references_compat_and_migration_documents_known_items(self):
         reference = (ROOT / "references/compat-and-migration.md").read_text(encoding="utf-8")

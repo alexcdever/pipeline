@@ -11,7 +11,7 @@
 
 默认项目约定：
 
-- 任务单：`docs/tasks/` 只放**进行中或待派发**的任务单，即 `docs/tasks/<task-id>.md`，约定见 `docs/tasks/README.md`；任务关闭后移入 `.pipeline/<task-id>/<task-id>.md`（有证据目录时）或 `.pipeline/archive/<task-id>.md`（没有证据目录时）。三个位置按此顺序解析，同一 id 出现在多处或三处都没有即报错（`pipeline_tools/core.py` 的 `task_sheet_resolution`）
+- 任务单：`docs/tasks/` 只放**进行中或待派发**的任务单（`docs/tasks/*.md` 一律按任务单处理，不放 README 之类的说明文件）；任务关闭后移入 `.pipeline/<task-id>/<task-id>.md`（有证据目录时）或 `.pipeline/archive/<task-id>.md`（没有证据目录时），有终态的单子一律按其**声明 id**（`<!-- Task ID: -->`）归档，文件名与声明 id 不符时以声明 id 为准。三个位置按此顺序解析，同一 id 出现在多处或三处都没有即报错（`pipeline_tools/core.py` 的 `task_sheet_resolution`）
 - 正式任务证据：`.pipeline/<task-id>/`（仅阶段报告、机器结果、任务单副本和 `finalization.json`；成功收敛前的临时文件不属于交付）
 - `.pipeline/archive/` 是终态任务单的隔离区，**不是**任务证据目录：它和 `planning`、`metrics` 一样被排除在证据目录扫描之外
 - 恢复索引：`.pipeline/recovery-index.json`；规划中间审计和 stage 文件写入系统临时目录 `pipeline-tools/planning/`，项目只保留恢复索引

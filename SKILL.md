@@ -89,7 +89,7 @@ metadata:
 - `prerequisite` 任务必须在任务计划里声明 `non_user_completion_reason`；生成器不再替它编造理由，缺失即生成失败。
 - 生成的 schema-4 契约携带 `goal` 字段（`path`/`sha256`/`planning_run_id`）与 `assumptions`/`unknowns`（来自项目事实），随任务单一并冻结；schema 1-3 只保留历史读取，继续使用旧 `implement_plan` 字段。
 - 正式 `evidence verify` 前先运行 `evidence readiness`；缺 final-check 或必要报告时记录“未准备好”，不要把阶段顺序问题误作产品验收失败。指标报告优先按 task/run/terminal 维度解释，不用全项目累计 `success_rate` 代替终态结论。
-- 任务单归档：`docs/tasks/` 只放**进行中或待派发**的任务单（约定见 `docs/tasks/README.md`）；任务关闭后单子不再留在 `docs/tasks/`，最终化的移动步骤（`pipeline_tools/planning.py` 的 `archive_task_sheet`）把它移入 `.pipeline/<task-id>/<task-id>.md`，没有证据目录时移入 `.pipeline/archive/<task-id>.md`，被跟踪的单子用 `git mv` 保持跟踪；`.worktrees/<task-id>` 仍存在时该步骤 blocked 且不移动任何文件。某任务的保留名是 `RETAINED_EVIDENCE_NAMES` ∪ `{<该任务 id>.md}`，所以最终化剪枝不会剪掉自己的单子；前向基线闸门对 `.pipeline/archive/**` 豁免保留名规则，但同一证据目录下别的非保留名文件仍是漂移。`.gitattributes` 的 `.pipeline/** -text` 使 `.pipeline/**` 下的证据经 checkout 后字节不变。
+- 任务单归档：`docs/tasks/` 只放**进行中或待派发**的任务单（`docs/tasks/*.md` 一律按任务单处理，不放 README 之类的说明文件）；任务关闭后单子不再留在 `docs/tasks/`，最终化的移动步骤（`pipeline_tools/planning.py` 的 `archive_task_sheet`）把它移入 `.pipeline/<task-id>/<task-id>.md`，没有证据目录时移入 `.pipeline/archive/<task-id>.md`，被跟踪的单子用 `git mv` 保持跟踪；终态单子一律按其**声明 id**（`<!-- Task ID: -->`）归档，文件名与声明 id 不符时改名到位。`.worktrees/<task-id>` 仍存在时该步骤 blocked 且不移动任何文件。某任务的保留名是 `RETAINED_EVIDENCE_NAMES` ∪ `{<该任务 id>.md}`，所以最终化剪枝不会剪掉自己的单子；前向基线闸门对 `.pipeline/archive/**` 豁免保留名规则，但同一证据目录下别的非保留名文件仍是漂移。`.gitattributes` 的 `.pipeline/** -text` 使 `.pipeline/**` 下的证据经 checkout 后字节不变。
 - 阶段报告与机器结果的 `head` 记录**产生证据时的分支尖端**（执行证据是任务 worktree 的 branch tip，主工作树终审是复验时的 `HEAD`），`observed_at_commit` 与它同源；不要填"实现提交"或"冻结提交"，那会让之后任何一次证据提交都把它推离当前身份。
 - 正常只把短摘要放入上下文；完整输出、报告和统计事件留在项目文件中，需要诊断时再读取。
 
