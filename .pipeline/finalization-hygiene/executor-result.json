@@ -31,8 +31,8 @@
     }
   ],
   "unverified": [
-    "the end-to-end demo log e2e-demo.log is a local process artifact that finalization prunes, so it is not referenced from any retained evidence file",
-    "references/acceptance-evidence.md and references/execution-and-review.md still describe the narrower evidence-only basis; they are outside this task's allowed_paths",
-    "SKILL.md keeps version 0.16.0 because a bump needs a changelog entry in references/compat-and-migration.md, which is outside this task's allowed_paths"
+    "round 1 stopped at the contract boundary (revision 1 allowed_paths excluded references/acceptance-evidence.md and references/execution-and-review.md); round 2, under revision 2, syncs those two documents to the widened evidence-only basis",
+    "references/acceptance-evidence.md line 66 still says changes must fall inside the evidence directory without naming .pipeline explicitly; it is neither of the two named passages, so it was left untouched",
+    "this is a documentation-only round, so it adds no new runtime observation beyond the unchanged acceptance tests and the full suite"
   ]
 }
