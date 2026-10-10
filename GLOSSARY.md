@@ -21,7 +21,7 @@ _Avoid_: 平台, 客户端, IDE
 _Avoid_: 编排者, orchestrator, coordinator
 
 **执行子代理**:
-在隔离 worktree 中实现用户行为的一方；遵循红绿蓝循环。
+在隔离 worktree 中实现一个工作单元的一方；遵循测试驱动（先写失败的测试，再写最小实现，然后重构）。
 _Avoid_: 实现者, 工人, worker
 
 **审查子代理**:
