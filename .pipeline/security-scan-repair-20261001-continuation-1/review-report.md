@@ -1,5 +1,0 @@
-# Review report
-
-```pipeline-evidence
-{"schema":2,"task_id":"security-scan-repair-20261001-continuation-1","worktree":"D:/Projects/Skills/pipeline","branch":"main","role":"reviewer","round":3,"status":"PASS","head":"247cff583abc277b921355390e70f920e5ded2e9","generated_at":"2026-10-01T00:00:00Z","commands":[{"command":"python -m pytest -q tests/test_evidence.py tests/test_cli.py","cwd":"D:/Projects/Skills/pipeline/.worktrees/security-scan-repair-20261001-continuation-1","exit_code":0,"evidence_ref":"review-report.md"},{"command":"python -m pytest -q tests/test_security_repairs.py","cwd":"D:/Projects/Skills/pipeline/.worktrees/security-scan-repair-20261001-continuation-1","exit_code":0,"evidence_ref":"review-report.md"}],"assertions":["canonical evidence fixtures preserve negative-path intent","focused security and CLI/evidence tests pass"],"evidence_refs":["review-report.md","executor-report.md"],"unverified":["independent review is represented by this stage record; post-merge main-worktree verification pending"]}
-```

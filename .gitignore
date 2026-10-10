@@ -1,12 +1,8 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-.env
-.pipeline/metrics-export.json
-.pipeline/metrics/
-.pipeline/*/*-progress.jsonl
+# 运行 pipeline 时的工作现场。SKILL.md 要求这两条在创建第一个 worktree 之前就已提交：
+# /.worktrees/ 让主工作树看不见整棵子工作树；/.pipeline/ 让子工作树自己看不见工作台。
 /.worktrees/
+/.pipeline/
+
+# 操作系统
 .DS_Store
 Thumbs.db
-/full_test.log

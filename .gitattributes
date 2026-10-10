@@ -1,8 +1,1 @@
 * text=auto eol=lf
-*.cmd text eol=crlf
-*.bat text eol=crlf
-docs/tasks/*.md -text
-# Pipeline evidence must survive a checkout byte for byte: normalizing the line
-# endings of a report or a machine result would rewrite closed evidence.  The
-# attribute is declared without touching any already committed blob.
-.pipeline/** -text
