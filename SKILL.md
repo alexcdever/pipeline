@@ -1,7 +1,7 @@
 ---
 name: pipeline
 description: 使用子代理交付用户行为的编程流程：谁做什么、按什么顺序、什么算完成。
-version: 1.3.0
+version: 1.4.0
 ---
 
 # 编程流程
