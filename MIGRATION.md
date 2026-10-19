@@ -94,14 +94,16 @@ foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests'
 ```
 
 
-**4. 去掉 `.gitattributes` 里两行**
+**4. 去掉 `.gitattributes` 里无对象的属性**
 
-```
-docs/tasks/*.md -text
+`.pipeline/** -text` 没有对象后删除；`docs/tasks/*.md -text` 只有在 `docs/tasks/` 下不再保留任何项目自有 Markdown 时才删除，否则保留它。
+
+```text
+docs/tasks/*.md -text   # 按上面的条件删除这一行
 .pipeline/** -text
 ```
 
-保留 `* text=auto eol=lf`。不再有会被跟踪的 `.pipeline/**`，这两条属性没有对象了。
+保留 `* text=auto eol=lf`，除非它本来就不存在；不要仅为迁移新增它。
 
 **5. 清掉旧版遗留的 worktree**
 
@@ -116,7 +118,7 @@ git worktree remove .worktrees/<task-id>   # 留有未提交改动或未跟踪�
 git branch -D <task-id>                    # -D 会静默丢掉未并入的提交；删前先 `git log <主分支>..<task-id>` 看一眼，确认没有要留的再删
 ```
 
-**6. 提交一次**
+先确认工作区只剩本清单产生的改动（有别的东西先按项目惯例处置），再提交；嫌 `git add -A` 太宽的，只 add 实际还存在的新增/修改路径，并用 `git add -u`（或 `git add -A`）暂存步骤 2/3 产生的删除——`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 进了 index，不用再 add（它已从磁盘消失，写进 pathspec 会 fatal）。
 
 先确认工作区只剩本清单产生的改动（有别的东西先按项目惯例处置），再提交；嫌 `git add -A` 太宽的，只 add 实际还存在的路径（例如 `git add .gitignore .gitattributes`，目录不存在的剔除）——`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 进了 index，不用再 add（它已从磁盘消失，写进 pathspec 会 fatal）。
 
