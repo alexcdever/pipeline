@@ -25,10 +25,10 @@
 
 **未跟踪、但可能还在的项目本地文件**（旧版的 `.gitignore` 只挡了其中一部分）：`.pipeline/config.json`（审批策略，旧版要手工创建）、`.pipeline/recovery-index.json`、`.pipeline/metrics/`、`.pipeline/<task-id>/<task-id>-progress.jsonl`。一并删。
 
-`tests/`、`bin/`、`scripts/`、`docs/` 这几个名字太通用，**多半也有你自己的东西在里面**。删之前先看一眼那是谁的：
+`tests/`、`bin/`、`scripts/`、`docs/`、`references/`、`templates/` 这几个名字太通用，**多半也有你自己的东西在里面**。删之前先看一眼那是谁的：
 
 ```bash
-git log --oneline -- pipeline_tools tests bin scripts
+git log --oneline -- pipeline_tools references templates tests bin scripts
 ```
 
 条目全是旧版的阶段提交，才整块删；有自己的提交就只挑出来。
@@ -58,6 +58,8 @@ git log --oneline -- pipeline_tools tests bin scripts
 git rm -r --cached .pipeline
 rm -rf .pipeline
 ```
+
+取消跟踪只在 index 里，**先把它落进提交**（`git commit` 或并入步骤 6 之前的任意一次提交），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
 
 **3. 删掉旧版带进来的工具、模板与任务单**
 
