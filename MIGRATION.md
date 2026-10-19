@@ -41,7 +41,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ## 清单
 
-在主工作树根目录执行。只有步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；其余单份示例的命令在 Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`、把 `for ...; do ...; done` 换成 PowerShell 的 `foreach`。
+在主工作树根目录执行。步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；其余单份示例的命令在 Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`。
 
 **1. 补 `.gitignore`**
 
@@ -65,15 +65,22 @@ rm -rf .pipeline
 
 ```bash
 # POSIX（Linux/macOS/WSL/git-bash）
-for d in pipeline_tools references templates scripts bin tests; do [ -d "$d" ] && git rm -r "$d"; done   # 先按上面那段确认归属；只删存在的，逐项来免得整句 fatal
-# 旧任务单：确认是旧版任务单（带 `<!-- Task ID: -->` 标记或 `pipeline-contract` 区块）的才删；混有自有文档时只删这些，删完目录空了再删目录
-rm -rf docs/tasks
+for d in pipeline_tools references templates scripts bin tests; do
+  [ -d "$d" ] || continue                       # 只处理存在的目录，免得整句 fatal
+  git rm -r --ignore-unmatch "$d" 2>/dev/null || true   # 先按上面那段确认归属；删掉被跟踪的部分
+  rm -rf "$d"                                    # 再清掉目录里未被跟踪的残留，别让 git add -A 把它们捡进提交
+done
+git rm -r docs/tasks 2>/dev/null || rm -rf docs/tasks   # 旧任务单：确认是旧版任务单（带 `<!-- Task ID: -->` 标记或 `pipeline-contract` 区块）的才删；删完目录空了再删目录
 ```
 
 ```powershell
 # Windows PowerShell 等价写法
-foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests') { if (Test-Path $d) { git rm -r $d } }
-Remove-Item -Recurse -Force docs/tasks   # 同上：确认只含旧任务单再删
+foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests') {
+  if (-not (Test-Path $d)) { continue }
+  git rm -r --ignore-unmatch $d 2>$null
+  Remove-Item -Recurse -Force $d
+}
+if (Test-Path docs/tasks) { git rm -r docs/tasks 2>$null; Remove-Item -Recurse -Force docs/tasks }   # 同上：确认只含旧任务单再删
 ```
 
 
