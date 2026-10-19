@@ -28,7 +28,7 @@
 `tests/`、`bin/`、`scripts/`、`docs/`、`references/`、`templates/` 这几个名字太通用，**多半也有你自己的东西在里面**。删之前先看一眼那是谁的：
 
 ```bash
-git log --oneline -- pipeline_tools references templates tests bin scripts
+git log --oneline -- pipeline_tools references templates tests bin scripts docs
 ```
 
 条目全是旧版的阶段提交，才整块删；有自己的提交就只挑出来。
@@ -64,8 +64,8 @@ rm -rf .pipeline
 **3. 删掉旧版带进来的工具、模板与任务单**
 
 ```bash
-git rm -r pipeline_tools references templates scripts bin tests   # 先按上面那段确认归属
-rm -rf docs/tasks
+git rm -r pipeline_tools references templates scripts bin tests   # 先按上面那段确认归属；不存在的目录先剔除，否则整句 fatal 一个不删
+rm -rf docs/tasks   # 按下面那段判定：混有自有文档时只删旧任务单，不整个删目录
 ```
 
 `docs/tasks/` 里如果混了项目自己的文档，就只删旧任务单；删完目录空了再删目录。
@@ -88,7 +88,7 @@ git worktree list
 `.worktrees/` 下每个目录都是一个旧任务（旧版也用这个父目录）。逐个：
 
 ```bash
-git worktree remove .worktrees/<task-id>
+git worktree remove .worktrees/<task-id>   # 留有未提交改动或未跟踪文件的加 --force
 git branch -D <task-id>
 ```
 
