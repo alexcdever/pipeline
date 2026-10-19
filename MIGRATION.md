@@ -1,6 +1,6 @@
 # 从旧版本迁过来
 
-**这份文件不是契约的一部分。** 它是一次性的清理说明，做完就该忘掉；`SKILL.md` 与 `GLOSSARY.md` 才是规则本身。
+**这份文件不是契约的一部分。** 它是一次性的清理说明，做完就该忘掉；规则在 `SKILL.md`，词在 `GLOSSARY.md`。
 
 新流程不读旧版的任何产物，所以换技能目录这件事本身零成本。但旧版在**项目仓库里**留下的东西要清一次——其中一条不清就会真的坏。
 
@@ -76,7 +76,7 @@ done
 ```
 
 ```powershell
-# Windows PowerShell 7+ 等价写法；旧版 PowerShell 请按上面的逐文件规则操作
+# Windows PowerShell 等价写法（PS 5.1 与 7+ 均可）
 foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests') {
   if (-not (Test-Path $d)) { continue }
   if (git status --porcelain -- $d) { Write-Host "$d 有未提交改动，先确认再删"; continue }
