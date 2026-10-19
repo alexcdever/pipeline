@@ -41,7 +41,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ## 清单
 
-在主工作树根目录执行。示例是 POSIX；Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`。
+在主工作树根目录执行。多数步骤给了 POSIX 与 Windows PowerShell 两种写法（步骤 3、5 各有一对）；只有单份示例的，Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`、把 `for ...; do ...; done` 换成 PowerShell 的 `foreach`。
 
 **1. 补 `.gitignore`**
 
@@ -64,8 +64,16 @@ rm -rf .pipeline
 **3. 删掉旧版带进来的工具、模板与任务单**
 
 ```bash
+# POSIX（Linux/macOS/WSL/git-bash）
 for d in pipeline_tools references templates scripts bin tests; do [ -d "$d" ] && git rm -r "$d"; done   # 先按上面那段确认归属；只删存在的，逐项来免得整句 fatal
-rm -rf docs/tasks   # 按下面那段判定：混有自有文档时只删旧任务单，不整个删目录
+# 旧任务单：确认是旧版任务单（带 `<!-- Task ID: -->` 标记或 `pipeline-contract` 区块）的才删；混有自有文档时只删这些，删完目录空了再删目录
+rm -rf docs/tasks
+```
+
+```powershell
+# Windows PowerShell 等价写法
+foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests') { if (Test-Path $d) { git rm -r $d } }
+Remove-Item -Recurse -Force docs/tasks   # 同上：确认只含旧任务单再删
 ```
 
 `docs/tasks/` 里如果混了项目自己的文档，就只删旧任务单；删完目录空了再删目录。
