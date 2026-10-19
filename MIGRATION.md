@@ -55,7 +55,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 **2. 取消跟踪并删除旧证据（不可逆）**
 
 ```bash
-git rm -r --cached .pipeline   # .pipeline/ 不存在或本就未跟踪时跳过这步，只跑下面那条
+git rm -r --cached --ignore-unmatch .pipeline   # 不存在或本就未跟踪时不报错（同步骤 3 的写法）
 rm -rf .pipeline
 ```
 
@@ -64,23 +64,26 @@ rm -rf .pipeline
 **3. 删掉旧版带进来的工具、模板与任务单**
 
 ```bash
-# POSIX（Linux/macOS/WSL/git-bash）
+# POSIX（Linux/macOS/WSL/git-bash）——先按上面 `git log` 那段确认归属：
+# 只有该目录的提交历史全是旧版带来的，才整块删；混有自有提交的，只挑旧文件删。
 for d in pipeline_tools references templates scripts bin tests; do
   [ -d "$d" ] || continue                       # 只处理存在的目录，免得整句 fatal
-  git rm -r --ignore-unmatch "$d" 2>/dev/null || true   # 先按上面那段确认归属；删掉被跟踪的部分
-  rm -rf "$d"                                    # 再清掉目录里未被跟踪的残留，别让 git add -A 把它们捡进提交
+  git status --porcelain -- "$d" | grep -q . && { echo "$d 有未提交改动，先确认再删"; continue; }
+  git rm -r --ignore-unmatch "$d" 2>/dev/null; rm -rf "$d"   # 删被跟踪的部分，再清掉未跟踪残留（分号：无条件都跑）
 done
-git rm -r docs/tasks 2>/dev/null || rm -rf docs/tasks   # 旧任务单：确认是旧版任务单（带 `<!-- Task ID: -->` 标记或 `pipeline-contract` 区块）的才删；删完目录空了再删目录
+# 旧任务单：确认目录里只有旧版任务单（带 `<!-- Task ID: -->` 标记或 `pipeline-contract` 区块）才整删；
+# 下面这行是「整删」的做法，只在确认过之后执行；混有自有文档时逐个挑出来删，删完目录空了再删目录。
+[ -d docs/tasks ] && ! git status --porcelain -- docs/tasks | grep -q . && { git rm -r --ignore-unmatch docs/tasks 2>/dev/null; rm -rf docs/tasks; } || echo "docs/tasks 有改动或不存在：先确认归属再删"
 ```
 
 ```powershell
 # Windows PowerShell 等价写法
 foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests') {
   if (-not (Test-Path $d)) { continue }
-  git rm -r --ignore-unmatch $d 2>$null
-  Remove-Item -Recurse -Force $d
+  if (git status --porcelain -- $d) { Write-Host "$d 有未提交改动，先确认再删"; continue }
+  git rm -r --ignore-unmatch $d 2>$null; Remove-Item -Recurse -Force $d
 }
-if (Test-Path docs/tasks) { git rm -r docs/tasks 2>$null; Remove-Item -Recurse -Force docs/tasks }   # 同上：确认只含旧任务单再删
+if ((Test-Path docs/tasks) -and -not (git status --porcelain -- docs/tasks)) { git rm -r --ignore-unmatch docs/tasks 2>$null; Remove-Item -Recurse -Force docs/tasks } else { Write-Host "docs/tasks 有改动或不存在：先确认归属再删" }
 ```
 
 
