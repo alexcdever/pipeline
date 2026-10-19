@@ -41,7 +41,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ## 清单
 
-在主工作树根目录执行。多数步骤给了 POSIX 与 Windows PowerShell 两种写法（步骤 3、5 各有一对）；只有单份示例的，Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`、把 `for ...; do ...; done` 换成 PowerShell 的 `foreach`。
+在主工作树根目录执行。只有步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；其余单份示例的命令在 Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`、把 `for ...; do ...; done` 换成 PowerShell 的 `foreach`。
 
 **1. 补 `.gitignore`**
 
@@ -76,7 +76,6 @@ foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests'
 Remove-Item -Recurse -Force docs/tasks   # 同上：确认只含旧任务单再删
 ```
 
-`docs/tasks/` 里如果混了项目自己的文档，就只删旧任务单；删完目录空了再删目录。
 
 **4. 去掉 `.gitattributes` 里两行**
 

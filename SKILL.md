@@ -187,6 +187,7 @@ sequenceDiagram
     else 问题在描述
       R-->>M: 不通过
       M->>M: 重写 task.md
+      M->>E: 按新描述重新派执行者与审查者
     end
   end
   M-->>U: 报完成
