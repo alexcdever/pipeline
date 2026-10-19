@@ -41,7 +41,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ## 清单
 
-在主工作树根目录执行。步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；其余单份示例的命令在 Windows 下把 `rm -rf` 换成 `Remove-Item -Recurse -Force`。
+在主工作树根目录执行。步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；步骤 2 的 `rm -rf .pipeline` 在 Windows 下换成 `Remove-Item -Recurse -Force .pipeline`；跨目录清理一律按步骤 3 的「逐文件确认归属、跟踪文件 `git rm`、未跟踪文件 `rm -f`/`Remove-Item`」办，不要整目录删。
 
 **1. 补 `.gitignore`**
 
@@ -82,7 +82,7 @@ foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests'
   if (git status --porcelain -- $d) { Write-Host "$d 有未提交改动，先确认再删"; continue }
   git rm -r --ignore-unmatch $d 2>$null; Remove-Item -Recurse -Force $d
 }
-# 候选用 `Get-ChildItem docs/tasks -File | Select-String -Pattern 'Task ID:|pipeline-contract'` 筛选，再逐个确认删除。
+# 候选用 `Get-ChildItem docs/tasks -File | Select-String -Pattern 'Task ID:|pipeline-contract'` 筛选；逐个确认后，跟踪文件用 `git rm`，未跟踪文件用 `Remove-Item -Force`。不得整目录删除。
 ```
 
 
