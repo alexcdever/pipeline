@@ -56,7 +56,14 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ```bash
 git status --porcelain -- .pipeline   # 有本地改动先停下确认，别强删
-git rm -r --cached --ignore-unmatch .pipeline   # 不存在或本就未跟踪时不报错（同步骤 3 的写法）
+git rm -r --cached --ignore-unmatch .pipeline   # 取消跟踪（不存在或本就未跟踪时不报错）
+rm -rf .pipeline   # 从工作区删除旧证据
+```
+
+```powershell
+git status --porcelain -- .pipeline   # 有本地改动先停下确认，别强删
+git rm -r --cached --ignore-unmatch .pipeline   # 取消跟踪
+Remove-Item -Recurse -Force .pipeline   # 从工作区删除旧证据
 ```
 
 取消跟踪只在 index 里，**先把它落进提交**（`git commit`，或并入步骤 6 那次提交；`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 暂存在 index，提交时直接带走即可），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
