@@ -118,9 +118,9 @@ git worktree remove .worktrees/<task-id>   # 留有未提交改动或未跟踪�
 git branch -D <task-id>                    # -D 会静默丢掉未并入的提交；删前先 `git log <主分支>..<task-id>` 看一眼，确认没有要留的再删
 ```
 
-先确认工作区只剩本清单产生的改动（有别的东西先按项目惯例处置），再提交；嫌 `git add -A` 太宽的，只 add 实际还存在的新增/修改路径，并用 `git add -u`（或 `git add -A`）暂存步骤 2/3 产生的删除——`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 进了 index，不用再 add（它已从磁盘消失，写进 pathspec 会 fatal）。
+**6. 提交一次**
 
-先确认工作区只剩本清单产生的改动（有别的东西先按项目惯例处置），再提交；嫌 `git add -A` 太宽的，只 add 实际还存在的路径（例如 `git add .gitignore .gitattributes`，目录不存在的剔除）——`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 进了 index，不用再 add（它已从磁盘消失，写进 pathspec 会 fatal）。
+先确认工作区只剩本清单产生的改动（有别的东西先按项目惯例处置），再提交；嫌 `git add -A` 太宽的，只 add 实际还存在的新增/修改路径，并用 `git add -u`（或 `git add -A`）暂存步骤 2/3 产生的删除——`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 进了 index，不用再 add（它已从磁盘消失，写进 pathspec 会 fatal）。
 
 ```bash
 git add -A
