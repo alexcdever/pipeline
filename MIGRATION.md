@@ -62,7 +62,7 @@ rm -rf .pipeline
 **3. 删掉旧版带进来的工具、模板与任务单**
 
 ```bash
-git rm -r pipeline_tools references templates scripts bin   # 先按上面那段确认归属
+git rm -r pipeline_tools references templates scripts bin tests   # 先按上面那段确认归属
 rm -rf docs/tasks
 ```
 
