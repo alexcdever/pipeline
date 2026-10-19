@@ -71,28 +71,29 @@ Remove-Item -Recurse -Force .pipeline   # 从工作区删除旧证据
 **3. 删掉旧版带进来的工具、模板与任务单**
 
 ```bash
-# POSIX（Linux/macOS/WSL/git-bash）——先按上面 `git log` 那段确认归属：
+# POSIX（Linux/macOS/WSL/git-bash）：先按上面 git log 确认六目录归属
 for d in pipeline_tools references templates scripts bin tests; do
-  [ -d "$d" ] || continue                       # 只处理存在的目录，免得整句 fatal
-  git status --porcelain -- "$d" | grep -q . && { echo "$d 有未提交改动，先确认再删"; continue; }
+  [ -d "$d" ] || continue
+  git status --porcelain -- "$d" | grep -q . && { echo "$d 有改动，先确认再删"; continue; }
   git rm -r --ignore-unmatch "$d" || { echo "$d 的 git rm 失败，停下来查原因"; continue; }
-  rm -rf "$d"                                   # 删完被跟踪的，再清掉目录里剩下的未跟踪残留
+  rm -rf "$d"
 done
-# `docs/tasks/` 必须逐文件确认归属后删除：跟踪文件用 `git grep -l -E 'Task ID:|pipeline-contract' -- docs/tasks` 列候选，未跟踪文件用 `grep -rlE 'Task ID:|pipeline-contract' docs/tasks` 列候选；逐个确认后，跟踪文件 `git rm`、未跟踪文件 `rm -f`。混有自有文档时禁止整目录删除，全部删完且目录为空再删目录。
-# 不提供无守卫的 `rm -rf docs/tasks`，避免误删项目文档。
+# docs/tasks 逐文件按标记筛选后删除，禁止整目录 rm -rf
+git grep -l -E 'Task ID:|pipeline-contract' -- docs/tasks || true
+grep -rlE 'Task ID:|pipeline-contract' docs/tasks --exclude-dir=.git 2>/dev/null || true
 ```
 
 ```powershell
-# Windows PowerShell 等价写法（PS 5.1 与 7+ 均可）
+# Windows PowerShell（5.1 与 7+）
 foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests') {
   if (-not (Test-Path $d)) { continue }
-  if (git status --porcelain -- $d) { Write-Host "$d 有未提交改动，先确认再删"; continue }
+  if (git status --porcelain -- $d) { Write-Host "$d 有改动，先确认再删"; continue }
   git rm -r --ignore-unmatch $d; if ($LASTEXITCODE -ne 0) { Write-Host "$d 的 git rm 失败，停下来查原因"; continue }
   Remove-Item -Recurse -Force $d
 }
-# 候选用 `Get-ChildItem docs/tasks -File | Select-String -Pattern 'Task ID:|pipeline-contract'` 筛选；逐个确认后，跟踪文件用 `git rm`，未跟踪文件用 `Remove-Item -Force`。不得整目录删除。
+# docs/tasks 用 Get-ChildItem + Select-String 逐文件筛选后删除，禁止整目录删除
+Get-ChildItem docs/tasks -File -Recurse | Select-String -Pattern 'Task ID:|pipeline-contract' | Select-Object -ExpandProperty Path -Unique
 ```
-
 
 **4. 去掉 `.gitattributes` 里无对象的属性**
 
