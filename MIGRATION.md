@@ -55,7 +55,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 **2. 取消跟踪并删除旧证据（不可逆）**
 
 ```bash
-git rm -r --cached .pipeline
+git rm -r --cached .pipeline   # .pipeline/ 不存在或本就未跟踪时跳过这步，只跑下面那条
 rm -rf .pipeline
 ```
 
@@ -85,7 +85,7 @@ docs/tasks/*.md -text
 git worktree list
 ```
 
-`.worktrees/` 下每个目录都是一个旧任务（旧版也用这个父目录）。逐个：
+`.worktrees/` 下每个目录都是一个旧任务（旧版也用这个父目录）。目录已被手工删掉、`git worktree list` 还列着的（stale 登记）先 `git worktree prune`，再删分支。其余逐个：
 
 ```bash
 git worktree remove .worktrees/<task-id>   # 留有未提交改动或未跟踪文件的加 --force
