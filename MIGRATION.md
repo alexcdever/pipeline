@@ -59,12 +59,12 @@ git rm -r --cached .pipeline   # .pipeline/ 不存在或本就未跟踪时跳过
 rm -rf .pipeline
 ```
 
-取消跟踪只在 index 里，**先把它落进提交**（`git commit`，或并入步骤 6 那次提交——提交时必须把 `.pipeline/` 的删除一并 `git add` 进去），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
+取消跟踪只在 index 里，**先把它落进提交**（`git commit`，或并入步骤 6 那次提交；`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 暂存在 index，提交时直接带走即可），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
 
 **3. 删掉旧版带进来的工具、模板与任务单**
 
 ```bash
-git rm -r pipeline_tools references templates scripts bin tests   # 先按上面那段确认归属；不存在的目录先剔除，否则整句 fatal 一个不删
+for d in pipeline_tools references templates scripts bin tests; do [ -d "$d" ] && git rm -r "$d"; done   # 先按上面那段确认归属；只删存在的，逐项来免得整句 fatal
 rm -rf docs/tasks   # 按下面那段判定：混有自有文档时只删旧任务单，不整个删目录
 ```
 
