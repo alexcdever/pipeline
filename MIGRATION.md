@@ -59,7 +59,7 @@ git rm -r --cached .pipeline   # .pipeline/ 不存在或本就未跟踪时跳过
 rm -rf .pipeline
 ```
 
-取消跟踪只在 index 里，**先把它落进提交**（`git commit` 或并入步骤 6 之前的任意一次提交），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
+取消跟踪只在 index 里，**先把它落进提交**（`git commit`，或并入步骤 6 那次提交——提交时必须把 `.pipeline/` 的删除一并 `git add` 进去），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
 
 **3. 删掉旧版带进来的工具、模板与任务单**
 
@@ -85,14 +85,16 @@ docs/tasks/*.md -text
 git worktree list
 ```
 
-`.worktrees/` 下每个目录都是一个旧任务（旧版也用这个父目录）。目录已被手工删掉、`git worktree list` 还列着的（stale 登记）先 `git worktree prune`，再删分支。其余逐个：
+`.worktrees/` 下每个目录都是一个旧任务（旧版也用这个父目录）。目录已被手工删掉、`git worktree list` 还列着的（stale 登记）先 `git worktree prune`，再删分支。其余逐个——**先按步骤 3 那套认归属**（目录里有旧版 `.pipeline/` 痕迹、或分支可确认是旧任务），认不出的别动、问用户；新版任务也挂在这个父目录下，别误删在跑的任务：
 
 ```bash
 git worktree remove .worktrees/<task-id>   # 留有未提交改动或未跟踪文件的加 --force
-git branch -D <task-id>
+git branch -D <task-id>                    # -D 会静默丢掉未并入的提交；删前先 `git log <主分支>..<task-id>` 看一眼，确认没有要留的再删
 ```
 
 **6. 提交一次**
+
+先确认工作区只剩本清单产生的改动（有别的东西先按项目惯例处置），再提交；嫌 `git add -A` 太宽的，按路径限定 `git add .gitignore .gitattributes docs/tasks .pipeline`。
 
 ```bash
 git add -A
