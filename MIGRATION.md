@@ -71,7 +71,7 @@ for d in pipeline_tools references templates scripts bin tests; do
   git status --porcelain -- "$d" | grep -q . && { echo "$d 有未提交改动，先确认再删"; continue; }
   git rm -r --ignore-unmatch "$d" 2>/dev/null; rm -rf "$d"   # 删被跟踪的部分，再清掉未跟踪残留（分号：无条件都跑）
 done
-# `docs/tasks/` 必须逐文件确认归属后删除：只处理文件名/内容带 `<!-- Task ID: -->` 或 `pipeline-contract` 区块的旧任务单；混有自有文档时禁止整目录删除。POSIX 可用 `git grep -l -E 'Task ID:|pipeline-contract' -- docs/tasks` 列出候选后逐个 `git rm`，未跟踪候选另用 `rm -f`；全部删完且目录为空再删目录。
+# `docs/tasks/` 必须逐文件确认归属后删除：跟踪文件用 `git grep -l -E 'Task ID:|pipeline-contract' -- docs/tasks` 列候选，未跟踪文件用 `grep -rlE 'Task ID:|pipeline-contract' docs/tasks` 列候选；逐个确认后，跟踪文件 `git rm`、未跟踪文件 `rm -f`。混有自有文档时禁止整目录删除，全部删完且目录为空再删目录。
 # 不提供无守卫的 `rm -rf docs/tasks`，避免误删项目文档。
 ```
 
@@ -82,7 +82,7 @@ foreach ($d in 'pipeline_tools','references','templates','scripts','bin','tests'
   if (git status --porcelain -- $d) { Write-Host "$d 有未提交改动，先确认再删"; continue }
   git rm -r --ignore-unmatch $d 2>$null; Remove-Item -Recurse -Force $d
 }
-# docs/tasks 仍按上面的逐文件标记规则处理，不整目录删除。
+# 候选用 `Get-ChildItem docs/tasks -File | Select-String -Pattern 'Task ID:|pipeline-contract'` 筛选，再逐个确认删除。
 ```
 
 
