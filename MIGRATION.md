@@ -41,7 +41,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ## 清单
 
-在主工作树根目录执行。步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；步骤 2 的 `rm -rf .pipeline` 在 Windows 下换成 `Remove-Item -Recurse -Force .pipeline`；跨目录清理一律按步骤 3 的「逐文件确认归属、跟踪文件 `git rm`、未跟踪文件 `rm -f`/`Remove-Item`」办，不要整目录删。
+在主工作树根目录执行。步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；六个通用名的目录按步骤 3 的归属判据（`git log` 全是旧版提交）决定整块删还是只挑旧文件删，`docs/tasks/` 一律逐文件按标记确认后再删。
 
 **1. 补 `.gitignore`**
 
