@@ -41,7 +41,7 @@ git log --oneline -- pipeline_tools references templates tests bin scripts docs
 
 ## 清单
 
-在主工作树根目录执行。步骤 3 给了 POSIX 与 Windows PowerShell 两种写法；六个通用名的目录按步骤 3 的归属判据（`git log` 全是旧版提交）决定整块删还是只挑旧文件删，`docs/tasks/` 一律逐文件按标记确认后再删。
+在主工作树根目录执行。
 
 **1. 补 `.gitignore`**
 
@@ -66,7 +66,7 @@ git rm -r --cached --ignore-unmatch .pipeline   # 取消跟踪
 Remove-Item -Recurse -Force .pipeline   # 从工作区删除旧证据
 ```
 
-取消跟踪只在 index 里，**先把它落进提交**（`git commit`，或并入步骤 6 那次提交；`.pipeline/` 的删除已随步骤 2 的 `git rm --cached` 暂存在 index，提交时直接带走即可），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
+取消跟踪只在 index 里，**先把它落进提交**（`git commit`，或并入步骤 6 那次提交），不然建第一个 worktree 时检出的是旧 HEAD 树，`.pipeline/` 在那里仍被跟踪，`.gitignore` 照样失效。
 
 **3. 删掉旧版带进来的工具、模板与任务单**
 
@@ -128,10 +128,3 @@ git add -A
 git commit -m "清除 pipeline v0.18 残留"
 ```
 
-## 迁完之后
-
-从此不再做的三件事：
-
-- **不把 `.pipeline/` 或任何证据提交进 Git。** 它随 worktree 一起生灭。
-- **不再有 `docs/tasks/`、任务单冻结与 `amend`、`*result.json`。** 一个任务的记录就是 `<worktree>/.pipeline/` 下那四个文件。
-- **不再需要 `.pipeline/** -text`。** 没有会被跟踪的证据，就没有需要逐字节保真的 blob。
