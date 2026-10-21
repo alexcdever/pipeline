@@ -23,7 +23,7 @@
     "previewTruncated": false,
     "preview": "<有限预览>",
     "logAvailable": true,
-    "logPath": "<完整 stdout 日志路径>"
+    "logPath": "<完整标准输出日志的路径>"
   },
   "stderr": {
     "bytes": 8000,
@@ -31,7 +31,7 @@
     "previewTruncated": true,
     "preview": "<有限预览>",
     "logAvailable": true,
-    "logPath": "<完整 stderr 日志路径>"
+    "logPath": "<完整错误输出日志的路径>"
   },
   "postcondition": {
     "checked": false,
@@ -53,7 +53,7 @@
 测试数量、失败用例、构建产物和迁移状态由测试工具的机器可读输出、项目适配器或明确的后置验证提供；不能从通用 `preview` 或退出码推断出来。宿主按以下顺序适配：
 
 1. 宿主已有结构化命令执行器时，使用它并映射到本结构。
-2. 宿主没有现成执行器但能运行脚本时，用宿主可用的 shell（Bash、PowerShell、sh 等）在系统临时目录生成包装脚本，捕获完整 stdout/stderr 并输出本结构；脚本用完即删。
+2. 宿主没有现成执行器但能运行脚本时，用宿主可用的 shell（Bash、PowerShell、sh 等）在系统临时目录生成包装脚本，捕获完整的标准输出与错误输出并输出本结构；脚本用完即删。
 3. 只能直接执行命令时，尽量保存长输出、按上述规则记录可获得的字段并标记缺失（`degraded` 与 `missingFields`）；关键验收必须改用更窄或机器可读的命令，或换能完整保存日志的环境重跑——不能靠一份存不下的日志过关（同 `SKILL.md` 第 5 条）。
 
 `执行结果`是固定结构；`执行摘要`只是从它生成、用于节省上下文的有限视图。任何一层都不能用 `postcondition.passed` 代替实际验证。
