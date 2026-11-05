@@ -38,6 +38,18 @@
 
 **`Start-Process -PassThru`（POSIX：`cmd & echo $!`）拿到的进程号要记下来。** 这是唯一可靠的停机依据；进程号丢了就只能按 `SKILL.md` 第 9 条问用户。
 
+## Rust / Cargo
+
+**`CARGO_TARGET_DIR` 指向共享目录即可让多个 worktree 复用编译产物。** Cargo 的指纹按 crate 内容寻址、不含绝对路径；registry 依赖跨 checkout 直接命中。冷编译动辄几十分钟的项目，新 worktree 跑构建/测试前在派发材料里给出共享 target，实测可省掉整块冷编译（某 610 包项目 26–30min → 约 2min）。
+
+**共享 target 下裸 `cargo clean` 删的是整个目录**——所有 worktree 一起遭殃。`cargo clean -p <spec>` 只按 package 清，但同样不区分哪个 checkout 编的。
+
+**共享 target 下多个 cargo 构建在 `debug/.cargo-build-lock` 上串行排队**（报 `Blocking waiting for file lock on build directory`）——不互踩产物但并行不了。要并行跑多 worktree 构建就各用各的 target。
+
+**`cargo clean` 不存在「只清本 worktree」的语义。** 复用共享 target 的项目要把「禁止裸 clean」写进项目约定。
+
+**生成式 workspace 把 crate 挂成绝对路径 `path` 依赖时，每个 checkout 是不同 unit，本地 crate 不复用**（例：nsh 给每个 checkout 生成 `.nsh/rust` 容器 crate）。所以共享 target 省掉的是依赖，省不掉本地 crate 本身。也别指望 sccache 补这一段：`SCCACHE_BASEDIRS` 归一化的是 rustc 的参数与 CWD，改变不了 Cargo 按 `PackageId` 分桶——实测过的项目里 Rust 编译几乎零命中（少数命中都来自 vendored 的 C 代码）。
+
 ## 宿主执行层
 
 **退出码只能说明进程是否正常退出，说明不了业务结果。** 测试数量、失败用例、构建产物、迁移状态都不在退出码里，要从测试工具的机器可读输出、项目适配器或明确的后置验证里拿，从通用 `preview` 里推断不出来。
