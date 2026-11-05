@@ -50,6 +50,18 @@
 
 **生成式 workspace 把 crate 挂成绝对路径 `path` 依赖时，每个 checkout 是不同 unit，本地 crate 不复用**（例：nsh 给每个 checkout 生成 `.nsh/rust` 容器 crate）。所以共享 target 省掉的是依赖，省不掉本地 crate 本身。也别指望 sccache 补这一段：`SCCACHE_BASEDIRS` 归一化的是 rustc 的参数与 CWD，改变不了 Cargo 按 `PackageId` 分桶——实测过的项目里 Rust 编译几乎零命中（少数命中都来自 vendored 的 C 代码）。
 
+## Node / pnpm
+
+**pnpm 复用的不是 `node_modules`，是它下面的内容寻址 store。** `node_modules/.pnpm` 里的文件与 `pnpm store path` 所指的全局 store 是同一份数据（Windows 下 `fsutil hardlink list` 可见两者互为硬链接）；顶层条目是 `SYMLINKD`，但只指向**本树内**的 `.pnpm`，不越出 worktree。实测：首个目录装完后，第二个目录 `pnpm add` 同版本包约 1.3s。所以 worktree 的等价方案是「每棵树一份 `node_modules`，共用同一个 store」——与 Cargo 共享 target 同一层，且没有 build-lock 那类串行点：并发 `install` 只向 store 追加内容寻址的新条目，不互踩。
+
+**`node_modules` 本身按名字寻址，一份目录只能装一套版本**——这与 Cargo target 的本质区别：指纹分桶让不同代码状态的产物在一个 target 里共存，`node_modules/<包名>` 一个位置只放得下一个版本。所以它不能跨 worktree 共享；共享发生在 store 层，各树仍各写各的 `.pnpm`。同一 store 里不同版本并存，锁文件分叉的分支也各装各的。
+
+**直接把 `node_modules` 用 junction 指到主树或共享目录，落进 git 一节记的同一个坑**：`worktree remove --force` 顺着链接把目标删光。`node_modules` 保持每棵树一份实体目录。
+
+**store 与 `node_modules` 必须在同一卷上。** 硬链接不能跨卷：仓在 `D:`、store 在 `C:`（`pnpm store path` 可查）时退化为整目录复制——安装仍快、缓存仍命中，但磁盘省不下来，和 store 共享的预期不符。
+
+**npm / yarn classic 只有一层缓存等价。** `~/.npm` 的 cacache 同样内容寻址、跨 worktree 共享，省掉下载；但每棵树仍要完整解压出自己的 `node_modules`——省网络，不省磁盘与安装时间。这一段的 pnpm 结论对它们不成立。
+
 ## 宿主执行层
 
 **退出码只能说明进程是否正常退出，说明不了业务结果。** 测试数量、失败用例、构建产物、迁移状态都不在退出码里，要从测试工具的机器可读输出、项目适配器或明确的后置验证里拿，从通用 `preview` 里推断不出来。
