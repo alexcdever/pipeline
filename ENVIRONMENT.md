@@ -10,13 +10,13 @@
 
 **两点 `git diff <主分支> <id>` 会漏掉主分支前移后别人的提交。** 它比较的是两个尖端快照，merge-base 之后主分支上落的提交不出现在结果里；要和 merge-base 比（`git diff <主分支>...<id>`），或逐条看 `git log --name-only <主分支>..<id>` 的文件清单。
 
-**`worktree remove --force` 的递归删除会顺着 junction / symbolic link 穿透到目标本身**，而且绕过回收站——一次清场就足以把 gitignore 的数据目录连同几 GB 数据库删光（真实事故：worktree 里为跑测试建了指向主树 `data/` 的 junction，清场时主库连同备份、staging 全被删）。所以清场要先摘链接再删树。
+**`worktree remove --force` 的递归删除会顺着 junction / symbolic link 穿透到目标本身**（行为随 git 版本而异，但每一种都留坏现场），而且绕过回收站——一次清场就足以把 gitignore 的数据目录连同几 GB 数据库删光（真实事故：worktree 里为跑测试建了指向主树 `data/` 的 junction，清场时主库连同备份、staging 全被删）。git 2.56.0.windows.4 实测：目标**不再被穿透**（完好），但 junction 本身没被删掉、连同父目录残留在原地，且登记已被移除——正好造出 `RECOVERY.md` 的「目录在、登记不在」格。所以无论哪个版本，清场都要先摘链接再删树。
 
 **`info/exclude` 是全局的。** 它挂在公共 gitdir 上（`git rev-parse --git-common-dir` 所指那份），条目对主树和所有 worktree 同时生效。写成裸目录或裸通配（`out/`、`*.log`）时，并行中的别的任务、以及主树里的合法文件会被 `git add -A` **静默跳过**，不报错、不改退出码，一路到主树复验才发现少了文件。所以条目要锚定到具体路径并带 `<id>`。
 
 **私有 gitdir 的 `info/exclude` Git 不读。** worktree 自带的那个 `.git` 文件指向的私有目录里写什么都不生效，要写公共那份。
 
-**`git -C <目录>` 只在「目录不存在」或「`.git` 文件格式坏」时报错。** 真正的静默陷阱是 `.git` 文件被指向**别的有效 gitdir**——比如改成指向主仓时，`git -C` 会返回主树的 HEAD 与 status，exit 0、看起来一切正常。所以判某个 worktree 的状态要用 `git worktree list --porcelain`，或者先 `git rev-parse --show-toplevel` 自证站在哪个仓里。
+**`git -C <目录>` 的 `.git` 文件有四种坏法，两种报错、两种静默。** `.git` 文件**整个消失**（目录被删空）或它**指向另一个有效 gitdir**（比如被改成指向主仓）时，`git -C` 静默向上解析或解析到那个仓库——返回主树的 HEAD 与 status，exit 0、看起来一切正常；`.git` 内容**格式坏**或它**指向不存在的 gitdir** 时反而报 `invalid gitfile format` / `gitfile does not point to a valid repository`，exit 128。所以「报错」不等于「能发现坏现场」，静默的两种才危险：判某个 worktree 的状态要用 `git worktree list --porcelain`，或者先 `git rev-parse --show-toplevel` 自证站在哪个仓里。
 
 **`git branch -D` 遇到 worktree 占用会报 `cannot delete branch`。** 反过来则安全：`worktree remove` 不删分支，所以先 `worktree remove --force` 再 `branch -D`，两条都跑完才干净。顺序反了就是分支删不掉，或者操作中断后留下一条指向已删目录的 stale 登记（`git worktree list` 里看得见）。
 
@@ -36,7 +36,7 @@
 
 **`worktree remove` 在 Windows 上遇到文件占用会 `Permission denied`。** 而它失败之前已经删掉了文件与 `.pipeline/`、也移除了登记，只留下一个空目录加 `.git` 文件与分支。这一格极难辨认，处置见 `RECOVERY.md`。
 
-**`Start-Process -PassThru`（POSIX：`cmd & echo $!`）拿到的进程号要记下来。** 这是唯一可靠的停机依据；进程号丢了就只能按 `SKILL.md` 第 9 条问用户。
+**`Start-Process -PassThru`（POSIX（类 Unix 系统）：`cmd & echo $!`）拿到的进程号要记下来。** 这是唯一可靠的停机依据；进程号丢了就只能按 `SKILL.md` 第 9 条问用户。
 
 ## Rust / Cargo
 
